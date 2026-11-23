@@ -535,7 +535,7 @@ export const make = Effect.gen(function* () {
                 ? yield* fs.readFileString(settingsPath)
                 : "{}";
               const existing = record(yield* decode(runtimeSettingsText));
-              const retry = record(existing.retry);
+              const { maxRetries, ...retry } = record(existing.retry);
               if (instance.driver === "omo")
                 environment.push({
                   name: "COX_OMO_GATEWAY_TIMEOUT_MS",
@@ -550,8 +550,9 @@ export const make = Effect.gen(function* () {
                 httpIdleTimeoutMs: timeoutMs,
                 retry: {
                   ...retry,
-                  enabled: false,
-                  ...(instance.driver === "pi" ? { maxRetries: 0 } : {}),
+                  ...(maxRetries === undefined || maxRetries === 0 ? {} : { maxRetries }),
+                  enabled: true,
+                  ...(instance.driver === "omo" ? { modelFallback: false } : {}),
                   provider: {
                     ...record(retry.provider),
                     ...(instance.driver === "pi"
@@ -663,7 +664,7 @@ export const make = Effect.gen(function* () {
                 }),
               );
               const providers = record(existing.providers);
-              const retry = record(existing.retry);
+              const { maxRetries, ...retry } = record(existing.retry);
               yield* writeYaml(configPath, {
                 ...existing,
                 providers: {
@@ -673,8 +674,8 @@ export const make = Effect.gen(function* () {
                 },
                 retry: {
                   ...retry,
-                  enabled: false,
-                  maxRetries: 0,
+                  ...(maxRetries === undefined || maxRetries === 0 ? {} : { maxRetries }),
+                  enabled: true,
                 },
               });
             }

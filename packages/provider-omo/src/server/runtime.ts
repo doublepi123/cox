@@ -506,8 +506,6 @@ export const makeOmoRpcConnection: typeof makePiRpcConnection = Effect.fn("makeO
       const memoryWarning = omoMemoryWarningEvent(initialized);
       if (memoryWarning !== undefined) yield* Queue.offer(events, memoryWarning);
     }
-    if (options.env.COX_OMO_MANAGED_MODELS === "1")
-      yield* connection.request({ type: "set_auto_retry", enabled: false });
     return {
       ...connection,
       events,

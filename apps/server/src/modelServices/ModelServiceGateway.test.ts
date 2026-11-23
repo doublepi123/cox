@@ -1156,23 +1156,35 @@ it.layer(layer)("model service gateway", (it) => {
       }).pipe(Effect.scoped),
   );
 
-  it.effect("aligns managed Pi retry and HTTP timeouts while preserving settings", () =>
+  it.effect("restores managed Pi retry and aligns HTTP timeouts while preserving settings", () =>
     Effect.gen(function* () {
       const h = yield* harness({ driver: "pi", recovery: { budgetMs: 600_000 } });
       const fs = yield* FileSystem.FileSystem;
       const file = `${h.config.agentDir}/settings.json`;
       expect(yield* fs.exists(file)).toBe(true);
-      expect(JSON.parse(yield* fs.readFileString(file))).toMatchObject({
+      const initial = JSON.parse(yield* fs.readFileString(file));
+      expect(initial).toMatchObject({
         httpIdleTimeoutMs: 630_000,
-        retry: { enabled: false, maxRetries: 0, provider: { maxRetries: 0, timeoutMs: 630_000 } },
+        retry: { enabled: true, provider: { maxRetries: 0, timeoutMs: 630_000 } },
       });
+      expect(initial.retry).not.toHaveProperty("maxRetries");
+      yield* fs.writeFileString(
+        file,
+        JSON.stringify({
+          retry: { enabled: false, maxRetries: 0, provider: { maxRetries: 0, timeoutMs: 1 } },
+        }),
+      );
+      yield* h.gateway.materialize(yield* h.settings.getSettings, h.instances);
+      const migrated = JSON.parse(yield* fs.readFileString(file));
+      expect(migrated.retry).toMatchObject({ enabled: true });
+      expect(migrated.retry).not.toHaveProperty("maxRetries");
       yield* fs.writeFileString(
         file,
         JSON.stringify({
           theme: "fixture",
           todo: { firstTurnPlan: "force" },
           retry: {
-            enabled: true,
+            enabled: false,
             maxRetries: 7,
             baseDelayMs: 123,
             provider: { timeoutMs: 100, maxRetryDelayMs: 789 },
@@ -1185,8 +1197,8 @@ it.layer(layer)("model service gateway", (it) => {
         todo: { firstTurnPlan: "force" },
         httpIdleTimeoutMs: 630_000,
         retry: {
-          enabled: false,
-          maxRetries: 0,
+          enabled: true,
+          maxRetries: 7,
           baseDelayMs: 123,
           provider: { maxRetries: 0, timeoutMs: 630_000, maxRetryDelayMs: 789 },
         },
@@ -1394,7 +1406,7 @@ it.layer(layer)("model service gateway", (it) => {
   );
 
   it.effect.each([100, 600_000, 1_800_000])(
-    "disables first-turn planning and aligns managed OMO timeouts for a %s ms recovery budget",
+    "disables first-turn planning, restores OMO retry without model fallback, and aligns timeouts for a %s ms recovery budget",
     (budgetMs) =>
       Effect.gen(function* () {
         const h = yield* harness({ driver: "omo", recovery: { budgetMs } });
@@ -1405,7 +1417,8 @@ it.layer(layer)("model service gateway", (it) => {
           todo: { firstTurnPlan: "off" },
           httpIdleTimeoutMs: timeoutMs,
           retry: {
-            enabled: false,
+            enabled: true,
+            modelFallback: false,
             provider: { timeoutMs, streamStartTimeoutMs: timeoutMs, keepAliveTimeoutMs: timeoutMs },
           },
         };
@@ -1421,7 +1434,7 @@ it.layer(layer)("model service gateway", (it) => {
             ...expected,
             theme: "fixture",
             todo: { firstTurnPlan: "force", turnEndBackstop: false },
-            retry: { ...expected.retry, maxRetries: 7 },
+            retry: { ...expected.retry, enabled: false, modelFallback: true, maxRetries: 7 },
           }),
         );
         const current = (yield* h.settings.getSettings).modelServices[serviceId]!;
@@ -1436,7 +1449,8 @@ it.layer(layer)("model service gateway", (it) => {
           todo: { firstTurnPlan: "off", turnEndBackstop: false },
           httpIdleTimeoutMs: 930_000,
           retry: {
-            enabled: false,
+            enabled: true,
+            modelFallback: false,
             maxRetries: 7,
             provider: {
               timeoutMs: 930_000,
@@ -1454,7 +1468,7 @@ it.layer(layer)("model service gateway", (it) => {
   );
 
   it.effect.each([100, 600_000, 1_800_000])(
-    "aligns managed omp retry and stream timeouts to the %s ms recovery budget",
+    "restores managed omp retry and aligns stream timeouts to the %s ms recovery budget",
     (budgetMs) =>
       Effect.gen(function* () {
         const h = yield* harness({ driver: "omp", recovery: { budgetMs } });
@@ -1466,11 +1480,17 @@ it.layer(layer)("model service gateway", (it) => {
             streamFirstEventTimeoutSeconds: timeoutSeconds,
             streamIdleTimeoutSeconds: timeoutSeconds,
           },
-          retry: { enabled: false, maxRetries: 0 },
+          retry: { enabled: true },
         });
+        yield* fs.writeFileString(file, "retry:\n  enabled: false\n  maxRetries: 0\n");
+        yield* h.gateway.materialize(yield* h.settings.getSettings, h.instances);
+        const migrated = parseYaml(yield* fs.readFileString(file)) as {
+          readonly retry: Record<string, unknown>;
+        };
+        expect(migrated.retry).toEqual({ enabled: true });
         yield* fs.writeFileString(
           file,
-          "theme: fixture\nproviders:\n  streamIdleTimeoutSeconds: 12\n  webSearchTimeoutSeconds: 42\nretry:\n  enabled: true\n  maxRetries: 7\n  baseDelayMs: 123\n",
+          "theme: fixture\nproviders:\n  streamIdleTimeoutSeconds: 12\n  webSearchTimeoutSeconds: 42\nretry:\n  enabled: false\n  maxRetries: 7\n  baseDelayMs: 123\n",
         );
         yield* h.gateway.materialize(yield* h.settings.getSettings, h.instances);
         expect(parseYaml(yield* fs.readFileString(file))).toMatchObject({
@@ -1480,7 +1500,7 @@ it.layer(layer)("model service gateway", (it) => {
             streamIdleTimeoutSeconds: timeoutSeconds,
             webSearchTimeoutSeconds: 42,
           },
-          retry: { enabled: false, maxRetries: 0, baseDelayMs: 123 },
+          retry: { enabled: true, maxRetries: 7, baseDelayMs: 123 },
         });
       }).pipe(Effect.scoped),
   );

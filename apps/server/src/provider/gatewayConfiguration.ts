@@ -36,7 +36,7 @@ export function codexGatewayRuntime(config: CodexSettings, environment: NodeJS.P
     ...(environment.COX_MODEL_SERVICE_KEY
       ? [
           "model_providers.cox_gateway.request_max_retries=0",
-          "model_providers.cox_gateway.stream_max_retries=0",
+          "model_providers.cox_gateway.stream_max_retries=1",
         ]
       : []),
   ]

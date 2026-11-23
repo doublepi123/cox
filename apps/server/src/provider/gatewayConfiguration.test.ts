@@ -7,7 +7,7 @@ import { codexGatewayRuntime, gatewayBaseUrl } from "./gatewayConfiguration.ts";
 const decodeCodexSettings = Schema.decodeSync(CodexSettings);
 
 describe("gateway configuration", () => {
-  it("lets the model service own HTTP retries without changing direct gateway launches", () => {
+  it("lets the model service own HTTP retries and allows one stream reconnect", () => {
     const config = decodeCodexSettings({
       baseUrl: "http://127.0.0.1/api/model-gateway/v1",
       apiKey: "local-token",
@@ -19,7 +19,7 @@ describe("gateway configuration", () => {
     ).toEqual(
       expect.arrayContaining([
         "model_providers.cox_gateway.request_max_retries=0",
-        "model_providers.cox_gateway.stream_max_retries=0",
+        "model_providers.cox_gateway.stream_max_retries=1",
       ]),
     );
     expect(codexGatewayRuntime(config, {}).settings.launchArgs).not.toMatch(/_max_retries/);
