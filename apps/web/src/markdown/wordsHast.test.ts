@@ -1,6 +1,6 @@
 import type { Element, Root } from "hast";
 import { toHtml } from "hast-util-to-html";
-import { describe, expect, it } from "vite-plus/test";
+import { describe, expect, it, vi } from "vite-plus/test";
 
 import {
   codexDirectiveSources,
@@ -406,4 +406,26 @@ describe("wordsHast", () => {
     expect(html).not.toMatch(/onload|javascript|position|<a |<script/);
     expect(html).toContain('aria-label="y"');
   });
+});
+
+it("loads with a plain-text fallback when WebAssembly is disabled", async () => {
+  vi.resetModules();
+  vi.doMock("@pierre/words/core", () => ({
+    init: vi.fn(),
+    renderToHtml: () => {
+      throw new Error("Words is not initialized");
+    },
+  }));
+  try {
+    using disabled = vi.spyOn(WebAssembly, "Module").mockImplementation(() => {
+      throw new WebAssembly.CompileError("WebAssembly is disabled");
+    });
+    const { wordsHast } = await import("./wordsHast");
+    const tree = wordsHast("**safe** <script>", ASSISTANT);
+    expect(disabled).toHaveBeenCalled();
+    expect(JSON.stringify(tree)).toContain("**safe** <script>");
+  } finally {
+    vi.doUnmock("@pierre/words/core");
+    vi.resetModules();
+  }
 });
