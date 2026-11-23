@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+## 0.2.33 — 2026-11-23
+
+- Model services no longer have an Ignore state. Upgrading removes previously
+  ignored models from the local catalog and repairs references to those models.
+  An agent whose binding loses every model is disabled until reconfigured.
+- Review failed model tests before deleting their models. Deletion requires
+  confirmation and keeps models required by agent bindings.
+- The models.dev sync button wraps on narrow screens so its label stays visible.
+
 ## 0.2.32 — 2026-11-23
 
 - Service updates no longer stop when a release changes the database schema.
