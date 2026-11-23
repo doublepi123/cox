@@ -158,7 +158,14 @@ export function UsagePriceOverrides({
       ),
     ...drafts.filter((draft) => draft.isNew),
   ];
-  const stagedDrafts = drafts.filter((draft) => !isEmptyUsagePriceDraft(draft));
+  const stagedDrafts = drafts.filter(
+    (draft) =>
+      !isEmptyUsagePriceDraft(draft) &&
+      (draft.id !== "new:initial" ||
+        draft.model !== initialModel ||
+        (draft.alias ?? "").trim() !== "" ||
+        Object.values(draft.values).some((value) => value.trim() !== "")),
+  );
   const errors = usagePriceTableErrors(selected, stagedDrafts);
   for (const draft of stagedDrafts) {
     if (!draft.isNew) continue;
@@ -412,9 +419,7 @@ export function UsagePriceOverrides({
                                     }
                                   }}
                                   aria-label={t("New model ID")}
-                                  aria-invalid={
-                                    (row.model.trim() !== "" && errors.has(row.id)) || undefined
-                                  }
+                                  aria-invalid={errors.has(row.id) || undefined}
                                   list="usage-price-models"
                                   placeholder={t("Model ID")}
                                   autoComplete="off"
@@ -434,9 +439,7 @@ export function UsagePriceOverrides({
                                   {row.model}
                                 </span>
                               )}
-                              {errors.has(row.id) &&
-                              (row.model.trim() !== "" ||
-                                Object.values(row.values).some((value) => value !== "")) ? (
+                              {errors.has(row.id) ? (
                                 <p role="alert" className="mt-1 text-xs text-destructive">
                                   {errors.get(row.id)}
                                 </p>
