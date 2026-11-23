@@ -306,6 +306,7 @@ import {
   shouldShowComposerContextStrip,
   shouldShowEnvironmentIndicator,
 } from "./BranchToolbar.logic";
+import { offersWorkspaceModes } from "./BranchToolbar.logic";
 import {
   getProviderStatusBannerKey,
   shouldShowProviderStatusBanner,
@@ -2206,6 +2207,11 @@ export default function ChatView(props: ChatViewProps) {
         activeProjectSettings.settings.newWorktreesStartFromOrigin)
       : false;
   const worktreeRepositoryChoices = useWorktreeRepositoryChoices(activeProject);
+  const workspaceModesOffered = offersWorkspaceModes({
+    isScratchProject: activeProjectIsScratch,
+    isGitRepo,
+    tracksGitRepositories: worktreeRepositoryChoices.tracksGitRepositories,
+  });
   const rememberedWorktreeRepositories = useRememberedWorktreeRepositories(activeProject ?? null);
   const sendEnvMode = resolveSendEnvMode({
     requestedEnvMode: envMode,
@@ -3709,9 +3715,7 @@ export default function ChatView(props: ChatViewProps) {
                                   projectId={activeThread.projectId}
                                   worktreePath={activeThread.worktreePath}
                                   isServerThread={isServerThread}
-                                  showGitControls={
-                                    isGitRepo || worktreeRepositoryChoices.tracksGitRepositories
-                                  }
+                                  showGitControls={workspaceModesOffered}
                                   showBranchControls={isGitRepo}
                                   {...(routeKind === "draft" && draftId ? { draftId } : {})}
                                   onEnvModeChange={onEnvModeChangeStable}
@@ -3786,6 +3790,7 @@ export default function ChatView(props: ChatViewProps) {
                 />
 
                 <ThreadDetailsPanel
+                  offersWorkspaceModes={workspaceModesOffered}
                   anchor={threadPanelPopoverAnchorRef}
                   handle={threadPanelPopoverHandle}
                   forceNewWorktree={multipleModelSelections !== null}

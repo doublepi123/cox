@@ -231,6 +231,7 @@ interface RunContextSelectorProps {
   displayMode?: "toolbar" | "panel";
   workspaceRoot?: string;
   forceNewWorktree: boolean;
+  offersWorkspaceModes: boolean;
   envLocked: boolean;
   envModeLocked: boolean;
   environmentId: EnvironmentId;
@@ -247,13 +248,14 @@ interface RunContextSelectorProps {
 const RunContextSelector = memo(function RunContextSelector({
   displayMode = "toolbar",
   workspaceRoot,
-  forceNewWorktree,
+  forceNewWorktree: requestedForceNewWorktree,
+  offersWorkspaceModes,
   envLocked,
   envModeLocked,
   environmentId,
   availableEnvironments,
   showEnvironmentIndicator,
-  effectiveEnvMode,
+  effectiveEnvMode: requestedEnvMode,
   activeWorktreePath,
   onEnvModeChange,
   previousWorktreeLabel,
@@ -262,6 +264,8 @@ const RunContextSelector = memo(function RunContextSelector({
 }: RunContextSelectorProps) {
   const { t } = useTranslation();
   const composerFloatingLayerProps = useComposerMenuProps();
+  const forceNewWorktree = offersWorkspaceModes && requestedForceNewWorktree;
+  const effectiveEnvMode = offersWorkspaceModes ? requestedEnvMode : "local";
   const activeEnvironment =
     availableEnvironments?.find((env) => env.environmentId === environmentId) ?? null;
   const WorkspaceIcon =
@@ -280,7 +284,8 @@ const RunContextSelector = memo(function RunContextSelector({
           : resolveCurrentWorkspaceLabel(activeWorktreePath),
   );
   const isPanel = displayMode === "panel";
-  const isLocked = envLocked || (envModeLocked && !isPanel);
+  const workspaceModesLocked = envModeLocked || !offersWorkspaceModes;
+  const isLocked = envLocked || !offersWorkspaceModes || (workspaceModesLocked && !isPanel);
   const workspacePath =
     forceNewWorktree || (effectiveEnvMode === "worktree" && !activeWorktreePath)
       ? null
@@ -385,7 +390,7 @@ const RunContextSelector = memo(function RunContextSelector({
             : undefined
         }
         data-composer-context-control
-        data-composer-shortcut={[!envModeLocked ? "composer.workspace" : ""].join(" ")}
+        data-composer-shortcut={[!workspaceModesLocked ? "composer.workspace" : ""].join(" ")}
       >
         {triggerContent}
       </MenuTrigger>
@@ -732,6 +737,7 @@ export const BranchToolbar = memo(function BranchToolbar({
           <RunContextSelector
             displayMode="panel"
             workspaceRoot={activeProject.workspaceRoot}
+            offersWorkspaceModes={showGitControls}
             forceNewWorktree={forceNewWorktree}
             envLocked={envLocked}
             envModeLocked={envModeLocked}
@@ -777,6 +783,7 @@ export const BranchToolbar = memo(function BranchToolbar({
       {showGitControls ? (
         <div className="contents @xl/composer-surface:hidden">
           <RunContextSelector
+            offersWorkspaceModes={showGitControls}
             forceNewWorktree={forceNewWorktree}
             envLocked={envLocked}
             envModeLocked={envModeLocked}

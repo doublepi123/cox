@@ -73,6 +73,7 @@ interface ThreadDetailsPanelProps extends Pick<
   openInShortcutEnabled: boolean;
   gitCwd: string | null;
   isGitRepo: boolean;
+  offersWorkspaceModes: boolean;
   envLocked: boolean;
   availableEnvironments: readonly EnvironmentOption[];
   onEnvModeChange: (mode: EnvMode) => void;
@@ -214,6 +215,7 @@ export function ThreadDetailsPanel(props: ThreadDetailsPanelProps) {
                         panelSection="workspace"
                         availableEnvironments={props.availableEnvironments}
                         {...branchToolbarProps}
+                        showGitControls={props.offersWorkspaceModes}
                       />
                     ) : null}
 

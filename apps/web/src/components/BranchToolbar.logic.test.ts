@@ -1,5 +1,5 @@
 import { GitCommandError } from "@t3tools/contracts";
-import { toBranchActionErrorMessage } from "./BranchToolbar.logic";
+import { offersWorkspaceModes, toBranchActionErrorMessage } from "./BranchToolbar.logic";
 import { type VcsRef } from "@t3tools/contracts";
 import { describe, expect, it } from "vite-plus/test";
 import { dedupeRemoteBranchesWithLocalMatches } from "@t3tools/shared/git";
@@ -292,5 +292,18 @@ describe("sanitizeNewRefName", () => {
   it("does not collapse dashes the user typed", () => {
     expect(sanitizeNewRefName("new - branch")).toBe("new---branch");
     expect(sanitizeNewRefName("foo--bar")).toBe("foo--bar");
+  });
+});
+
+describe("offersWorkspaceModes", () => {
+  it("offers worktrees from a repository or tracked repositories, never in No project", () => {
+    const folder = { isScratchProject: false, isGitRepo: false, tracksGitRepositories: false };
+    expect(offersWorkspaceModes(folder)).toBe(false);
+    expect(offersWorkspaceModes({ ...folder, isGitRepo: true })).toBe(true);
+    expect(offersWorkspaceModes({ ...folder, tracksGitRepositories: true })).toBe(true);
+    // Git status assumes a repository until it loads.
+    expect(offersWorkspaceModes({ ...folder, isScratchProject: true, isGitRepo: true })).toBe(
+      false,
+    );
   });
 });
