@@ -36,6 +36,7 @@ describe("HistorySwipeNavigation", () => {
     ["scrolling at a scroller's right edge keeps the thread", "light", 800, 130, false],
     ["scrolling over a preview panel keeps the thread", "preview-panel", 0, -130, false],
     ["swiping back over a panel without overflow navigates", "none", 0, -130, true],
+    ["swiping back over an open alert dialog keeps the thread", "alertdialog", 0, -130, false],
     ["a swipe that started in a closed dialog keeps the thread", "closed-dialog", 0, -130, false],
   ] as const)("%s", async (_name, scroller, scrollLeft, deltaX, navigates) => {
     navigateHistory.mockReset();
@@ -50,6 +51,7 @@ describe("HistorySwipeNavigation", () => {
     content.style.cssText = `height: 20px; width: ${noOverflow ? 100 : 1000}px`;
     viewport.scrollLeft = scrollLeft;
 
+    if (scroller === "alertdialog") panel.setAttribute("role", "alertdialog");
     if (scroller === "closed-dialog") {
       panel.setAttribute("role", "dialog");
       content.dispatchEvent(new WheelEvent("wheel", { deltaX: -1, bubbles: true, composed: true }));

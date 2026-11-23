@@ -75,7 +75,8 @@ function lockSwipeAxis(
   if (
     path.some(
       (node) =>
-        node instanceof Element && node.matches('[role="dialog"], [data-preview-panel-mode]'),
+        node instanceof Element &&
+        node.matches('[role="dialog"], [role="alertdialog"], [data-preview-panel-mode]'),
     )
   ) {
     return { kind: "ignored" };
