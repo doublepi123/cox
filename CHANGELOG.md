@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+## 0.2.32 — 2026-11-23
+
+- Service updates no longer stop when a release changes the database schema.
+  Cox always backs up the database first, takes a final snapshot after the
+  service stops, and restores it if the new version does not become healthy.
+  Updates that would downgrade the schema are still refused. Servers on an
+  older version need one manual upgrade before this applies.
+
 ## 0.2.31 — 2026-11-23
 
 - Port the November 23 T3 batch: 72 of 86 upstream commits ported and 3
