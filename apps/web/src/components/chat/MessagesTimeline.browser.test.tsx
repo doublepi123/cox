@@ -1,3 +1,5 @@
+import { TimelineRowCtx } from "./timelineRowContext";
+import { ViewedImagesTimelineRow } from "./TimelineWorkEntryRow";
 import { flushSync } from "react-dom";
 import { AudioPreview } from "../files/AudioPreview";
 import { page } from "vite-plus/test/browser";
@@ -71,15 +73,17 @@ vi.mock(import("~/state/query"), async (original) => ({
   })) as never,
 }));
 
-const audioAsset = vi.hoisted(() => ({ url: "" }));
+const audioAsset = vi.hoisted(() => ({ url: "", failed: false }));
 vi.mock(import("~/assets/assetUrls"), async (original) => {
   const actual = await original();
   return {
     ...actual,
     useAssetUrlState: ((...args: Parameters<typeof actual.useAssetUrlState>) =>
-      audioAsset.url
-        ? { _tag: "Success", url: audioAsset.url }
-        : actual.useAssetUrlState(...args)) as typeof actual.useAssetUrlState,
+      audioAsset.failed
+        ? { _tag: "Failure", reason: "missing-file-access" }
+        : audioAsset.url
+          ? { _tag: "Success", url: audioAsset.url }
+          : actual.useAssetUrlState(...args)) as typeof actual.useAssetUrlState,
   };
 });
 
@@ -1728,4 +1732,43 @@ it("keeps concurrent approvals actionable outside collapsed work and restores se
   await expect
     .element(screen.getByRole("button", { name: "Open the current tab", exact: true }))
     .toBeVisible();
+});
+
+it("keeps an unavailable viewed image inside the 10rem work-log strip", async () => {
+  audioAsset.failed = true;
+  onTestFinished(() => {
+    audioAsset.failed = false;
+  });
+  await using screen = await renderElement(
+    <TimelineRowCtx
+      value={
+        {
+          threadRef: { environmentId: ENVIRONMENT_ID, threadId: ThreadId.make("thread-1") },
+          workspaceRoot: "/repo",
+        } as never
+      }
+    >
+      <ViewedImagesTimelineRow
+        row={{
+          kind: "viewed-images",
+          id: "viewed",
+          createdAt: CREATED_AT,
+          paths: ["/repo/step-1.jpg", "/repo/step-3.jpg"],
+        }}
+      />
+    </TimelineRowCtx>,
+  );
+  const frame = await vi.waitFor(() => {
+    const element = screen.container.querySelector<HTMLElement>('[role="alert"]');
+    expect(element).toBeTruthy();
+    return element!;
+  });
+  const size = await vi.waitFor(() => {
+    const rect = frame.getBoundingClientRect();
+    expect(rect.width).toBeGreaterThan(0);
+    return rect;
+  });
+  expect(size.height).toBeLessThanOrEqual(161);
+  expect(size.width).toBeLessThanOrEqual(285);
+  expect(Math.abs(size.width / size.height - 16 / 9)).toBeLessThan(0.02);
 });
