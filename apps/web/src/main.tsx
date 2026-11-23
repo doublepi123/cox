@@ -8,11 +8,14 @@ import "./lib/historyBackDismiss";
 
 import { initializeI18n } from "./i18n";
 
+import { trackKeyboardLayout } from "./keyboardLayout";
 import { startAppServices } from "./appInit";
 import { AppRoot } from "./AppRoot";
 import { chunkLoadState } from "./lib/chunkReloadGuard";
 
 initializeI18n();
+const stopTrackingKeyboardLayout = trackKeyboardLayout();
+import.meta.hot?.dispose(stopTrackingKeyboardLayout);
 
 const router = startAppServices();
 
