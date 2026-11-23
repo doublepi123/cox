@@ -1,3 +1,4 @@
+import { openContextMenuFromKeyboard } from "../../contextMenuSource";
 import { formatFilePathForClipboard } from "@t3tools/client-runtime/media-actions";
 import {
   isAtomCommandInterrupted,
@@ -351,6 +352,7 @@ export const MarkdownFileLink = memo(function MarkdownFileLink({
         }
         handleOpenInFilePreview();
       }}
+      onKeyDown={openContextMenuFromKeyboard}
       onContextMenu={handleContextMenu}
     >
       <FileTagChipContent
@@ -370,6 +372,7 @@ export const MarkdownFileLink = memo(function MarkdownFileLink({
       className={cn(MARKDOWN_FILE_LINK_CLASS_NAME, "select-text")}
       data-markdown-copy={copyMarkdown}
       onClick={handleContextMenu}
+      onKeyDown={openContextMenuFromKeyboard}
       onContextMenu={handleContextMenu}
     >
       <FileTagChipContent

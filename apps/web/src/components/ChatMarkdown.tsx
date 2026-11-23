@@ -144,6 +144,7 @@ import { isMarkdownFileLinkLabel } from "@t3tools/shared/markdownLinks";
 
 import { readLocalApi } from "../localApi";
 import { cn } from "../lib/utils";
+import { openContextMenuFromKeyboard } from "../contextMenuSource";
 import { useRightPanelStore } from "../rightPanelStore";
 import { readThreadShell, useProjects } from "../state/entities";
 import { serverEnvironment } from "../state/server";
@@ -1210,6 +1211,9 @@ const CHAT_MARKDOWN_COMPONENTS = {
               if (squashAtomCommandFailure(result) instanceof BrowserSettingsReadError) return;
               void readLocalApi()?.shell.openExternal(href);
             });
+          }}
+          onKeyDown={(event) => {
+            if (href && faviconHost) openContextMenuFromKeyboard(event);
           }}
           onContextMenu={(event) => {
             if (!href || !faviconHost) return;

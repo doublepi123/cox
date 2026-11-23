@@ -274,3 +274,17 @@ it.each(["link-to-thread", "unlink-from-thread"])(
     );
   },
 );
+
+it.each([
+  ["[File](docs/readme.md)", "ContextMenu", false],
+  ["[Website](https://example.com)", "F10", true],
+] as const)("opens the link menu from %s by keyboard", async (text, key, shiftKey) => {
+  using _setup = setup();
+  await using screen = await renderMarkdown(text);
+  const event = new KeyboardEvent("keydown", { key, shiftKey, bubbles: true, cancelable: true });
+  await act(() => {
+    screen.anchor().dispatchEvent(event);
+  });
+  expect(event.defaultPrevented).toBe(true);
+  expect(state.choose).toHaveBeenCalledOnce();
+});
