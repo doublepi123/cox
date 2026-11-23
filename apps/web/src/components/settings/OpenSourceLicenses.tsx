@@ -203,6 +203,8 @@ function LicenseHeaderAction({
             onKeyDown={(event) => {
               if (event.key !== "Escape") return;
               event.preventDefault();
+              event.stopPropagation();
+              event.currentTarget.closest<HTMLElement>("[data-app-modal]")?.focus();
               onQueryChange("");
               onSearchOpenChange(false);
             }}
