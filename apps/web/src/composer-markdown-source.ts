@@ -27,6 +27,7 @@ import {
   type RichTextMark,
 } from "~/composer-rich-text";
 import { caretTakesMarksBefore, serializeEditorDoc } from "~/composer-rich-text-doc";
+import { isPasteTransaction } from "~/composer-undo-grouping";
 
 const STYLE_MARKS: RichTextMark[] = ["bold", "italic", "strike", "code"];
 const PREVIEW_TAGS: Record<Exclude<RichTextMark, "code">, string> = {
@@ -455,9 +456,10 @@ function markdownSourcePlugin(type: MarkType): Plugin<MarkdownSourceState> {
       if (!transactions.some((tr) => tr.docChanged || tr.selectionSet)) return null;
       const source = markdownSourceKey.getState(state);
       if (source?.detached) return normalizeDetached(state, source.revealed);
+      // A paste is not typing: the caret ends past the pasted text's closing markers.
       const tr = normalizeMarkdownSource(
         state,
-        transactions.some((item) => item.docChanged),
+        transactions.some((item) => item.docChanged && !isPasteTransaction(item)),
       );
       if (tr && undoDepth(state) === 0) tr.setMeta("addToHistory", false);
       return tr;
