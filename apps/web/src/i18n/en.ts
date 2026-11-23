@@ -4627,4 +4627,9 @@ export const en = {
     "Wait for active agent turns to finish before updating Cox.",
   "Too many failed attempts. Try again in {minutes} min.":
     "Too many failed attempts. Try again in {minutes} min.",
+  "Loading Cursor plugins": "Loading Cursor plugins",
+  "Starting Cursor MCP servers": "Starting Cursor MCP servers",
+  "Loading Cursor hooks": "Loading Cursor hooks",
+  "Loading Cursor rules and skills": "Loading Cursor rules and skills",
+  "Connecting to Cursor": "Connecting to Cursor",
 } as const;

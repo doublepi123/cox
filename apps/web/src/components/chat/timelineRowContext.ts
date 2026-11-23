@@ -1,4 +1,5 @@
 import type { ToolCallDiffTarget } from "../../diffPanelStore";
+import type { ThreadRunSummary } from "@t3tools/client-runtime/state/models";
 import type {
   ProviderApprovalDecision,
   RuntimeRequestId,
@@ -104,6 +105,7 @@ export interface TimelineRowActivityState {
   awaitingUser: boolean;
   isPreparingWorktree: boolean;
   providerStartingLabel: string | null;
+  providerStarting: NonNullable<ThreadRunSummary["providerStarting"]> | null;
   latestRunId: RunId | null;
   backgroundWorktreeSetup: WorktreeSetupSnapshot | null;
   liveAnswerPreview: string | null;

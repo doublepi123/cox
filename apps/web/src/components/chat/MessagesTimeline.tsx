@@ -1,3 +1,4 @@
+import type { ThreadRunSummary } from "@t3tools/client-runtime/state/models";
 import { threadEnvironment } from "../../state/threads";
 import { useAtomCommand } from "../../state/use-atom-command";
 import type { ToolCallDiffTarget } from "../../diffPanelStore";
@@ -232,6 +233,7 @@ interface MessagesTimelineProps {
   syncing?: boolean;
   runlessWorkActive?: boolean;
   activeTurnStartedAt?: string | null;
+  providerStarting?: NonNullable<ThreadRunSummary["providerStarting"]> | null;
   worktreeSetup?: WorktreeSetupSnapshot | null;
   onCancelWorktreeSetup?: () => void;
   retryableWorkspacePreparationRunIds?: ReadonlySet<RunId>;
@@ -349,6 +351,7 @@ const ConversationTimeline = memo(function ConversationTimeline({
   syncing = false,
   runlessWorkActive = false,
   activeTurnStartedAt = null,
+  providerStarting = null,
   worktreeSetup = null,
   footer = null,
   onCancelWorktreeSetup,
@@ -1099,6 +1102,7 @@ const ConversationTimeline = memo(function ConversationTimeline({
     backgroundWorktreeSetup,
     awaitingUser: awaitingUser !== null,
     isPreparingWorktree,
+    providerStarting,
     latestRunId: latestRun?.runId ?? null,
     providerStartingLabel,
     liveAnswerPreview:

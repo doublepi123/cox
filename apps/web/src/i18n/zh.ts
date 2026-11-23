@@ -4467,4 +4467,9 @@ export const zh = {
     "请等待运行中的 Agent 任务结束后再更新 Cox。",
   "Too many failed attempts. Try again in {minutes} min.":
     "尝试次数过多，请在 {minutes} 分钟后重试。",
+  "Loading Cursor plugins": "正在加载 Cursor 插件",
+  "Starting Cursor MCP servers": "正在启动 Cursor MCP 服务器",
+  "Loading Cursor hooks": "正在加载 Cursor 钩子",
+  "Loading Cursor rules and skills": "正在加载 Cursor 规则和技能",
+  "Connecting to Cursor": "正在连接 Cursor",
 } as const;

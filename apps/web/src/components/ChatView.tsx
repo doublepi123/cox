@@ -3378,6 +3378,7 @@ export default function ChatView(props: ChatViewProps) {
                 {...(onOpenWorktreeSetupTerminal ? { onOpenWorktreeSetupTerminal } : {})}
                 isPreparingWorktree={isPreparingWorktree}
                 providerStartingLabel={activeActivityRun?.providerStartingLabel ?? null}
+                providerStarting={activeActivityRun?.providerStarting ?? null}
                 footer={timelineFooter}
                 listRef={legendListRef}
                 runs={serverProjection?.runs ?? []}

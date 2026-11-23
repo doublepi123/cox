@@ -105,15 +105,40 @@ function latestMatchingRun(
   );
 }
 
-function providerStartingLabel(
+function providerStarting(
   projection: ThreadStructure,
   run: OrchestrationV2ThreadProjection["runs"][number],
-): string {
-  const driver = projection.providerSessions.findLast(
-    (session) => session.providerInstanceId === run.providerInstanceId,
-  )?.driver;
-  const name = driver === undefined ? undefined : PROVIDER_DISPLAY_NAMES[driver];
-  return name === undefined ? "Starting" : `Starting ${name}`;
+): Pick<ThreadRunSummary, "providerStartingLabel" | "providerStarting"> {
+  const session = projection.providerSessions.findLast(
+    (candidate) => candidate.providerInstanceId === run.providerInstanceId,
+  );
+  const provider = session && PROVIDER_DISPLAY_NAMES[session.driver];
+  let providerStartingLabel = provider === undefined ? "Starting" : `Starting ${provider}`;
+  if (provider !== undefined) {
+    switch (session?.startupPhase) {
+      case "plugins":
+        providerStartingLabel = `Loading ${provider} plugins`;
+        break;
+      case "mcp":
+        providerStartingLabel = `Starting ${provider} MCP servers`;
+        break;
+      case "hooks":
+        providerStartingLabel = `Loading ${provider} hooks`;
+        break;
+      case "skills":
+        providerStartingLabel = `Loading ${provider} rules and skills`;
+        break;
+      case "connecting":
+        providerStartingLabel = `Connecting to ${provider}`;
+        break;
+    }
+  }
+  return {
+    providerStartingLabel,
+    ...(session
+      ? { providerStarting: { instanceId: run.providerInstanceId, driver: session.driver } }
+      : {}),
+  };
 }
 
 function summarizeThreadRun(
@@ -137,7 +162,7 @@ function summarizeThreadRun(
     // the provider can still be launching for minutes.
     ...(turnStatus === undefined
       ? PROVIDER_STARTING_RUN_STATUSES.has(run.status)
-        ? { providerStartingLabel: providerStartingLabel(projection, run) }
+        ? providerStarting(projection, run)
         : {}
       : turnStatus === "pending" || turnStatus === "running"
         ? {}
