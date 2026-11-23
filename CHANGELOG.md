@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+## 0.2.34 — 2026-11-23
+
+- A model response that loses its connection partway through no longer ends
+  the turn. OMO, Pi and Oh My Pi retry it themselves again, and OMO stays on
+  the selected model instead of falling back to another one. Codex reconnects
+  once. HTTP failures are still retried only by the model gateway, so a
+  request that already used up the gateway's retries is not repeated several
+  times.
+
 ## 0.2.33 — 2026-11-23
 
 - Model services no longer have an Ignore state. Upgrading removes previously
