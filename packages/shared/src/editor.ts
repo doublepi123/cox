@@ -27,8 +27,8 @@ const isVersionedBundle = (entry: string, name: string) => {
   return /^\d[\d.]*$/.test(entry.slice(name.length + 1, -".app".length));
 };
 
-const isZedEditor = Effect.fn("editor.isZedEditor")(
-  function* (command: string) {
+const isEditorCommand = Effect.fn("editor.isEditorCommand")(
+  function* (command: string, isZed: boolean) {
     const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
     const handle = yield* spawner.spawn(
       ChildProcess.make(command, ["--version"], {
@@ -41,10 +41,11 @@ const isZedEditor = Effect.fn("editor.isZedEditor")(
       [handle.stdout.pipe(Stream.decodeText(), Stream.runHead), handle.exitCode],
       { concurrency: "unbounded" },
     );
-    return exitCode === 0 && Option.getOrElse(stdout, () => "").startsWith("Zed");
+    return exitCode === 0 && (!isZed || Option.getOrElse(stdout, () => "").startsWith("Zed"));
   },
   Effect.scoped,
-  Effect.timeout("2 seconds"),
+  (probe, _command, isZed) =>
+    Effect.timeoutOrElse(probe, { duration: "2 seconds", orElse: () => Effect.succeed(!isZed) }),
   Effect.catchCause(() => Effect.succeed(false)),
 );
 
@@ -58,7 +59,8 @@ export const resolveEditorCommand = Effect.fn("editor.resolveEditorCommand")(fun
   // Prefer Zed's macOS bundle because OpenZFS also installs a zed executable.
   const preferBundle = platform === "darwin" && editor.id === "zed";
   const preferZeditor = platform === "linux" && editor.id === "zed";
-  if (!preferBundle && !preferZeditor) {
+  const probeCursor = editor.id === "cursor" && platform !== "win32";
+  if (!preferBundle && !preferZeditor && !probeCursor) {
     for (const command of editor.commands) {
       if (yield* isCommandAvailable(command, { env })) return Option.some({ command, baseArgs });
     }
@@ -70,7 +72,7 @@ export const resolveEditorCommand = Effect.fn("editor.resolveEditorCommand")(fun
   const names = installNames[editor.id] ?? [editor.label];
   const command = editor.commands[0];
   const jetbrains = editor.launchStyle === "line-column";
-  const candidates: string[] = [];
+  const candidates: string[] = probeCursor ? [...editor.commands] : [];
 
   if (platform === "darwin") {
     const roots = [...(home ? [path.join(home, "Applications")] : []), "/Applications"];
@@ -170,15 +172,16 @@ export const resolveEditorCommand = Effect.fn("editor.resolveEditorCommand")(fun
   const rejected = new Set<string>();
   for (const candidate of candidates) {
     const paths =
-      probeZed && candidate === "zed"
+      (probeZed || probeCursor) && candidate === command
         ? (env.PATH ?? "")
             .split(":")
             .filter(Boolean)
-            .map((dir) => path.resolve(dir, "zed"))
+            .map((dir) => path.resolve(dir, candidate))
         : [candidate];
     for (const command of paths) {
       if (rejected.has(command) || !(yield* isCommandAvailable(command, { env }))) continue;
-      if (probeZed && path.basename(command) === "zed" && !(yield* isZedEditor(command))) {
+      const probed = probeCursor || (probeZed && path.basename(command) === "zed");
+      if (probed && !(yield* isEditorCommand(command, probeZed))) {
         rejected.add(command);
         continue;
       }
