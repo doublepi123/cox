@@ -21,13 +21,18 @@ function composerFileLinkBasename(path: string): string {
 }
 
 function escapeMarkdownLinkLabel(label: string): string {
-  return label.replaceAll("\\", "\\\\").replaceAll("[", "\\[").replaceAll("]", "\\]");
+  return label
+    .replaceAll("\\", "\\\\")
+    .replaceAll("[", "\\[")
+    .replaceAll("]", "\\]")
+    .replaceAll("&", "\\&");
 }
 
 function encodeMarkdownLinkDestination(path: string): string {
   return encodeURI(path)
     .replaceAll("(", "%28")
     .replaceAll(")", "%29")
+    .replaceAll("&", "%26")
     .replaceAll("#", "%23")
     .replaceAll("?", "%3F")
     .replaceAll("\\", "%5C");
