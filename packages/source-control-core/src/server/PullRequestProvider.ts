@@ -492,6 +492,7 @@ export interface PullRequestProviderApi {
       readonly action: PullRequestAction;
       readonly stackNumber?: number;
       readonly expectedStackHeads?: ReadonlyArray<PullRequestStackHead>;
+      readonly expectedHeadSha?: string;
       readonly removeAgentCreditsOnMerge?: boolean;
       readonly mergeMethod?: PullRequestMergeMethod;
       readonly updateMethod?: PullRequestUpdateMethod;

@@ -781,7 +781,7 @@ export const make = Effect.gen(function* () {
         body: {
           requestId: yield* randomUuidV4,
           expectedVersion: pull.version,
-          headOid: pull.headOid,
+          headOid: input.expectedHeadSha ?? pull.headOid,
           baseOid,
           strategy: input.mergeMethod ?? "merge",
         },

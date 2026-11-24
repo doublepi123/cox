@@ -670,6 +670,7 @@ export function PullRequestDetailPanel({
         ...reference,
         action,
         ...(method ? { mergeMethod: method } : {}),
+        ...(action === "merge" && detail?.headSha ? { expectedHeadSha: detail.headSha } : {}),
         ...(updateMethod ? { updateMethod } : {}),
       },
     });

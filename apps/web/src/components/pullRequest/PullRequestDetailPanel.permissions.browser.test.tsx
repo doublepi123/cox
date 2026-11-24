@@ -12,7 +12,8 @@ import { createWorkspaceFocusController, workspaceAreaProps } from "~/lib/worksp
 import { DraftId, useComposerDraftStore } from "~/composerDraftStore";
 import { act, fakeTimers, render } from "../../../test/render";
 
-const { permissions, shown } = vi.hoisted(() => ({
+const { permissions, shown, runCommand } = vi.hoisted(() => ({
+  runCommand: vi.fn(async (_input: unknown) => ({ _tag: "Success" as const, value: undefined })),
   shown: { detail: null as PullRequestDetailView | null },
   permissions: { checkout: true, operate: true },
 }));
@@ -56,7 +57,7 @@ vi.mock(import("~/state/usePullRequestStack"), async (original) => ({
 }));
 vi.mock(import("~/state/use-atom-command"), async (original) => ({
   ...(await original()),
-  useAtomCommand: (() => vi.fn()) as never,
+  useAtomCommand: (() => runCommand) as never,
 }));
 
 import { PullRequestDetailPanel } from "./PullRequestDetailPanel";
@@ -136,6 +137,8 @@ const panel = (attach = false) => (
 function setup() {
   permissions.checkout = true;
   permissions.operate = true;
+  shown.detail = null;
+  runCommand.mockClear();
   useComposerDraftStore.setState({ draftsByThreadKey: {} });
 }
 
@@ -164,6 +167,28 @@ it("can still add conflict resolution to an existing composer without checkout s
   const draft = useComposerDraftStore.getState().getComposerDraft(draftId);
   expect(draft?.prompt).toContain("conflicts");
   expect(draft?.prompt).toContain(detail.url);
+});
+
+it("sends the commit displayed in the merge request", async () => {
+  setup();
+  shown.detail = {
+    ...detail,
+    headSha: "shown-head",
+    mergeability: "mergeable",
+    mergeCapabilities: { merge: false, squash: true, rebase: false },
+    capabilities: { ...detail.capabilities, actions: ["merge"], mergeMethods: ["squash"] },
+    viewerPermissions: { ...detail.viewerPermissions!, actions: ["merge"] },
+  };
+  await using screen = await render(panel());
+  await screen.getByRole("button", { name: "Squash and merge" }).click();
+  await screen.getByRole("button", { name: "Confirm merge?" }).click();
+  await vi.waitFor(() =>
+    expect(runCommand).toHaveBeenCalledWith(
+      expect.objectContaining({
+        input: expect.objectContaining({ action: "merge", expectedHeadSha: "shown-head" }),
+      }),
+    ),
+  );
 });
 
 it("keeps a screen reader's place when scrolling the description condenses the header", async () => {
