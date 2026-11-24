@@ -407,6 +407,9 @@ const lsofProcessIds = (raw: string): ReadonlyArray<number> => {
 
 const AGENT_THREAD_ASSIGNMENT = new RegExp(`(?:^|\\s)${AGENT_THREAD_ENV}=(\\S+)`);
 
+/** A browser an agent's tool drives listens only for DevTools, which is not a page to preview. */
+const DEVTOOLS_PORT_ARGUMENT = /(?:^|[\s\0])--remote-debugging-port=/;
+
 /** Reads `/proc/<pid>/environ`, whose entries are NUL-separated. */
 const parseProcEnvironThread = (raw: string): ThreadId | null => {
   const prefix = `${AGENT_THREAD_ENV}=`;
@@ -428,7 +431,10 @@ const parsePsEnvironmentThreads = (raw: string): ReadonlyMap<number, ThreadId | 
     const match = /^\s*(\d+)\s(.*)$/.exec(line);
     if (!match) continue;
     const value = AGENT_THREAD_ASSIGNMENT.exec(match[2]!)?.[1];
-    threads.set(Number(match[1]), value ? ThreadId.make(value) : null);
+    threads.set(
+      Number(match[1]),
+      value && !DEVTOOLS_PORT_ARGUMENT.test(match[2]!) ? ThreadId.make(value) : null,
+    );
   }
   return threads;
 };
@@ -548,7 +554,17 @@ export const make = Effect.gen(function* PortDiscoveryMake() {
                   fileSystem.readFileString(`/proc/${pid}/environ`).pipe(
                     Effect.map(parseProcEnvironThread),
                     Effect.orElseSucceed(() => null),
-                    Effect.map((threadId) => [pid, threadId] as const),
+                    Effect.flatMap((threadId) =>
+                      threadId === null
+                        ? Effect.succeed([pid, null] as const)
+                        : fileSystem.readFileString(`/proc/${pid}/cmdline`).pipe(
+                            Effect.map((cmdline) => DEVTOOLS_PORT_ARGUMENT.test(cmdline)),
+                            Effect.orElseSucceed(() => false),
+                            Effect.map(
+                              (isDevTools) => [pid, isDevTools ? null : threadId] as const,
+                            ),
+                          ),
+                    ),
                   ),
                 { concurrency: 16 },
               ),
