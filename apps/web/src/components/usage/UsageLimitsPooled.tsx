@@ -9,6 +9,7 @@ import {
   cursorUsageWindowDetails,
   displayLimitWindows,
   formatResetsIn,
+  formatDuration,
   type LimitAccount,
   type LimitPool,
   type LimitPoolMember,
@@ -561,8 +562,9 @@ function PoolWindowCard({
           </span>
         </span>
         {nextRefill && pool.columns.length > 1 ? (
-          <span className="text-xs font-medium text-foreground tabular-nums">
-            ↻ +{nextRefill.restoresPercent}%
+          <span className="text-xs text-muted-foreground tabular-nums">
+            <span className="font-medium text-foreground">↻ +{nextRefill.restoresPercent}%</span> in{" "}
+            {formatDuration(nextRefill.at - now)}
           </span>
         ) : null}
       </div>
