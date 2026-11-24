@@ -1650,6 +1650,7 @@ it.layer(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))("server settings"
       });
 
       assert.isFalse(settings.continueThreadsAfterServerUpdate);
+      assert.equal(settings.defaultRuntimeMode, "approval-required");
       assert.equal(yield* fileSystem.readFileString(serverConfig.settingsPath), raw);
     }).pipe(Effect.provide(layerServerSettings())),
   );

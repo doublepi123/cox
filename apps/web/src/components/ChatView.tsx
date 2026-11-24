@@ -193,7 +193,7 @@ import { threadPullRequestPanelTarget } from "./pullRequest/pullRequestDetail.lo
 import { LinkPullRequestDialogHost } from "./pullRequest/LinkPullRequestDialog";
 import { BranchToolbar, type BranchToolbarHandle } from "./BranchToolbar";
 import { ComposerContextPermissions } from "./ComposerContextPermissions";
-import { resolveCompatibleRuntimeMode } from "./chat/runtimeModeConfig";
+import { draftSupportedRuntimeModes, resolveCompatibleRuntimeMode } from "./chat/runtimeModeConfig";
 import { makeWorkspaceFileDropHandlers } from "./chat/workspaceFileDrop";
 import { isEditableFocused } from "../lib/editableFocus";
 import { DEFAULT_RESOLVED_KEYBINDINGS } from "@t3tools/shared/keybindings";
@@ -3743,7 +3743,11 @@ export default function ChatView(props: ChatViewProps) {
                                             runtimeMode={
                                               resolveCompatibleRuntimeMode(
                                                 runtimeMode,
-                                                activeProviderStatus?.supportedRuntimeModes,
+                                                draftSupportedRuntimeModes(
+                                                  activeProviderStatus?.supportedRuntimeModes,
+                                                  multipleModelSelections,
+                                                  providerStatuses,
+                                                ),
                                               ).mode
                                             }
                                             onOpen={openComposerPermissionsStable}

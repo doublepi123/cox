@@ -4,6 +4,7 @@ import { insertAttachmentReferencesForDraft } from "./composerAttachmentReferenc
 import type { ComposerAttachmentInsertion } from "../composerAttachmentInsertion";
 import { BackgroundThreadContext } from "./backgroundThread";
 import {
+  draftSupportedRuntimeModes,
   resolveCompatibleRuntimeMode,
   runtimeModeConfig,
   runtimeModeOptions as runtimeModes,
@@ -954,7 +955,11 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   const { modes: compatibleRuntimeModes, mode: compatibleRuntimeMode } =
     resolveCompatibleRuntimeMode(
       runtimeMode,
-      selectedProviderEntry?.snapshot.supportedRuntimeModes,
+      draftSupportedRuntimeModes(
+        selectedProviderEntry?.snapshot.supportedRuntimeModes,
+        multipleModelSelections,
+        providerStatuses,
+      ),
     );
   const compatibleRuntimeModeOptions = runtimeModeOptions.filter((option) =>
     compatibleRuntimeModes.includes(option.mode),
