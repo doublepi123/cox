@@ -109,6 +109,7 @@ export interface McpInvocationScope {
   readonly client: McpClientCaller | undefined;
   readonly origin?: string | undefined;
   readonly workflows?: boolean;
+  readonly localFeedbackEnabled?: boolean;
 }
 
 /**
@@ -151,6 +152,12 @@ export const hiddenUnlessWorkflowEvents = (): boolean => {
   const fiber = Fiber.getCurrent();
   const scope = fiber && Context.getOrUndefined(fiber.context, McpInvocationContext);
   return scope?.workflows === true && scope.thread === undefined;
+};
+
+export const feedbackEnabled = (): boolean => {
+  const fiber = Fiber.getCurrent();
+  const scope = fiber && Context.getOrUndefined(fiber.context, McpInvocationContext);
+  return scope?.localFeedbackEnabled === true;
 };
 
 export const hiddenFromOutsideClients = (): boolean => {

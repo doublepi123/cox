@@ -1,6 +1,7 @@
 import { requestUrl } from "../requestUrl.ts";
 import * as Cause from "effect/Cause";
 import * as Clock from "effect/Clock";
+import * as Config from "effect/Config";
 import * as Context from "effect/Context";
 import * as SecureRandom from "effect/crypto/SecureRandom";
 import * as Effect from "effect/Effect";
@@ -53,6 +54,7 @@ import { PreviewControlsToolkit } from "./toolkits/previewControls/tools.ts";
 import * as PreviewControlsHandlers from "./toolkits/previewControls/handlers.ts";
 import { EnvironmentToolkit } from "./toolkits/environment/tools.ts";
 import * as EnvironmentHandlers from "./toolkits/environment/handlers.ts";
+import * as LocalFeedback from "./toolkits/feedback/local.ts";
 import { ProjectToolkit } from "./toolkits/project/tools.ts";
 import * as ProjectHandlers from "./toolkits/project/handlers.ts";
 import { AttachmentToolkit } from "./toolkits/attachment/tools.ts";
@@ -197,6 +199,9 @@ const makeMcpAuthMiddleware = Effect.gen(function* () {
   const clients = yield* Effect.serviceOption(McpClientAuthenticator);
   const settings = yield* Effect.serviceOption(ServerSettings.ServerSettingsService);
   const sessions = yield* Effect.serviceOption(SessionStore.SessionStore);
+  const localFeedbackEnabled = yield* Config.Boolean("COX_AGENT_FEEDBACK_ENABLED").pipe(
+    Config.withDefault(false),
+  );
 
   const authenticateRequest = Effect.fn("McpHttpServer.authenticateRequest")(function* (
     request: HttpServerRequest.HttpServerRequest,
@@ -229,7 +234,7 @@ const makeMcpAuthMiddleware = Effect.gen(function* () {
           Effect.orElseSucceed(() => false),
         )
       : false;
-    return { ...limited, origin, workflows };
+    return { ...limited, origin, workflows, localFeedbackEnabled };
   });
   return Effect.fnUntraced(function* (httpEffect) {
     const request = yield* HttpServerRequest.HttpServerRequest;
@@ -1285,5 +1290,10 @@ export const layerMilestoneEvents = Layer.effectDiscard(
 );
 
 export const layer = layerMcpTransport(
-  Layer.mergeAll(layerTools, layerWorkflowEvents, layerMilestoneEvents),
+  Layer.mergeAll(
+    layerTools,
+    layerWorkflowEvents,
+    layerMilestoneEvents,
+    toolkitRegistration(LocalFeedback.LocalFeedbackToolkit, LocalFeedback.layer),
+  ),
 );
