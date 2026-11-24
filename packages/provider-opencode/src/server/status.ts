@@ -633,7 +633,8 @@ export const makeOpenCode2CatalogWatch = Effect.fn(
           : following!;
         following = watching;
         if (directory === undefined) {
-          watching.machine = { read, previous: watching.machine?.previous };
+          if (watching.machine !== undefined) return Effect.void;
+          watching.machine = { read, previous: undefined };
         } else {
           const { cwd, settled } = directory;
           const previous = settled?.length
@@ -646,7 +647,10 @@ export const makeOpenCode2CatalogWatch = Effect.fn(
             watching.directories.delete(oldest);
           }
         }
-        const requested = Queue.offer(reads, undefined).pipe(Effect.asVoid);
+        const requested =
+          started && directory === undefined
+            ? Effect.void
+            : Queue.offer(reads, undefined).pipe(Effect.asVoid);
         if (!started) return requested;
         const rereadAll = Effect.suspend(() =>
           Effect.forEach(
