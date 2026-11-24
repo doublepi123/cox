@@ -1599,11 +1599,9 @@ export function useComposerSend(input: ComposerSendInput) {
       if (workspaceDefault === null) return onSend(...args);
       args[0]?.preventDefault();
       sendInFlightRef.current = true;
-      try {
-        await workspaceDefault;
-      } finally {
+      await workspaceDefault.finally(() => {
         sendInFlightRef.current = false;
-      }
+      });
       return sendLatest(...args);
     },
   };
