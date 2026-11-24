@@ -96,7 +96,8 @@ function FileSearchField(props: {
     <div className="min-w-0 h-7 flex-1">
       <InputGroup variant="ghost">
         <InputGroupInput
-          type="search"
+          type="text"
+          role="searchbox"
           name={props.name}
           size="sm"
           value={props.value}
@@ -106,7 +107,9 @@ function FileSearchField(props: {
           spellCheck={false}
           onChange={(event) => props.onValueChange(event.target.value)}
           onKeyDown={(event) => {
-            if (event.key !== "Escape") return;
+            if (event.key !== "Escape" || event.nativeEvent.isComposing || event.keyCode === 229)
+              return;
+            if (props.value) event.stopPropagation();
             props.onClose();
             event.currentTarget.blur();
           }}
