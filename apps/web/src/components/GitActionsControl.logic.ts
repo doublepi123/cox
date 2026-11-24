@@ -27,6 +27,19 @@ export function gitActionCheckoutKey(
   return JSON.stringify([thread?.environmentId, thread?.threadId, checkout?.key, checkout?.cwd]);
 }
 
+export function liveDefaultBranchAction(
+  action: DefaultBranchConfirmableAction,
+  status: VcsStatusResult | null | undefined,
+) {
+  if (!status?.refName) return null;
+  return {
+    action,
+    branchName: status.refName,
+    includesCommit:
+      (action === "commit_push" || action === "commit_push_pr") && status.hasWorkingTreeChanges,
+  };
+}
+
 export interface GitActionMenuItem {
   id: "commit" | "push" | "pr";
   label: string;

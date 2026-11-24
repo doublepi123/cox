@@ -49,6 +49,7 @@ import {
   buildMenuItems,
   formatGitActionElapsed,
   gitActionCheckoutKey,
+  liveDefaultBranchAction,
   GIT_ACTION_SUCCESS_VISIBLE_MS,
   type GitActionProgressPresentation,
   type GitActionIconName,
@@ -164,8 +165,7 @@ interface ThreadGitActionsControlProps extends GitActionsViewProps {
 
 interface PendingDefaultBranchAction {
   action: DefaultBranchConfirmableAction;
-  branchName: string;
-  includesCommit: boolean;
+
   commitMessage?: string;
   onConfirmed?: () => void;
   filePaths?: string[];
@@ -1083,19 +1083,19 @@ function CheckoutGitActionsControl({
     quickAction.disabled &&
     !changesTotals.insertions &&
     !changesTotals.deletions;
-  const pendingDefaultBranchActionCopy = pendingDefaultBranchAction
+  const livePendingAction = pendingDefaultBranchAction
+    ? liveDefaultBranchAction(pendingDefaultBranchAction.action, gitStatus)
+    : null;
+  const pendingDefaultBranchActionCopy = livePendingAction
     ? resolveDefaultBranchActionDialogCopy({
-        action: pendingDefaultBranchAction.action,
-        branchName: pendingDefaultBranchAction.branchName,
-        includesCommit: pendingDefaultBranchAction.includesCommit,
+        ...livePendingAction,
         terminology: changeRequestTerminology,
       })
     : null;
-  // Keep enabled until live status loads; the server rejects stale requests.
-  const featureBranchUnavailableReason = pendingDefaultBranchAction
+  const featureBranchUnavailableReason = livePendingAction
     ? resolveFeatureBranchUnavailableReason({
-        branchName: pendingDefaultBranchAction.branchName,
-        hasWorkingTreeChanges: gitStatus?.hasWorkingTreeChanges ?? true,
+        branchName: livePendingAction.branchName,
+        hasWorkingTreeChanges: gitStatus?.hasWorkingTreeChanges ?? false,
       })
     : null;
 
@@ -1124,12 +1124,7 @@ function CheckoutGitActionsControl({
       return false;
     const actionStatus = statusOverride ?? gitStatusForActions;
     const actionBranch = actionStatus?.refName ?? null;
-    const actionIsDefaultBranch = featureBranch ? false : isDefaultRef;
-    const actionCanCommit =
-      action === "commit" || action === "commit_push" || action === "commit_push_pr";
-    const includesCommit =
-      actionCanCommit &&
-      (action === "commit" || !!actionStatus?.hasWorkingTreeChanges || featureBranch);
+    const actionIsDefaultBranch = !featureBranch && (actionStatus?.isDefaultRef ?? false);
     if (
       !skipDefaultBranchPrompt &&
       requiresDefaultBranchConfirmation(action, actionIsDefaultBranch) &&
@@ -1145,8 +1140,6 @@ function CheckoutGitActionsControl({
       }
       setPendingDefaultBranchAction({
         action,
-        branchName: actionBranch,
-        includesCommit,
         ...(commitMessage ? { commitMessage } : {}),
         ...(onConfirmed ? { onConfirmed } : {}),
         ...(filePaths ? { filePaths } : {}),
@@ -1204,7 +1197,7 @@ function CheckoutGitActionsControl({
   }
 
   const continuePendingDefaultBranchAction = (featureBranch: boolean) => {
-    if (!pendingDefaultBranchAction || !canWriteSourceControl) return;
+    if (!pendingDefaultBranchAction || !livePendingAction || !canWriteSourceControl) return;
     if (featureBranch && (!canCreateFeatureBranch || featureBranchUnavailableReason !== null))
       return;
     const { action, commitMessage, onConfirmed, filePaths } = pendingDefaultBranchAction;
@@ -1869,7 +1862,7 @@ function CheckoutGitActionsControl({
                 variant="outline"
                 size="sm-multiline"
                 onClick={() => continuePendingDefaultBranchAction(false)}
-                disabled={!canWriteSourceControl}
+                disabled={!canWriteSourceControl || livePendingAction === null}
               >
                 {pendingDefaultBranchActionCopy?.continueLabel ?? t("Continue")}
               </Button>
@@ -1879,7 +1872,11 @@ function CheckoutGitActionsControl({
                 fill
                 size="sm-multiline"
                 onClick={() => continuePendingDefaultBranchAction(true)}
-                disabled={!canCreateFeatureBranch || featureBranchUnavailableReason !== null}
+                disabled={
+                  !canCreateFeatureBranch ||
+                  livePendingAction === null ||
+                  featureBranchUnavailableReason !== null
+                }
               >
                 {t("Check out feature branch & continue")}
               </Button>

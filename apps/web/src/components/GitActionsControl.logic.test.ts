@@ -10,6 +10,7 @@ import { assert, describe, it } from "vite-plus/test";
 import {
   buildMenuItems,
   gitActionCheckoutKey,
+  liveDefaultBranchAction,
   requiresDefaultBranchConfirmation,
   resolveChangesTotals,
   resolveDefaultBranchActionDialogCopy,
@@ -220,6 +221,26 @@ describe("when: the ref is on GitLab", () => {
     assert.equal(copy.title, "Push & create MR from default ref?");
     assert.include(copy.description, "create a merge request on");
   });
+});
+
+it("describes the checked-out branch and its working tree when confirming a Git action", () => {
+  assert.deepEqual(
+    liveDefaultBranchAction(
+      "commit_push",
+      status({ refName: "trunk", hasWorkingTreeChanges: true }),
+    ),
+    {
+      action: "commit_push",
+      branchName: "trunk",
+      includesCommit: true,
+    },
+  );
+  assert.deepEqual(liveDefaultBranchAction("commit_push", status({ refName: "feature/new" })), {
+    action: "commit_push",
+    branchName: "feature/new",
+    includesCommit: false,
+  });
+  assert.isNull(liveDefaultBranchAction("push", status({ refName: null })));
 });
 
 describe("requiresDefaultBranchConfirmation", () => {
