@@ -146,9 +146,11 @@ describe("sidebar header new thread", () => {
 // regression: #38623 unsent drafts are listed above threads but mod+1..9 skipped them
 describe("sidebar numbered jumps", () => {
   it("numbers the unsent draft at the top before the threads below it", async () => {
-    const initial = useComposerDraftStore.getState();
+    const previousDrafts = useComposerDraftStore.getState();
+    const initial = useComposerDraftStore.getInitialState();
     using stack = new DisposableStack();
-    stack.defer(() => useComposerDraftStore.setState(initial, true));
+    stack.defer(() => useComposerDraftStore.setState(previousDrafts, true));
+    useComposerDraftStore.setState(initial, true);
     const previousSettings = getClientSettings();
     stack.defer(() => __setClientSettingsForTests(previousSettings));
     __setClientSettingsForTests(DEFAULT_CLIENT_SETTINGS);

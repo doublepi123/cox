@@ -8,7 +8,7 @@ import type { WsRpcProtocolClient } from "@t3tools/client-runtime/rpc";
 import { ThreadId } from "@t3tools/contracts";
 import { DEFAULT_CLIENT_SETTINGS } from "@t3tools/contracts/settings";
 import type * as Context from "effect/Context";
-import { expect, it, vi } from "vite-plus/test";
+import { afterEach, expect, it, vi } from "vite-plus/test";
 import { page, userEvent } from "vite-plus/test/browser";
 
 import "./ThreadRouteView";
@@ -171,6 +171,11 @@ installFakeEnvironment([
   threadWithHistory("thread-rejected-send", 1),
   threadWithHistory("thread-held-image-send", 1),
 ]);
+
+afterEach(() => {
+  useComposerDraftStore.setState(useComposerDraftStore.getInitialState(), true);
+  useComposerDraftStore.persist.clearStorage();
+});
 
 const returningUserSettings = () =>
   __setClientSettingsForTests({
