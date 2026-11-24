@@ -1,18 +1,20 @@
 import { WorkerPoolManager } from "@pierre/diffs/worker";
 import { createWorkspaceFocusController, workspaceAreaProps } from "~/lib/workspaceFocus";
 import {
+  DEFAULT_CLIENT_SETTINGS,
   EnvironmentId,
   ProjectId,
   SourceControlProviderKind,
   type PullRequestDetailView,
   type PullRequestDiffResult,
 } from "@t3tools/contracts";
-import { page } from "vite-plus/test/browser";
+import { page, userEvent } from "vite-plus/test/browser";
+import { __setClientSettingsForTests } from "~/hooks/useSettings";
 import { expect, it, vi } from "vite-plus/test";
 
 import "~/index.css";
 
-const { diffAtom, pagedDiffAtom, orderDiffAtom } = await vi.hoisted(async () => {
+const { diffAtom, pagedDiffAtom, orderDiffAtom, reviewDiffAtom } = await vi.hoisted(async () => {
   const { AsyncResult, Atom } = await import("effect/reactivity");
   const filePatch = (path: string) =>
     [
@@ -47,6 +49,11 @@ const { diffAtom, pagedDiffAtom, orderDiffAtom } = await vi.hoisted(async () => 
     // An environment query whose refetch returns equal content hands back the previous value
     // itself, so a refresh publishes a new result around the very same page.
     diffAtom: Atom.make(() => AsyncResult.success(firstPage)),
+    reviewDiffAtom: Atom.make(() =>
+      AsyncResult.success(
+        mocks.refreshed ? { ...firstPage, patch: firstPage.patch + filePatch("b.ts") } : firstPage,
+      ),
+    ),
     orderDiffAtom: Atom.make(() =>
       AsyncResult.success({
         patch: [
@@ -72,6 +79,8 @@ const { diffAtom, pagedDiffAtom, orderDiffAtom } = await vi.hoisted(async () => 
 const mocks = vi.hoisted(() => ({
   paged: false,
   orderFixture: false,
+  reviewFixture: false,
+  refreshed: false,
   diffCommits: [] as Array<string | undefined>,
 }));
 
@@ -87,6 +96,7 @@ vi.mock(import("~/state/pullRequests"), async (original) => {
       ...actual.pullRequestEnvironment,
       diff: (({ input }: { input: { cursor?: string; commit?: string } }) => {
         mocks.diffCommits.push(input.commit);
+        if (mocks.reviewFixture) return reviewDiffAtom;
         return mocks.orderFixture
           ? orderDiffAtom
           : mocks.paged
@@ -221,6 +231,60 @@ it("gives the Viewed checkbox a full touch target when the label is hidden", asy
   } finally {
     await page.viewport(innerWidth, innerHeight);
   }
+});
+
+// regression: #42199 an agent's push re-keyed every file and dropped the comment being typed
+it("keeps an unfinished inline comment when a background refresh changes another file", async () => {
+  setup({ paged: false });
+  mocks.reviewFixture = true;
+  mocks.refreshed = false;
+  using _fixture = {
+    [Symbol.dispose]() {
+      mocks.reviewFixture = false;
+      mocks.refreshed = false;
+    },
+  };
+  __setClientSettingsForTests({ ...DEFAULT_CLIENT_SETTINGS, diffFilesCollapsed: false });
+  using _preferences = {
+    [Symbol.dispose]() {
+      __setClientSettingsForTests(DEFAULT_CLIENT_SETTINGS);
+    },
+  };
+  const reviewable = {
+    ...detail,
+    capabilities: {
+      ...detail.capabilities,
+      review: { ...detail.capabilities.review, inlineComment: true },
+    },
+    viewerPermissions: { ...detail.viewerPermissions, comment: true },
+  };
+  const reviewTab = (backgroundRefreshToken: number) => (
+    <PullRequestCodeTab
+      scrollerRef={() => {}}
+      environmentId={EnvironmentId.make("environment")}
+      reference={reviewable}
+      detail={reviewable}
+      selectedCommitOid={null}
+      onSelectedCommitChange={() => {}}
+      onRefresh={() => {}}
+      backgroundRefreshToken={backgroundRefreshToken}
+    />
+  );
+  const container = document.createElement("div");
+  container.className = "flex h-[700px] w-[900px]";
+  await using screen = await render(reviewTab(0), { container });
+  const header = screen.getByText("a.ts", { exact: true }).first();
+  await expect.element(header).toBeVisible();
+  const root = header.element().getRootNode() as ShadowRoot;
+  await userEvent.click(root.querySelector<HTMLElement>('[data-column-number="1"]')!);
+  const input = () => screen.getByRole("textbox", { name: "Comment on lines a.ts:1" });
+  await input().fill("Unsent review note");
+
+  mocks.refreshed = true;
+  await screen.rerender(reviewTab(1));
+
+  await expect.element(screen.getByText("2 files", { exact: true })).toBeVisible();
+  await expect.element(input()).toHaveValue("Unsent review note");
 });
 
 it("keeps the diff after a refresh that brings back the same page", async () => {
