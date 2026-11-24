@@ -1463,6 +1463,14 @@ function runningSubagentsAtRunTail(entries: ReadonlyArray<TimelineEntry>, runId:
   let running = 0;
   for (let index = entries.length - 1; index >= 0; index -= 1) {
     const entry = entries[index]!;
+    if (
+      entry.kind === "message" &&
+      entry.message.role === "assistant" &&
+      !entry.message.streaming &&
+      entry.message.runId === runId
+    ) {
+      continue;
+    }
     if (entry.kind !== "event") break;
     const { item } = entry.projectedItem;
     if (item.type !== "subagent" || item.runId !== runId) break;
