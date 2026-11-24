@@ -249,7 +249,7 @@ export const resolveServerConfig = Effect.fn("config.resolveServerConfig")(funct
     {
       onSome: (value) => Effect.succeed(value),
       onNone: () => {
-        return findAvailablePort(ServerConfig.DEFAULT_PORT);
+        return findAvailablePort(ServerConfig.DEFAULT_PORT, host);
       },
     },
   );
