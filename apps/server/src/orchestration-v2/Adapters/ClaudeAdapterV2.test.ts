@@ -3334,6 +3334,7 @@ describe("ClaudeAdapterV2 background wake turns", () => {
       Partial<Pick<ClaudeAdapterV2.ClaudeAgentSdkQuerySession, "listPermissionRules">>;
     readonly environment?: NodeJS.ProcessEnv;
     readonly subagentLaunchToolUseId?: string;
+    readonly subagentModel?: string;
     readonly nativeSessionId?: string;
     readonly settings?: ClaudeSettings;
     readonly modelCatalog?: ClaudeAdapterV2.ClaudeAdapterV2Options["modelCatalog"];
@@ -3508,6 +3509,7 @@ describe("ClaudeAdapterV2 background wake turns", () => {
             }),
           forkSession: options?.forkSession ?? (() => Effect.die("unused forkSession")),
           subagentLaunchToolUseId: () => Effect.succeed(options?.subagentLaunchToolUseId ?? null),
+          subagentModel: () => Effect.succeed(options?.subagentModel ?? null),
           assertComplete: Effect.void,
         },
       });
@@ -17289,6 +17291,132 @@ describe("ClaudeAdapterV2 background wake turns", () => {
               McpProviderSessions.layer,
               Layer.mergeAll(NodeServices.layer, NodeCrypto.layer),
             ),
+          ),
+        ),
+      ),
+  );
+
+  it.effect.each([
+    {
+      launch: "forked skill",
+      text: "/fork-probe go",
+      // A `context: fork` skill has no Agent call and streams none of its own replies:
+      // task_started carries no tool_use_id, and only its prompt echo names the fork.
+      frames: [
+        claudeSdkFrame({
+          type: "system",
+          subtype: "task_started",
+          task_id: "task-forked-skill",
+          description: "/fork-probe",
+          prompt: "go",
+          subagent_type: "general-purpose",
+          task_type: "local_agent",
+          skip_transcript: true,
+          ambient: true,
+          uuid: "00000000-0000-4000-8000-000000000231",
+          session_id: WAKE_NATIVE_SESSION,
+        }),
+        claudeSdkFrame({
+          type: "system",
+          subtype: "task_notification",
+          task_id: "task-forked-skill",
+          status: "completed",
+          summary: "/fork-probe",
+          output_file: "",
+          uuid: "00000000-0000-4000-8000-000000000232",
+          session_id: WAKE_NATIVE_SESSION,
+        }),
+        claudeSdkFrame({
+          type: "user",
+          parent_tool_use_id: "forked-command-fork-probe",
+          message: { role: "user", content: [{ type: "text", text: "go" }] },
+          uuid: "00000000-0000-4000-8000-000000000233",
+          session_id: WAKE_NATIVE_SESSION,
+        }),
+      ],
+    },
+    {
+      launch: "foreground Agent call with no streamed reply",
+      text: "Ask a subagent one thing.",
+      frames: [
+        claudeSdkFrame({
+          type: "assistant",
+          parent_tool_use_id: null,
+          message: {
+            model: "claude-opus-4-6",
+            id: "msg_unstreamed_model_launch",
+            type: "message",
+            role: "assistant",
+            content: [
+              {
+                type: "tool_use",
+                id: "toolu-unstreamed-model",
+                name: "Agent",
+                input: { description: "One thing", prompt: "Check one thing." },
+              },
+            ],
+          },
+          uuid: "00000000-0000-4000-8000-000000000235",
+          session_id: WAKE_NATIVE_SESSION,
+        }),
+        claudeSdkFrame({
+          type: "system",
+          subtype: "task_started",
+          task_id: "task-unstreamed-model",
+          tool_use_id: "toolu-unstreamed-model",
+          description: "One thing",
+          task_type: "local_agent",
+          uuid: "00000000-0000-4000-8000-000000000236",
+          session_id: WAKE_NATIVE_SESSION,
+        }),
+        makeSubagentNotificationFrame({
+          taskId: "task-unstreamed-model",
+          toolUseId: "toolu-unstreamed-model",
+          summary: "OK",
+          uuid: "00000000-0000-4000-8000-000000000237",
+        }),
+      ],
+    },
+  ])(
+    "records the model of a $launch from its transcript instead of the parent's",
+    ({ text, frames }) =>
+      Effect.gen(function* () {
+        const harness = yield* makeWakeHarnessWithOptions({
+          subagentModel: "claude-haiku-4-5-20251001",
+        });
+        const now = yield* DateTime.now;
+        yield* harness.runtime.startTurn(
+          makeClaudeTestTurnInput({
+            threadId: harness.threadId,
+            providerThread: harness.providerThread,
+            now,
+            attemptId: RunAttemptId.make("attempt-transcript-model"),
+            text,
+            attachments: [],
+            modelSelection: { ...CLAUDE_TEST_MODEL_SELECTION, model: "claude-opus-4-6" },
+          }),
+        );
+        for (const frame of [
+          ...frames,
+          makeResultFrame({ uuid: "00000000-0000-4000-8000-000000000234", result: "OK" }),
+        ]) {
+          yield* Queue.offer(harness.sdkMessages, frame);
+        }
+        yield* Queue.take(harness.terminalReceipts);
+        const subagent = harness.events
+          .filter((event) => event.type === "subagent.updated")
+          .at(-1)?.subagent;
+        assert.equal(subagent?.status, "completed");
+        assert.equal(subagent?.model, "claude-haiku-4-5");
+        assert.equal(subagent?.modelSelection?.model, "claude-haiku-4-5");
+      }).pipe(
+        Effect.scoped,
+        Effect.provide(
+          Layer.mergeAll(
+            IdAllocator.layer,
+            McpProviderSessions.layer,
+            NodeServices.layer,
+            NodeCrypto.layer,
           ),
         ),
       ),

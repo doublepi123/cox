@@ -718,6 +718,9 @@ export interface ClaudeAgentSdkQueryRunnerShape {
   readonly subagentLaunchToolUseId: (
     input: ClaudeAgentSdkSubagentLookupInput,
   ) => Effect.Effect<string | null, ClaudeAgentSdkQueryRunnerError>;
+  readonly subagentModel?: (
+    input: ClaudeAgentSdkSubagentLookupInput,
+  ) => Effect.Effect<string | null, ClaudeAgentSdkQueryRunnerError>;
   readonly assertComplete: Effect.Effect<void, ClaudeAgentSdkQueryRunnerError>;
 }
 
@@ -1809,6 +1812,24 @@ export const layerQueryRunner: Layer.Layer<
           return toolUseId;
         },
       ),
+      subagentModel: Effect.fn("ClaudeAgentSdkQueryRunner.subagentModel")(function* (input) {
+        const messages = yield* Effect.tryPromise({
+          try: () =>
+            getSubagentMessages(
+              input.sessionId,
+              input.agentId,
+              input.dir === null ? {} : { dir: input.dir },
+            ),
+          catch: (cause) => queryRunnerError(cause, "getSubagentMessages"),
+        });
+        for (let index = messages.length - 1; index >= 0; index--) {
+          const message = messages[index];
+          if (message?.type !== "assistant") continue;
+          const model = text(field(message.message, "model"));
+          if (model !== undefined && model !== "<synthetic>") return model;
+        }
+        return null;
+      }),
       assertComplete: Effect.void,
     });
   }),
@@ -7230,7 +7251,24 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
                   subagentModelCatalog,
                 ).effort)
               : existingSubagent.effort;
-          const model = input.model ?? priorTask?.model ?? null;
+          let model = input.model ?? priorTask?.model ?? null;
+          if (
+            model === null &&
+            input.nativeOutcome !== undefined &&
+            queryRunner.subagentModel !== undefined
+          ) {
+            const observedModel = yield* queryRunner
+              .subagentModel({
+                sessionId: input.context.nativeThreadId,
+                agentId: input.taskId,
+                dir: input.context.input.runtimePolicy.cwd,
+                threadId: input.context.input.threadId,
+                providerSessionId: session.id,
+              })
+              .pipe(Effect.orElseSucceed(() => null));
+            if (observedModel !== null)
+              model = canonicalClaudeSubagentModel(subagentModelCatalog, observedModel);
+          }
           const movesToCurrentRun =
             input.reopen === true && input.status === "running" && existingSubagent !== undefined;
           const task = {
