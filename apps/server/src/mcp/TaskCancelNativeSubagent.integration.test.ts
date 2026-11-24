@@ -254,7 +254,7 @@ it.effect("task_cancel ends a delegated child's background native subagent", () 
           (event) =>
             event.type === "run.updated" &&
             event.payload.id === child.turn.runId &&
-            event.payload.status === "waiting",
+            event.payload.status === "completed",
         );
         for (const event of [
           {

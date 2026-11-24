@@ -3302,7 +3302,7 @@ it.effect("keeps completed runs completed when pull request refresh fails", () =
       events: (ids) => Stream.make(rootTerminalEvent(ids, "completed")),
       refreshAfterTurn: Effect.die("refresh failed"),
     });
-    assert.deepEqual(observed, ["run:waiting", "pull-requests-refreshed"]);
+    assert.deepEqual(observed, ["run:completed", "pull-requests-refreshed"]);
   }),
 );
 

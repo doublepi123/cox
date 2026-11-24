@@ -351,10 +351,10 @@ it.layer(layerProjectionStoreTest)("CheckpointCaptureServiceV2", (it) => {
           userMessageId: MessageId.make("message:checkpoint-capture-user"),
           rootNodeId,
           activeAttemptId: null,
-          status: "waiting",
+          status: "completed",
           requestedAt: now,
           startedAt: now,
-          completedAt: null,
+          completedAt: now,
           checkpointId: null,
           contextHandoffId: null,
           delegatedCompletion: staleDelegatedCompletion,
@@ -366,7 +366,7 @@ it.layer(layerProjectionStoreTest)("CheckpointCaptureServiceV2", (it) => {
           parentNodeId: null,
           rootNodeId,
           kind: "root_turn" as const,
-          status: "waiting" as const,
+          status: "completed" as const,
           countsForRun: true,
           providerThreadId,
           providerTurnId: null,
@@ -374,7 +374,7 @@ it.layer(layerProjectionStoreTest)("CheckpointCaptureServiceV2", (it) => {
           runtimeRequestId: null,
           checkpointScopeId: scopeId,
           startedAt: now,
-          completedAt: null,
+          completedAt: now,
         };
         const scope = {
           id: scopeId,
@@ -599,7 +599,10 @@ it.layer(layerProjectionStoreTest)("CheckpointCaptureServiceV2", (it) => {
           if (runUpdated?.type !== "run.updated") {
             return;
           }
+          // The run completed when its provider turn ended; capture only attaches the checkpoint.
           assert.equal(runUpdated.payload.status, "completed");
+          assert.deepEqual(runUpdated.payload.completedAt, now);
+          assert.isFalse(events.some((event) => event.type === "node.updated"));
           const capturedEvent = events.find((event) => event.type === "checkpoint.captured");
           assert.equal(
             runUpdated.payload.checkpointId,

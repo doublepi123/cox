@@ -417,7 +417,7 @@ it.effect.each(deliveries)(
             (event) =>
               event.type === "run.updated" &&
               event.payload.id === parent.id &&
-              event.payload.status === "waiting",
+              event.payload.status === "completed",
           );
           yield* Queue.offer(sdkMessages, toolResult("build", false));
           for (const id of statusIds)
@@ -439,7 +439,7 @@ it.effect.each(deliveries)(
               (event) =>
                 event.type === "run.updated" &&
                 event.payload.id === queued.id &&
-                event.payload.status === "waiting",
+                event.payload.status === "completed",
             );
             yield* Queue.offer(sdkMessages, result("notice-completed", false));
             yield* Fiber.join(noticeFinished);
@@ -658,9 +658,7 @@ const exitWhileIdle = (options: {
           );
         }
         const settled = yield* watch(
-          (event) =>
-            event.type === "run.updated" &&
-            (event.payload.status === "waiting" || event.payload.status === "completed"),
+          (event) => event.type === "run.updated" && event.payload.status === "completed",
         );
         yield* Queue.offer(firstProcess, result("waiting-on-sleep", false));
         yield* Fiber.join(settled).pipe(

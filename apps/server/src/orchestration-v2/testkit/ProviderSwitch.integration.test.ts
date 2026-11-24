@@ -2864,7 +2864,9 @@ describe("orchestration v2 provider switching", () => {
           }
 
           yield* worker.drain();
-          const afterFirst = yield* waitForIdle(handoffThreadId);
+          yield* waitForIdle(handoffThreadId);
+          yield* worker.drain();
+          const afterFirst = yield* orchestrator.getThreadProjection(handoffThreadId);
           const firstSession = afterFirst.providerSessions.find(
             (session) => session.providerInstanceId === CLAUDE_MODEL_SELECTION.instanceId,
           );
