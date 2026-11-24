@@ -146,6 +146,7 @@ export function NoticeText({
                 ref={detailsRef}
                 size="icon-xs"
                 variant="ghost-muted"
+                className="flex-none self-center"
                 aria-label={detailsLabel}
               />
             }
