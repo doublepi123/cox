@@ -139,20 +139,21 @@ export function NoticeText({
       </span>
       {showDetails ? (
         <Popover>
-          <PopoverTrigger
-            openOnHover
-            render={
-              <Button
-                ref={detailsRef}
-                size="icon-xs"
-                variant="ghost-muted"
-                className="flex-none self-center"
-                aria-label={detailsLabel}
-              />
-            }
-          >
-            <InfoIcon />
-          </PopoverTrigger>
+          <span className="flex-none self-center">
+            <PopoverTrigger
+              openOnHover
+              render={
+                <Button
+                  ref={detailsRef}
+                  size="icon-xs"
+                  variant="ghost-muted"
+                  aria-label={detailsLabel}
+                />
+              }
+            >
+              <InfoIcon />
+            </PopoverTrigger>
+          </span>
           <PopoverPopup
             aria-label={translateUi("Notice details")}
             tooltipStyle

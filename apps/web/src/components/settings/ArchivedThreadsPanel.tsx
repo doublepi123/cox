@@ -160,8 +160,9 @@ export function ArchivedThreadsPanel() {
       }
     }
     let firstRow = 0;
-    const sortedGroups = Array.from(groups, ([key, group]) => {
-      const sorted = {
+    const sortedGroups = [];
+    for (const [key, group] of groups) {
+      sortedGroups.push({
         ...group,
         key,
         firstRow,
@@ -170,10 +171,9 @@ export function ArchivedThreadsPanel() {
           const rightKey = right.archivedAt ?? right.createdAt;
           return rightKey.localeCompare(leftKey) || right.id.localeCompare(left.id);
         }),
-      };
+      });
       firstRow += group.threads.length;
-      return sorted;
-    });
+    }
     return { groups: sortedGroups, hasMultipleEnvironments };
   })();
 
