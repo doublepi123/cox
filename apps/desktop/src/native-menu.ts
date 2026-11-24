@@ -42,7 +42,8 @@ type DesktopMenuActions = Readonly<
     | "toggleAutomaticUpdates"
     | "openComputerUse"
     | "stopComputerControl"
-    | "openLogs",
+    | "openLogs"
+    | "pasteAsText",
     NonNullable<MenuItemConstructorOptions["click"]>
   >
 >;
@@ -112,7 +113,9 @@ export function createDesktopMenuTemplate(
   return localizeDesktopMenu(
     [
       application,
-      { role: "editMenu" },
+      {
+        role: "editMenu",
+      },
       {
         label: text("View"),
         submenu: [
@@ -149,6 +152,7 @@ export function createDesktopMenuTemplate(
     ],
     locale,
     platform,
+    actions.pasteAsText,
   );
 }
 
@@ -156,6 +160,7 @@ export function localizeDesktopMenu(
   template: readonly MenuItemConstructorOptions[],
   locale: string,
   platform: string,
+  pasteAsText?: NonNullable<MenuItemConstructorOptions["click"]>,
 ): MenuItemConstructorOptions[] {
   return template.map((item) => {
     const roleLabel = item.role && roleLabels[item.role as keyof typeof roleLabels];
@@ -168,7 +173,13 @@ export function localizeDesktopMenu(
         { role: "cut" },
         { role: "copy" },
         { role: "paste" },
-        { role: "pasteAndMatchStyle" },
+        platform === "darwin" && pasteAsText
+          ? {
+              label: desktopText(locale, "Paste and Match Style"),
+              accelerator: "Command+Shift+V",
+              click: pasteAsText,
+            }
+          : { role: "pasteAndMatchStyle" },
         { role: "delete" },
         { role: "selectAll" },
         ...(platform === "darwin"

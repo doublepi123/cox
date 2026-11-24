@@ -40,6 +40,7 @@ function menuActions() {
     openComputerUse: vi.fn(),
     stopComputerControl: vi.fn(),
     openLogs: vi.fn(),
+    pasteAsText: vi.fn(),
   };
 }
 
@@ -135,6 +136,18 @@ describe("native application menu placement", () => {
       );
     },
   );
+
+  it("routes only the macOS Paste as Text accelerator through the explicit paste handler", () => {
+    const actions = menuActions();
+    const mac = flatten(createDesktopMenuTemplate("darwin", "en-US", actions));
+    expect(mac.filter((item) => item.accelerator === "Command+Shift+V")).toEqual([
+      expect.objectContaining({ label: "Paste and Match Style", click: actions.pasteAsText }),
+    ]);
+    expect(mac.some((item) => item.role === "pasteAndMatchStyle")).toBe(false);
+    const windows = flatten(createDesktopMenuTemplate("win32", "en-US", actions));
+    expect(windows.some((item) => item.role === "pasteAndMatchStyle")).toBe(true);
+    expect(windows.some((item) => item.click === actions.pasteAsText)).toBe(false);
+  });
 
   it("uses one localized check action and one shared automatic policy", () => {
     const items = flatten(createDesktopMenuTemplate("darwin", "zh-CN", menuActions()));

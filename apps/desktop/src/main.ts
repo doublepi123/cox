@@ -2083,6 +2083,10 @@ async function start() {
     openLogs: () => {
       void shell.openPath(dirname(logPath));
     },
+    pasteAsText: () => {
+      const contents = BrowserWindow.getFocusedWindow()?.webContents;
+      if (contents && !contents.isDestroyed()) contents.pasteAndMatchStyle();
+    },
   });
   Menu.setApplicationMenu(Menu.buildFromTemplate(menu));
   if (process.platform === "win32") window.setMenuBarVisibility(false);
