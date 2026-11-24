@@ -319,6 +319,34 @@ export function acpPerTurnPromptUsage(
   };
 }
 
+type AcpAppContextEntry = NonNullable<
+  ProviderAdapter.ProviderAdapterV2TurnInput["appContext"]
+>[number];
+
+function formatAcpAppContextEntry(entry: AcpAppContextEntry): string {
+  return `<external_${entry.key}>${entry.text}</external_${entry.key}>`;
+}
+
+function unsentAcpAppContext(
+  appContext: ProviderAdapter.ProviderAdapterV2TurnInput["appContext"],
+  seen: ReadonlyMap<string, string> | undefined,
+  isNativeSlashCommand: boolean,
+): ReadonlyArray<AcpAppContextEntry> {
+  if (isNativeSlashCommand || appContext === undefined || appContext.length === 0) return [];
+  return appContext.filter((entry) => seen?.get(entry.key) !== entry.text);
+}
+
+function mergeAcpAppContext(
+  base: ReadonlyMap<string, string> | undefined,
+  entries: ReadonlyArray<AcpAppContextEntry>,
+): ReadonlyMap<string, string> {
+  const merged = new Map(base);
+  for (const entry of entries) {
+    merged.set(entry.key, entry.text);
+  }
+  return merged;
+}
+
 export interface AcpAdapterV2Flavor {
   readonly watchPromptOutcome?: (sessionId: string) => Effect.Effect<PromptOutcomeCheck>;
   readonly buildPrompt?: (input: {
@@ -1891,6 +1919,7 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
           return modes;
         });
         const promptInstructionStates = yield* Ref.make(new Map<string, T3AcpInstructionState>());
+        const deliveredAppContext = yield* Ref.make(new Map<string, ReadonlyMap<string, string>>());
         // Unique markers keep delayed prompt completions from clearing later compactions.
         const compactionMarkers = yield* Ref.make(new Map<string, symbol>());
         const runtimeRestartRequired = yield* Ref.make(false);
@@ -6316,6 +6345,16 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
                       rawNotification,
                       clientTerminals.readOutputSnapshot,
                     );
+              if (
+                notification.update.sessionUpdate === "compaction_update" &&
+                notification.update.status === "completed"
+              ) {
+                yield* Ref.update(deliveredAppContext, (current) => {
+                  const next = new Map(current);
+                  next.delete(notification.sessionId);
+                  return next;
+                });
+              }
               if (notification.update.sessionUpdate === "available_commands_update") {
                 yield* (
                   flavor.onAvailableCommandsUpdate?.(notification.update.availableCommands) ??
@@ -7111,6 +7150,7 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
             yield* Ref.set(activeSelection, null);
             yield* Ref.set(activeInteractionMode, null);
             yield* Ref.set(promptInstructionStates, new Map());
+            yield* Ref.set(deliveredAppContext, new Map());
             yield* Ref.set(compactionMarkers, new Map());
             yield* Ref.set(snapshot, {
               order: [],
@@ -8031,9 +8071,25 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
               }),
             });
           }
+          const delivered =
+            compactionMarker === undefined
+              ? (yield* Ref.get(deliveredAppContext)).get(sessionId)
+              : undefined;
+          const appContextEntries = unsentAcpAppContext(
+            turnInput.appContext,
+            delivered,
+            isNativeSlashCommand,
+          );
+          prompt.unshift(
+            ...appContextEntries.map((entry) => ({
+              type: "text" as const,
+              text: formatAcpAppContextEntry(entry),
+            })),
+          );
           return {
             prompt,
             instructionState: text === messageText ? undefined : instructionState,
+            appContextEntries,
             compactionMarker,
           };
         });
@@ -8044,6 +8100,7 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
           const restartRequired = yield* Ref.get(runtimeRestartRequired);
           if (!restartRequired) return false;
           yield* restartAcpRuntime(threadId);
+          yield* Ref.set(deliveredAppContext, new Map());
           yield* Ref.set(runtimeRestartRequired, false);
           yield* Ref.set(activeSessionId, null);
           yield* Ref.set(activeSessionSetup, null);
@@ -8404,7 +8461,7 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
                 runRuntimeCallbackAtGeneration(
                   promptGeneration,
                   Effect.gen(function* () {
-                    if (context.finalized || followsAgentWorkState) return;
+                    if (context.finalized) return;
                     const recorded =
                       context.interrupted || result.stopReason === "cancelled" || result.error
                         ? undefined
@@ -8417,6 +8474,29 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
                       });
                       return;
                     }
+                    const appContextEntries = promptParts?.appContextEntries ?? [];
+                    if (
+                      !context.interrupted &&
+                      !result.error &&
+                      result.stopReason !== "refusal" &&
+                      result.stopReason !== "cancelled" &&
+                      appContextEntries.length > 0
+                    ) {
+                      yield* Ref.update(deliveredAppContext, (current) => {
+                        const updated = new Map(current);
+                        updated.set(
+                          requestedSessionId,
+                          mergeAcpAppContext(
+                            promptParts?.compactionMarker === undefined
+                              ? current.get(requestedSessionId)
+                              : undefined,
+                            appContextEntries,
+                          ),
+                        );
+                        return updated;
+                      });
+                    }
+                    if (followsAgentWorkState) return;
                     const failure = context.interrupted
                       ? undefined
                       : stopReasonFailure(result.stopReason, result.error);
