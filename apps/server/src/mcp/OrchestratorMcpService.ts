@@ -108,6 +108,7 @@ import { isSnoozed } from "../orchestration-v2/ThreadSettlementService.ts";
 import { userFacingDispatchErrorMessage } from "../orchestration-v2/UserFacingErrors.ts";
 import * as ProjectService from "../project/ProjectService.ts";
 import * as ProviderRegistry from "../provider/ProviderRegistry.ts";
+import { WITHHELD, withoutWebhookUrlToken } from "../scheduledTasks/webhookUrlToken.ts";
 import * as ScheduledTaskService from "../scheduledTasks/ScheduledTaskService.ts";
 import * as ServerSettings from "../serverSettings.ts";
 import {
@@ -962,6 +963,19 @@ function jsonText(value: unknown): string {
   }
 }
 
+// Thread reads show a webhook's signing secret as withheld.
+
+const asRecord = (value: unknown) =>
+  typeof value === "object" && value !== null ? (value as Readonly<Record<string, unknown>>) : null;
+
+function withoutWebhookSigningSecret(toolInput: unknown): unknown {
+  const input = asRecord(toolInput);
+  const schedule = asRecord(input?.schedule);
+  const signature = asRecord(schedule?.signature);
+  if (typeof signature?.secret !== "string") return toolInput;
+  return { ...input, schedule: { ...schedule, signature: { ...signature, secret: WITHHELD } } };
+}
+
 function turnItemText(item: OrchestrationV2TurnItem): string | null {
   switch (item.type) {
     case "notification":
@@ -1025,7 +1039,11 @@ function turnItemText(item: OrchestrationV2TurnItem): string | null {
     case "subagent":
       return item.result ?? item.progress ?? item.prompt;
     case "dynamic_tool":
-      return jsonText({ toolName: item.toolName, input: item.input, output: item.output });
+      return jsonText({
+        toolName: item.toolName,
+        input: withoutWebhookSigningSecret(item.input),
+        output: item.output,
+      });
   }
 }
 
@@ -1044,7 +1062,8 @@ function timelineItem(input: {
   readonly textOffset?: number;
   readonly messagesByThreadId: ReadonlyMap<ThreadId, OrchestrationV2ThreadProjection["messages"]>;
 }): OrchestratorMcpThreadTimelineItem {
-  const text = turnItemText(input.row.item);
+  const itemText = turnItemText(input.row.item);
+  const text = itemText === null ? null : withoutWebhookUrlToken(itemText);
   const offset = input.textOffset ?? 0;
   const end = textPageEnd(text, offset, input.maxChars);
   const textTruncated = text !== null && text.length > end;

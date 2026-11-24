@@ -11,6 +11,7 @@ import * as Layer from "effect/Layer";
 import * as Path from "effect/Path";
 
 import * as ProcessRunner from "../processRunner.ts";
+import { withoutRemoteUrlCredentials } from "@t3tools/shared/cloneUrl";
 import { sourceControlDefinitions } from "../sourceControl/sourceControlDefinitions.ts";
 import { explicitBareRepositoryEnv, unsetInheritedRepositoryEnv } from "../vcs/VcsProcess.ts";
 import * as HostProcess from "@t3tools/shared/HostProcess";
@@ -84,7 +85,8 @@ function parseRemoteFetchUrls(
     ) {
       continue;
     }
-    remotes.set(remoteName, remoteUrl);
+    // The identity names the remote, not the login used to reach it.
+    remotes.set(remoteName, withoutRemoteUrlCredentials(remoteUrl));
   }
   return remotes;
 }

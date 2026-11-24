@@ -41,6 +41,11 @@ export type SourceControlCliDiscoverySpec = SourceControlDiscoverySpecBase & {
   readonly executable: string;
   readonly versionArgs: ReadonlyArray<string>;
   readonly authArgs: ReadonlyArray<string>;
+  readonly authRetryArgs?: (environment: NodeJS.ProcessEnv) => ReadonlyArray<ReadonlyArray<string>>;
+  readonly probeEnv?: (
+    args: ReadonlyArray<string>,
+    environment: NodeJS.ProcessEnv,
+  ) => Record<string, string>;
   readonly remoteRefinementArgs?: (
     context: SourceControlProvider.SourceControlProviderContext,
   ) => ReadonlyArray<string>;
@@ -278,23 +283,35 @@ export function probeSourceControlProvider(input: {
         process: input.process,
         cwd: input.cwd,
       }),
-      input.process
-        .run({
-          operation: "source-control.discovery.auth",
-          command: spec.executable,
-          args: spec.authArgs,
-          cwd: input.cwd,
-          allowNonZeroExit: true,
-          timeoutMs: probeTimeoutMs(spec),
-          maxOutputBytes: 8_000,
-          appendTruncationMarker: true,
-        })
-        .pipe(
-          Effect.map(spec.parseAuth),
-          Effect.catch((cause) =>
-            Effect.succeed(unknownAuth(Option.getOrUndefined(detailFromCause(cause)))),
-          ),
-        ),
+      Effect.gen(function* () {
+        const environment = yield* HostProcess.Environment;
+        const run = (args: ReadonlyArray<string>) =>
+          input.process
+            .run({
+              operation: "source-control.discovery.auth",
+              command: spec.executable,
+              args,
+              cwd: input.cwd,
+              ...(spec.probeEnv ? { env: spec.probeEnv(args, environment) } : {}),
+              allowNonZeroExit: true,
+              timeoutMs: probeTimeoutMs(spec),
+              maxOutputBytes: 8_000,
+              appendTruncationMarker: true,
+            })
+            .pipe(
+              Effect.map(spec.parseAuth),
+              Effect.catch((cause) =>
+                Effect.succeed(unknownAuth(Option.getOrUndefined(detailFromCause(cause)))),
+              ),
+            );
+        const first = yield* run(spec.authArgs);
+        if (first.status !== "unauthenticated") return first;
+        for (const args of spec.authRetryArgs?.(environment) ?? []) {
+          const result = yield* run(args);
+          if (result.status === "authenticated") return result;
+        }
+        return first;
+      }),
     ],
     { concurrency: "unbounded" },
   ).pipe(
@@ -370,27 +387,30 @@ function refineWithSpec(input: {
     return spec.refineUnknownRemote({ cwd: input.cwd, context });
   }
   if (!isCliRemoteRefinementSpec(spec)) return Effect.succeed(null);
-  return input.process
-    .run({
-      operation: "source-control.discovery.refine-unknown-remote",
-      command: spec.executable,
-      args: spec.remoteRefinementArgs?.(context) ?? spec.authArgs,
-      cwd: input.cwd,
-      allowNonZeroExit: true,
-      timeoutMs: probeTimeoutMs(spec),
-      maxOutputBytes: 8_000,
-      appendTruncationMarker: true,
-    })
-    .pipe(
-      Effect.catchIf(isMissingExecutable, () => Effect.void),
-      Effect.flatMap((auth) => {
-        const provider =
-          auth === undefined ? null : spec.refineUnknownRemote({ cwd: input.cwd, context, auth });
-        return provider === undefined
-          ? Effect.fail(new UnknownRemoteUnanswered())
-          : Effect.succeed(provider);
+  const args = spec.remoteRefinementArgs?.(context) ?? spec.authArgs;
+  return Effect.service(HostProcess.Environment).pipe(
+    Effect.flatMap((environment) =>
+      input.process.run({
+        operation: "source-control.discovery.refine-unknown-remote",
+        command: spec.executable,
+        args,
+        cwd: input.cwd,
+        ...(spec.probeEnv ? { env: spec.probeEnv(args, environment) } : {}),
+        allowNonZeroExit: true,
+        timeoutMs: probeTimeoutMs(spec),
+        maxOutputBytes: 8_000,
+        appendTruncationMarker: true,
       }),
-    );
+    ),
+    Effect.catchIf(isMissingExecutable, () => Effect.void),
+    Effect.flatMap((auth) => {
+      const provider =
+        auth === undefined ? null : spec.refineUnknownRemote({ cwd: input.cwd, context, auth });
+      return provider === undefined
+        ? Effect.fail(new UnknownRemoteUnanswered())
+        : Effect.succeed(provider);
+    }),
+  );
 }
 
 export const refineUnknownRemoteProvider = Effect.fn("refineUnknownRemoteProvider")(

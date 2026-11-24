@@ -75,7 +75,8 @@ export const layer = HttpApiBuilder.group(
 
       const headers: Record<string, string> = {};
       for (const [name, value] of Object.entries(request.headers)) {
-        if (typeof value === "string") headers[name.toLowerCase()] = value;
+        if (typeof value === "string" && name.toLowerCase() !== "cookie")
+          headers[name.toLowerCase()] = value;
       }
       const queryIndex = request.url.indexOf("?");
       if (params.hookId.startsWith(Workflows.HOOK_PREFIX)) {

@@ -147,6 +147,21 @@ export const discovery = {
   executable: "glab",
   versionArgs: ["--version"],
   authArgs: ["auth", "status"],
+  // A probe that names no host covers every host glab has a login for, so it runs without the
+  // environment token; the default host is asked with it last, by name.
+  authRetryArgs: (environment) => [
+    ["auth", "status", "--all"],
+    ...(GitLabCli.hasEnvironmentToken(environment)
+      ? [["auth", "status", "--hostname", GitLabCli.defaultHost(environment)]]
+      : []),
+  ],
+  probeEnv: (args, environment) => {
+    const named = args.indexOf("--hostname");
+    return named !== -1 &&
+      GitLabCli.hostOf(args[named + 1] ?? "") === GitLabCli.defaultHost(environment)
+      ? {}
+      : GitLabCli.WITHOUT_ENVIRONMENT_TOKEN;
+  },
   // glab host matching requires the remote's exact spelling.
   remoteRefinementArgs: ({ provider, remoteUrl }) => {
     const authority = /^[a-z][a-z0-9+.-]*:\/\/([^/]+)/iu.exec(remoteUrl.trim())?.[1];

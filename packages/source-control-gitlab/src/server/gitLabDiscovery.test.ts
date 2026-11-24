@@ -2,9 +2,13 @@ import {
   parseGitRemoteHost,
   unknownRemoteProvider,
 } from "@t3tools/source-control-core/shared/definition";
-import { refineUnknownRemoteProvider } from "@t3tools/source-control-core/server/discovery";
+import {
+  probeSourceControlProvider,
+  refineUnknownRemoteProvider,
+} from "@t3tools/source-control-core/server/discovery";
 import { processOutput } from "@t3tools/source-control-testing/TestSourceControlHost";
 import { assert, it } from "@effect/vitest";
+import * as HostProcess from "@t3tools/shared/HostProcess";
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
 import { ChildProcessSpawner } from "effect/process";
@@ -73,4 +77,42 @@ self-hosted.example.test
     assert.strictEqual(verdict.provider?.kind, "gitlab");
     assert.strictEqual(verdict.settled, true);
   }),
+);
+
+it.effect("sends the environment token only to glab's default host while probing", () =>
+  Effect.gen(function* () {
+    const withheld = { GITLAB_TOKEN: "", GITLAB_ACCESS_TOKEN: "", OAUTH_TOKEN: "" };
+    const probes: Array<readonly [string, unknown]> = [];
+    const process: Parameters<typeof probeSourceControlProvider>[0]["process"] = {
+      run: ({ args, env }) => {
+        if (args[0] !== "--version") probes.push([args.join(" "), env]);
+        return Effect.succeed(
+          processOutput("", {
+            stderr: "No GitLab instances have been authenticated with glab.\n",
+            exitCode: ChildProcessSpawner.ExitCode(1),
+          }),
+        );
+      },
+    };
+    const remoteUrl = "https://self-hosted.example.test/group/project.git";
+    const remote = parseGitRemoteHost(remoteUrl);
+    assert.ok(remote);
+    yield* probeSourceControlProvider({
+      spec: GitLabSourceControlProvider.discovery,
+      cwd: "/repo",
+      process,
+    });
+    yield* refineUnknownRemoteProvider({
+      specs: [GitLabSourceControlProvider.discovery],
+      cwd: "/repo",
+      context: { provider: unknownRemoteProvider(remote), remoteName: "origin", remoteUrl },
+      process,
+    });
+    assert.deepStrictEqual(probes, [
+      ["auth status", withheld],
+      ["auth status --all", withheld],
+      ["auth status --hostname gitlab.com", {}],
+      ["auth status --hostname self-hosted.example.test", withheld],
+    ]);
+  }).pipe(Effect.provideService(HostProcess.Environment, { GITLAB_TOKEN: "default-host-token" })),
 );

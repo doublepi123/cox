@@ -484,6 +484,8 @@ it("readThread does not attribute the /compact Cox sends before a stale send to 
 it("readThread pages cut-off text without splitting an emoji across pages", async () => {
   const text = "a😀bc";
   const itemId = TurnItemId.make("turn-item-mcp-reasoning");
+  const webhookToolItemId = TurnItemId.make("turn-item-mcp-webhook-tool");
+  const webhookToken = "wJalrXUtnFEMI_K7MDENG-bPxRfiCYEXAMPLEKEY1234";
   const projection = {
     thread: baseThread({
       threadId: parentThreadId,
@@ -519,9 +521,38 @@ it("readThread pages cut-off text without splitting an emoji across pages", asyn
     Layer.provide(
       Layer.mergeAll(
         Layer.mock(ThreadManagementService.ThreadManagementService)({
-          getTimelinePage: () =>
+          getTimelinePage: (_threadId, options) =>
             Effect.succeed({
-              items: [row] as unknown as OrchestrationV2ThreadProjection["visibleTurnItems"],
+              items: (options.itemId === webhookToolItemId
+                ? [
+                    {
+                      ...row,
+                      position: 12,
+                      sourceItemId: webhookToolItemId,
+                      item: {
+                        ...row.item,
+                        type: "dynamic_tool",
+                        toolName: "schedule_task",
+                        input: {
+                          prompt: "Triage {{body.action}}",
+                          schedule: {
+                            type: "webhook",
+                            signature: {
+                              header: "x-hub-signature-256",
+                              encoding: "hex",
+                              prefix: "",
+                              secret: "s3",
+                            },
+                          },
+                        },
+                        output: {
+                          webhookUrl: `https://relay.test/v1/hooks/0123456789abcdef/task-1/${webhookToken}`,
+                          path: `/api/hooks/task-1/${webhookToken}`,
+                        },
+                      },
+                    },
+                  ]
+                : [row]) as unknown as OrchestrationV2ThreadProjection["visibleTurnItems"],
               totalItems: 1,
               hasMore: false,
             }),
@@ -570,6 +601,18 @@ it("readThread pages cut-off text without splitting an emoji across pages", asyn
         });
       }
     }
+
+    const webhookTool = yield* service.readThread(makeScope(), {
+      threadId: parentThreadId,
+      view: "activity",
+      itemId: webhookToolItemId,
+      maxCharsPerItem: 2_000,
+    });
+    const webhookToolText = webhookTool.items[0]?.text ?? "";
+    expect(webhookToolText).toContain("/v1/hooks/0123456789abcdef/task-1/[withheld]");
+    expect(webhookToolText).toContain("/api/hooks/task-1/[withheld]");
+    expect(webhookToolText).not.toContain(webhookToken);
+    expect(webhookToolText).not.toContain('"s3"');
   }).pipe(Effect.provide(layer), Effect.runPromise);
 });
 
