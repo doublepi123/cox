@@ -822,8 +822,17 @@ export const make = Effect.gen(function* () {
   const serverConfig = yield* ServerConfig.ServerConfig;
   const serverSettings = yield* ServerSettings.ServerSettingsService;
   const projectStore = yield* ProjectStore.ProjectStoreV2;
-  const baseDir = path.resolve(serverConfig.baseDir);
-  const worktreesDir = path.resolve(serverConfig.worktreesDir);
+  const configuredCoxDirs = {
+    baseDir: path.resolve(serverConfig.baseDir),
+    worktreesDir: path.resolve(serverConfig.worktreesDir),
+  };
+  // Resolve Cox's folders too so a canonical candidate matches a symlinked base.
+  const realPathOf = (directory: string) =>
+    fileSystem.realPath(directory).pipe(Effect.orElseSucceed(() => directory));
+  const realCoxDirs = {
+    baseDir: yield* realPathOf(configuredCoxDirs.baseDir),
+    worktreesDir: yield* realPathOf(configuredCoxDirs.worktreesDir),
+  };
   const isWindows = (yield* HostProcess.Platform) === "win32";
   const foldWorktreeCase = isWindows;
   const hostEnvironment = yield* HostProcess.Environment;
@@ -839,17 +848,19 @@ export const make = Effect.gen(function* () {
     path.join(homeDir, "Documents", "Codex"),
   ];
 
-  const isExcludedProjectPath = (candidatePath: string) =>
+  const isScratchPath = (candidatePath: string) =>
     excludedProjectRoots.has(normalizeProjectPathForComparison(candidatePath)) ||
     excludedProjectAncestors.some((ancestor) =>
       normalizeForWorktreeMatch(candidatePath, foldWorktreeCase).startsWith(
         normalizeForWorktreeMatch(ancestor, foldWorktreeCase),
       ),
-    ) ||
+    );
+  const isCoxOwnedPath = (candidatePath: string, coxDirs = configuredCoxDirs) =>
     normalizeForWorktreeMatch(candidatePath, foldWorktreeCase).startsWith(
-      normalizeForWorktreeMatch(baseDir, foldWorktreeCase),
-    ) ||
-    isT3ManagedWorktree(candidatePath, worktreesDir, foldWorktreeCase);
+      normalizeForWorktreeMatch(coxDirs.baseDir, foldWorktreeCase),
+    ) || isT3ManagedWorktree(candidatePath, coxDirs.worktreesDir, foldWorktreeCase);
+  const isExcludedProjectPath = (candidatePath: string, coxDirs = configuredCoxDirs) =>
+    isScratchPath(candidatePath) || isCoxOwnedPath(candidatePath, coxDirs);
 
   const listDirectory = (directory: string) =>
     fileSystem.readDirectory(directory).pipe(Effect.orElseSucceed((): ReadonlyArray<string> => []));
@@ -910,7 +921,7 @@ export const make = Effect.gen(function* () {
       .realPath(directory)
       .pipe(Effect.orElseSucceed(() => directory));
     // Symlinks can disguise excluded worktree paths; re-check their targets.
-    return isExcludedProjectPath(realPath) ? Option.none() : stats;
+    return isExcludedProjectPath(realPath, realCoxDirs) ? Option.none() : stats;
   });
 
   // Paths whose own read outlived the deadline, mapped to when they may be read
@@ -1438,11 +1449,17 @@ export const make = Effect.gen(function* () {
     }).pipe(Effect.orElseSucceed((): ReadonlyMap<string, ReadonlyArray<string>> => new Map()));
   });
 
-  const projectCwd = (cwd: string, projectRoots: ReadonlyArray<string> | undefined) =>
-    projectRoots !== undefined &&
-    isExcludedProjectPath(path.resolve(expandHomePath(cwd.trim(), homeDir)))
-      ? projectRoots[0]!
-      : cwd;
+  // Only chats in scratch folders take their project's root; Cox's own stay excluded.
+  const projectCwd = Effect.fnUntraced(function* (
+    cwd: string,
+    projectRoots: ReadonlyArray<string> | undefined,
+  ) {
+    if (projectRoots === undefined) return cwd;
+    const resolved = path.resolve(expandHomePath(cwd.trim(), homeDir));
+    if (!isScratchPath(resolved) || isCoxOwnedPath(resolved)) return cwd;
+    const realCwd = yield* realPathOf(resolved);
+    return isCoxOwnedPath(realCwd, realCoxDirs) ? cwd : projectRoots[0]!;
+  });
 
   const discoverCodexTranscripts = Effect.fn("AgentSessionScanner.discoverCodexTranscripts")(
     function* (homePath: string, providerInstanceId: ProviderInstanceId, operationBudget: number) {
@@ -1596,7 +1613,7 @@ export const make = Effect.gen(function* () {
     for (const transcript of transcripts) {
       const rolloutCwd = yield* readCwd(source, transcript, budget);
       if (rolloutCwd === null || rolloutCwd === false) continue;
-      const cwd = projectCwd(rolloutCwd, transcript.projectRoots);
+      const cwd = yield* projectCwd(rolloutCwd, transcript.projectRoots);
       const key = `${transcript.providerInstanceId}\0${cwd}`;
       const existing = byOwnerAndCwd.get(key);
       if (existing) {
@@ -1923,7 +1940,9 @@ export const make = Effect.gen(function* () {
   ) {
     const root = path.resolve(expandHomePath(workspaceRoot, homeDir));
     const realRoot = yield* fileSystem.realPath(root).pipe(Effect.orElseSucceed(() => root));
-    if (isExcludedProjectPath(root) || isExcludedProjectPath(realRoot)) return Stream.empty;
+    if (isExcludedProjectPath(root) || isExcludedProjectPath(realRoot, realCoxDirs)) {
+      return Stream.empty;
+    }
     const rootIdentity = yield* directoryIdentity(root);
     const nowMs = DateTime.toEpochMillis(yield* DateTime.now);
     const cutoffMs = nowMs - RECENT_THREAD_WINDOW_MS;
@@ -2064,7 +2083,7 @@ export const make = Effect.gen(function* () {
             return Option.some<AgentSessionRecentThread>({ _tag: "Skipped" });
           }
           const expandedCwd = expandHomePath(
-            projectCwd(snapshot.cwd.value, transcript.projectRoots).trim(),
+            (yield* projectCwd(snapshot.cwd.value, transcript.projectRoots)).trim(),
             homeDir,
           );
           if (
