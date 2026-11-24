@@ -3875,6 +3875,14 @@ export const en = {
   "Glass opacity": "Glass opacity",
   "Diff colors": "Diff colors",
   "Chat width": "Chat width",
+  "HTML preview width": "HTML preview width",
+  "Let HTML previews in a chat grow wider than its messages, which stay centered.":
+    "Let HTML previews in a chat grow wider than its messages, which stay centered.",
+  "Reset HTML preview width to default": "Reset HTML preview width to default",
+  "Match chat": "Match chat",
+  "Match chat (default)": "Match chat (default)",
+  "wide full width inline page render chart dashboard artifact centered":
+    "wide full width inline page render chart dashboard artifact centered",
   "Thread details": "Thread details",
   "Effort display": "Effort display",
   "Render math": "Render math",

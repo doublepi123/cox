@@ -3662,6 +3662,14 @@ export const zh = {
   "Glass opacity": "玻璃透明度",
   "Diff colors": "差异颜色",
   "Chat width": "聊天宽度",
+  "HTML preview width": "HTML 预览宽度",
+  "Let HTML previews in a chat grow wider than its messages, which stay centered.":
+    "让聊天中的 HTML 预览比消息更宽，消息仍保持居中。",
+  "Reset HTML preview width to default": "重置 HTML 预览宽度为默认值",
+  "Match chat": "与聊天一致",
+  "Match chat (default)": "与聊天一致（默认）",
+  "wide full width inline page render chart dashboard artifact centered":
+    "宽 全宽 内嵌 页面 渲染 图表 仪表板 工件 居中",
   "Thread details": "对话详情",
   "Effort display": "推理强度显示",
   "Render math": "渲染数学公式",
