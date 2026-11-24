@@ -8,7 +8,7 @@ import type { WsRpcProtocolClient } from "@t3tools/client-runtime/rpc";
 import { ThreadId } from "@t3tools/contracts";
 import { DEFAULT_CLIENT_SETTINGS } from "@t3tools/contracts/settings";
 import type * as Context from "effect/Context";
-import { afterEach, expect, it, vi } from "vite-plus/test";
+import { expect, it, vi } from "vite-plus/test";
 import { page, userEvent } from "vite-plus/test/browser";
 
 import "./ThreadRouteView";
@@ -172,10 +172,14 @@ installFakeEnvironment([
   threadWithHistory("thread-held-image-send", 1),
 ]);
 
-afterEach(() => {
-  useComposerDraftStore.setState(useComposerDraftStore.getInitialState(), true);
-  useComposerDraftStore.persist.clearStorage();
-});
+function isolateComposerDrafts(): Disposable {
+  const reset = () => {
+    useComposerDraftStore.setState(useComposerDraftStore.getInitialState(), true);
+    useComposerDraftStore.persist.clearStorage();
+  };
+  reset();
+  return { [Symbol.dispose]: reset };
+}
 
 const returningUserSettings = () =>
   __setClientSettingsForTests({
@@ -216,6 +220,7 @@ const recoverThreadStream = async () => {
 };
 
 it("a new draft does not load its reserved thread before the server lists it", async () => {
+  using _drafts = isolateComposerDrafts();
   using fetchSpy = vi.spyOn(globalThis, "fetch");
   __setClientSettingsForTests({
     ...DEFAULT_CLIENT_SETTINGS,
@@ -245,6 +250,7 @@ it("a new draft does not load its reserved thread before the server lists it", a
 });
 
 it("a thread without detail shows its stored stream failure instead of loading text", async () => {
+  using _drafts = isolateComposerDrafts();
   const threadId = ThreadId.make("thread-stream-empty");
   using _stream = failThreadStream(threadId, "empty");
   returningUserSettings();
@@ -258,6 +264,7 @@ it("a thread without detail shows its stored stream failure instead of loading t
 });
 
 it("a thread with cached detail shows its stored stream failure instead of sync text", async () => {
+  using _drafts = isolateComposerDrafts();
   const threadId = ThreadId.make("thread-stream-cached");
   using _stream = failThreadStream(threadId, "cached");
   returningUserSettings();
@@ -273,6 +280,7 @@ it("a thread with cached detail shows its stored stream failure instead of sync 
 });
 
 it("removes a rejected optimistic message and keeps the new draft", async () => {
+  using _drafts = isolateComposerDrafts();
   returningUserSettings();
   rejectSend.enabled = true;
   try {
@@ -297,6 +305,7 @@ it("removes a rejected optimistic message and keeps the new draft", async () => 
 });
 
 it("a send finishing after navigation leaves the open thread's composer alone", async () => {
+  using _drafts = isolateComposerDrafts();
   returningUserSettings();
   const origin = ThreadId.make("thread-send-origin");
   const draftId = DraftId.make("draft-send-origin");
@@ -360,6 +369,7 @@ it("a send finishing after navigation leaves the open thread's composer alone", 
 });
 
 it("holds Enter while an image compresses and cancels on edit or Escape", async () => {
+  using _drafts = isolateComposerDrafts();
   returningUserSettings();
   let finishCompression!: () => void;
   compression.gate = new Promise<void>((resolve) => {
