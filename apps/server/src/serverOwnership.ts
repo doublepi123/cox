@@ -5,6 +5,7 @@ import * as NodeSqlite from "node:sqlite";
 
 import { SERVER_EXIT_CODE_STATE_DIR_OWNED } from "@t3tools/contracts";
 import * as HostProcess from "@t3tools/shared/HostProcess";
+import { windowsPowerShellPath } from "@t3tools/shared/windowsSystem";
 import * as SecureRandom from "effect/crypto/SecureRandom";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
@@ -76,7 +77,7 @@ const legacyOwnerIsLive = Effect.fn("legacyOwnerIsLive")(function* (
   const runner = yield* ProcessRunner.ProcessRunner;
   const result = yield* runner
     .run({
-      command: windows ? "powershell.exe" : "ps",
+      command: windows ? windowsPowerShellPath(yield* HostProcess.Environment) : "ps",
       args: windows
         ? [
             "-NoProfile",

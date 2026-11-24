@@ -91,6 +91,10 @@
       "types": "./src/editor.ts",
       "import": "./src/editor.ts"
     },
+    "./windowsSystem": {
+      "types": "./src/windowsSystem.ts",
+      "import": "./src/windowsSystem.ts"
+    },
     "./shell": {
       "types": "./src/shell.ts",
       "import": "./src/shell.ts"

@@ -46,25 +46,24 @@ function projectFailure(error: Project.ProjectServiceError) {
           : "The project is not empty; force=true is required to delete it.";
   return new OrchestratorMcpFailure({ code: "invalid_request", message });
 }
-
-/** Require project worktrees so launches cannot target arbitrary host directories. */
-const assertProjectWorktree = Effect.fn("mcp.assertProjectWorktree")(function* (
+/** Require a registered project worktree and retain Git's spelling of its path. */
+const projectWorktreePath = Effect.fn("mcp.projectWorktreePath")(function* (
   workspaceRoot: string,
   worktreePath: string,
 ) {
   const git = yield* GitVcsDriver.GitVcsDriver;
   const fileSystem = yield* FileSystem.FileSystem;
   const real = (path: string) => fileSystem.realPath(path).pipe(Effect.orElseSucceed(() => path));
-  const worktrees = yield* git.listWorktreePaths(workspaceRoot).pipe(
-    Effect.flatMap((paths) => Effect.forEach(paths, real)),
-    Effect.orElseSucceed((): ReadonlyArray<string> => []),
-  );
-  if (!worktrees.includes(yield* real(worktreePath)))
-    return yield* new OrchestratorMcpFailure({
-      code: "invalid_request",
-      message:
-        "worktreePath must be one of the project's git worktrees. cox_worktree_list shows them.",
-    });
+  const registered = yield* git
+    .listWorktreePaths(workspaceRoot)
+    .pipe(Effect.orElseSucceed((): ReadonlyArray<string> => []));
+  const requested = yield* real(worktreePath);
+  for (const candidate of registered) if ((yield* real(candidate)) === requested) return candidate;
+  return yield* new OrchestratorMcpFailure({
+    code: "invalid_request",
+    message:
+      "worktreePath must be one of the project's git worktrees. cox_worktree_list shows them.",
+  });
 });
 
 /** A fixed-length id, so a long key fits in the scratch folder name derived from it. */
@@ -185,6 +184,7 @@ export const layer = McpToolAccess.toLayer(ProjectToolkit, {
         const launchedModel =
           launched === null || launched.deletedAt !== null ? undefined : launched.modelSelection;
         const replaying = launchedModel !== undefined;
+        let strategy = input.workspaceStrategy;
         if (!replaying && input.workspaceStrategy?.type === "existing_worktree") {
           const project = yield* readProject;
           if (project === undefined)
@@ -192,10 +192,16 @@ export const layer = McpToolAccess.toLayer(ProjectToolkit, {
               code: "invalid_request",
               message: "The project was not found.",
             });
-          yield* assertProjectWorktree(project.workspaceRoot, input.workspaceStrategy.worktreePath);
+          strategy = {
+            ...input.workspaceStrategy,
+            worktreePath: yield* projectWorktreePath(
+              project.workspaceRoot,
+              input.workspaceStrategy.worktreePath,
+            ),
+          };
         }
         // Reject unresolved base refs before accepting a launch; worktree provisioning happens later.
-        const strategy = input.workspaceStrategy;
+
         if (!replaying && strategy?.type === "worktree")
           yield* ThreadLaunch.ThreadLaunchService.pipe(
             Effect.flatMap((launches) =>
@@ -280,7 +286,7 @@ export const layer = McpToolAccess.toLayer(ProjectToolkit, {
           modelSelection,
           runtimeMode: startedRuntimeMode,
           interactionMode,
-          workspaceStrategy: input.workspaceStrategy ?? { type: "root" },
+          workspaceStrategy: strategy ?? { type: "root" },
           ...(input.message === undefined && attachments.length === 0
             ? {}
             : {

@@ -15,6 +15,7 @@ import { resolveProjectSettings } from "@t3tools/shared/projectSettings";
 import { flattenTemporaryWorktreeBranchName, isTemporaryWorktreeBranch } from "@t3tools/shared/git";
 import * as HostProcess from "@t3tools/shared/HostProcess";
 import * as KeyedLock from "@t3tools/shared/KeyedLock";
+import { windowsSystem32Path } from "@t3tools/shared/windowsSystem";
 import { parseT3ProjectFile } from "@t3tools/shared/t3ProjectFile";
 import * as Context from "effect/Context";
 import * as Digest from "effect/crypto/Digest";
@@ -294,7 +295,7 @@ const make = Effect.gen(function* () {
       processes
         .run({
           operation: "TaskFolders.worktreeLayout",
-          command: onWindows ? "cmd.exe" : "sh",
+          command: onWindows ? windowsSystem32Path(hostEnvironment, "cmd.exe") : "sh",
           args: onWindows ? ["/d", "/s", "/c", command] : ["-c", command],
           cwd: taskFolder.projectRoot,
           env: {
