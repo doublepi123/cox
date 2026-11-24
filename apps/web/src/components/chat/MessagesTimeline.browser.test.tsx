@@ -555,11 +555,17 @@ describe("MessagesTimeline messages", () => {
     expect(screen.text()).toContain("Subagent of");
     const viewport = props.listRef.current!.getScrollableNode()!;
     const end = () => viewport.scrollHeight - viewport.clientHeight;
-    // Distance from the end as each scroll lands, against the content height at that moment.
     const shortfalls: number[] = [];
-    viewport.addEventListener("scroll", () =>
-      shortfalls.push(Math.round(end() - viewport.scrollTop)),
-    );
+    let frame: number;
+    const sampleVisiblePosition = () => {
+      const last = viewport.querySelector('[data-timeline-row-id="entry-parent-29"]');
+      if (last?.checkVisibility({ opacityProperty: true })) {
+        shortfalls.push(Math.round(end() - viewport.scrollTop));
+      }
+      frame = requestAnimationFrame(sampleVisiblePosition);
+    };
+    frame = requestAnimationFrame(sampleVisiblePosition);
+    using _sample = { [Symbol.dispose]: () => cancelAnimationFrame(frame) };
 
     // A working parent's footer (queued turns, its subagents) is taller than the child's.
     await screen.rerender(
@@ -574,9 +580,9 @@ describe("MessagesTimeline messages", () => {
     await vi.waitFor(() => {
       expect(screen.text()).toContain("Parent turn 29:");
       expect(end() - viewport.scrollTop).toBeLessThanOrEqual(1);
+      expect(shortfalls.length).toBeGreaterThan(0);
     });
 
-    expect(shortfalls.length).toBeGreaterThan(0);
     expect(shortfalls).toEqual(shortfalls.map(() => 0));
   });
 
