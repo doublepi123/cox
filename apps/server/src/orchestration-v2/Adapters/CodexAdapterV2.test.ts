@@ -1017,27 +1017,27 @@ it.live.skipIf(HostProcess.Platform.defaultValue() !== "linux")(
                         "/bin/sh",
                         [
                           "-c",
-                          'exec "$@"',
+                          `"$@" & child=$!; trap 'kill "$child"; wait "$child"' TERM INT; wait "$child"`,
                           "codex-fixture-shell",
                           process.execPath,
                           "-e",
                           'const server = require("node:net").createServer();' +
-                            'server.listen(0, "127.0.0.1", () => console.log(server.address().port));',
+                            'server.listen(0, "127.0.0.1", () => console.log(process.pid, server.address().port));',
                         ],
                         { env: { [PortScanner.AGENT_THREAD_ENV]: tag }, extendEnv: false },
                       ),
                     )
                     .pipe(Effect.provideService(Scope.Scope, listenerScope));
-                  listenerPid = Number(listener.pid);
-                  const port = yield* listener.stdout.pipe(
+                  const address = yield* listener.stdout.pipe(
                     Stream.decodeText(),
                     Stream.splitLines,
                     Stream.runHead,
                   );
-                  yield* Deferred.succeed(listenerReady, {
-                    pid: listenerPid,
-                    port: Number(Option.getOrThrow(port)),
-                  });
+                  const [pid, port] = Option.getOrThrow(address).split(" ").map(Number);
+                  assert.isAbove(pid ?? 0, 1);
+                  assert.isAbove(port ?? 0, 0);
+                  listenerPid = pid;
+                  yield* Deferred.succeed(listenerReady, { pid: pid!, port: port! });
                 }
                 const response = responses.find(
                   (entry) => entry.type === "emit_inbound" && entry.label === frame.method,
