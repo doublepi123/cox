@@ -518,6 +518,34 @@ process.exit(1);
       }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
   );
 
+  it.live.skipIf(HostProcess.Platform.defaultValue() === "win32")(
+    "reports a root server's sandbox refusal as a root error",
+    () =>
+      Effect.gen(function* () {
+        const fileSystem = yield* FileSystem.FileSystem;
+        const path = yield* Path.Path;
+        const directory = yield* fileSystem.makeTempDirectoryScoped({
+          prefix: "cox-fake-browser-",
+        });
+        const executable = path.join(directory, "chrome-headless-shell");
+        const refusal =
+          "[1123/040735.447156:ERROR:content/browser/zygote_host/zygote_host_impl_linux.cc:103] Running as root without --no-sandbox is not supported. See https://crbug.com/638180.\n";
+        yield* fileSystem.writeFileString(
+          executable,
+          `#!${process.execPath}\nprocess.stderr.write(${JSON.stringify(refusal)});\nprocess.exit(1);\n`,
+          { mode: 0o755 },
+        );
+
+        const error = yield* HtmlRender.HtmlRender.use((htmlRender) =>
+          htmlRender.preview({ html: "<p>hello</p>" }),
+        ).pipe(
+          Effect.flip,
+          Effect.provide(layerHtmlRender(executable)),
+          Effect.provideService(HostProcess.UserId, 0),
+        );
+        expect(error).toBeInstanceOf(PreviewBrowserHost.PreviewBrowserRootError);
+      }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
+  );
   it.live("matches preview media queries and text colors to the requested appearance", (ctx) =>
     Effect.gen(function* () {
       const executable = (yield* HostProcess.Environment)[TEST_BROWSER_ENV];
