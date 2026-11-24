@@ -3540,6 +3540,22 @@ export const make = Effect.fn("OpenCode2Adapter.make")(function* (
       })).trim();
     });
 
+    const skillsMentioned = Effect.fnUntraced(function* (
+      location: { readonly directory: string },
+      text: string,
+    ) {
+      return SKILL_MENTION.test(text)
+        ? skillsNamed(
+            text,
+            yield* client.skill.list({ location }).pipe(
+              Effect.timeout(INVENTORY_TIMEOUT),
+              Effect.map((list) => new Set(list.data.map((skill) => skill.id))),
+              Effect.orElseSucceed(() => new Set<string>()),
+            ),
+          )
+        : [];
+    });
+
     const promptFiles = Effect.fnUntraced(function* (attachments: ReadonlyArray<ChatAttachment>) {
       const files: Array<{ uri: string; name: string }> = [];
       // An external server may not share T3's attachment directory.
@@ -3933,16 +3949,7 @@ export const make = Effect.fn("OpenCode2Adapter.make")(function* (
           );
         }
       }
-      const skills = SKILL_MENTION.test(text)
-        ? skillsNamed(
-            text,
-            yield* client.skill.list({ location }).pipe(
-              Effect.timeout(INVENTORY_TIMEOUT),
-              Effect.map((list) => new Set(list.data.map((skill) => skill.id))),
-              Effect.orElseSucceed(() => new Set<string>()),
-            ),
-          )
-        : [];
+      const skills = yield* skillsMentioned(location, text);
       const files = yield* promptFiles(turnInput.message.attachments);
       const messageText = yield* promptText(turnInput);
       if (!sending()) return;
@@ -4295,7 +4302,7 @@ export const make = Effect.fn("OpenCode2Adapter.make")(function* (
           if (turn.settledInbox.has(inboxID)) return;
           turn.steers.add(inboxID);
           state.strandedSteers.delete(inboxID);
-          const { files, messageText } = yield* Effect.gen(function* () {
+          const { files, messageText, skills } = yield* Effect.gen(function* () {
             const files = yield* promptFiles(steerInput.message.attachments);
             const messageText = (yield* providerMessageTextWithAttachmentPaths({
               text: steerInput.message.text,
@@ -4303,7 +4310,11 @@ export const make = Effect.fn("OpenCode2Adapter.make")(function* (
               resolveAttachmentPath: host.resolveAttachmentPath,
               resolveExtractedTextPath: host.resolveExtractedTextPath,
             })).trim();
-            return { files, messageText };
+            const skills = yield* skillsMentioned(
+              { directory: directoryOf(turn.input.runtimePolicy.cwd) },
+              steerInput.message.text,
+            );
+            return { files, messageText, skills };
           }).pipe(
             Effect.onInterrupt(() =>
               lock.withPermit(
@@ -4340,6 +4351,9 @@ export const make = Effect.fn("OpenCode2Adapter.make")(function* (
               id: inboxID,
               text: messageText,
               ...(files.length === 0 ? {} : { files }),
+              ...(skills.length === 0
+                ? {}
+                : { skills: skills.map((id) => ({ id: Skill.ID.make(id) })) }),
               delivery: "steer",
             })
             .pipe(
