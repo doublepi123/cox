@@ -96,7 +96,6 @@ function timelineFor() {
       turnDiffSummaries={[]}
       runs={[]}
       routeThreadKey={`environment-local:${thread}`}
-      onOpenTurnDiff={() => {}}
       onOpenThread={() => {}}
       onForkFromRun={async () => {}}
       supportsConversationRollback={false}
