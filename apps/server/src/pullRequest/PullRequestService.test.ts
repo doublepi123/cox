@@ -4920,3 +4920,44 @@ it.effect.each(["expiry", "commit expiry", "cache hit", "commit cache hit", "ref
       assert.strictEqual(diffReads, 2);
     }),
 );
+
+it.effect("a refused merge notifies readers so they re-read the conflicting state", () =>
+  Effect.gen(function* () {
+    let mergeable = true;
+    const reference = { projectId: "p1" as ProjectId, repository: "acme/web", number: 1 };
+    const service = yield* makeService({
+      projects: [project({ id: "p1", title: "web", workspaceRoot: "/a", repository: "acme/web" })],
+      providers: [
+        fakePullRequestProvider(SourceControlProviderKind.make("github"), {
+          getChangeRequestSummary: () =>
+            Effect.succeed({
+              ...changeRequest(1, "2026-09-16T00:00:00.000Z"),
+              mergeability: mergeable ? "mergeable" : "conflicting",
+            }),
+          runAction: () =>
+            Effect.suspend(() => {
+              mergeable = false;
+              return Effect.fail(
+                new PullRequestProviderError({
+                  provider: SourceControlProviderKind.make("github"),
+                  operation: "runAction",
+                  reason: "failed",
+                  detail: "Pull Request has merge conflicts",
+                }),
+              );
+            }),
+        }),
+      ],
+    });
+
+    assert.strictEqual((yield* service.summary(reference)).mergeability, "mergeable");
+    const refreshed = yield* service.subscribeRefreshes.pipe(
+      Stream.take(1),
+      Stream.mapEffect(() => service.summary(reference)),
+      Stream.runHead,
+      Effect.forkChild({ startImmediately: true }),
+    );
+    yield* Effect.flip(service.runAction({ ...reference, action: "merge" }));
+    assert.strictEqual(Option.getOrThrow(yield* Fiber.join(refreshed)).mergeability, "conflicting");
+  }),
+);
