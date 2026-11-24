@@ -1636,7 +1636,7 @@ it.effect(
 );
 
 it.effect(
-  "the store is shared by runs, survives a restart, and a failed transaction writes nothing",
+  "the store is shared by runs and survives an engine restart",
   () =>
     Effect.gen(function* () {
       const { boot } = yield* harness();
@@ -1664,9 +1664,19 @@ it.effect(
           const wrong = yield* workflows.start("tally", { wrong: true }, { idempotencyKey: "w" });
           const paused = yield* workflows.waitFor(wrong.runId, status("paused"));
           assert.include(paused.detail ?? "", "The stored value at tally does not fit its schema");
+        }),
+      );
+    }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
+);
 
-          // The first try fails inside the transaction, so the door it opened is not there, and
-          // the try count it raised is 1 again on the second try, which is the one that signals.
+it.effect(
+  "a failed store transaction leaves its signal unsent",
+  () =>
+    Effect.gen(function* () {
+      const { boot } = yield* harness();
+      yield* boot(
+        Effect.gen(function* () {
+          const workflows = yield* Workflows.Workflows;
           const waiting = yield* workflows.start("door", { door: "east" }, { idempotencyKey: "e" });
           yield* workflows.waitFor(waiting.runId, status("waiting"));
           const opener = yield* workflows.start(
@@ -1686,7 +1696,19 @@ it.effect(
             (yield* workflows.waitFor(waiting.runId, status("completed"))).result,
             "came in",
           );
+        }),
+      );
+    }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
+);
 
+it.effect(
+  "a retried workflow step deduplicates signals and sends newly issued ones",
+  () =>
+    Effect.gen(function* () {
+      const { boot } = yield* harness();
+      yield* boot(
+        Effect.gen(function* () {
+          const workflows = yield* Workflows.Workflows;
           // A retry sends again what the first try sent, and what it sends anew is new.
           const doors = ["ra", "rb", "rc"];
           const held = yield* Effect.forEach(doors, (door) =>
