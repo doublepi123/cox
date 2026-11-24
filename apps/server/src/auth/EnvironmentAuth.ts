@@ -24,6 +24,7 @@ import * as Digest from "effect/crypto/Digest";
 import * as DateTime from "effect/DateTime";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
+import * as Semaphore from "effect/Semaphore";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Redacted from "effect/Redacted";
@@ -311,7 +312,9 @@ export class EnvironmentAuth extends Context.Service<
     readonly revokeMcpClientToken: (
       token: string,
     ) => Effect.Effect<boolean, ServerAuthInternalError>;
+    readonly otherSessionRevocationCount: Effect.Effect<number>;
     readonly issueMcpClientSession: (input: {
+      readonly approvedAtRevocationCount?: number;
       readonly label: string;
       readonly access: AuthMcpClientAccess;
       readonly client: AuthClientMetadata;
@@ -321,7 +324,7 @@ export class EnvironmentAuth extends Context.Service<
         readonly token: string;
         readonly expiresAt: DateTime.DateTime;
       },
-      ServerAuthInternalError
+      ServerAuthInvalidCredentialError | ServerAuthInternalError
     >;
     readonly authenticateBrowserSession: (
       request: HttpServerRequest.HttpServerRequest,
@@ -458,6 +461,17 @@ export const make = Effect.gen(function* () {
   const descriptor = yield* policy.getDescriptor();
   const config = yield* ServerConfig.ServerConfig;
   const passwordAuth = yield* resolvePasswordAuth(config);
+  const sessionIssuance = yield* Semaphore.make(1);
+  let otherSessionRevocations = 0;
+  const otherSessionRevocationCount = Effect.sync(() => otherSessionRevocations);
+  const issueUnlessRevoked = <A, E>(startedAt: number, issue: Effect.Effect<A, E>) =>
+    sessionIssuance.withPermits(1)(
+      Effect.suspend<A, E | ServerAuthInvalidCredentialError, never>(() =>
+        startedAt === otherSessionRevocations
+          ? issue
+          : Effect.fail(new ServerAuthInvalidCredentialError({})),
+      ),
+    );
 
   const authenticateToken = (
     token: string,
@@ -609,6 +623,7 @@ export const make = Effect.gen(function* () {
   const createBrowserSession: EnvironmentAuth["Service"]["createBrowserSession"] = Effect.fn(
     "EnvironmentAuth.createBrowserSession",
   )(function* (credential, requestMetadata, previousSessionToken) {
+    const startedAt = yield* otherSessionRevocationCount;
     if (passwordAuth !== undefined) {
       const result = yield* passwordAuth.verify(credential);
       if (result._tag === "Throttled")
@@ -626,17 +641,20 @@ export const make = Effect.gen(function* () {
             Effect.catchIf(SessionStore.isSessionCredentialInvalidError, () => Effect.void),
             Effect.mapError((cause) => new ServerAuthSessionCredentialValidationError({ cause })),
           );
-    const session = yield* sessions
-      .issue({
-        method: "browser-session-cookie",
-        subject: descriptor.loginMode,
-        scopes: AuthStandardClientScopes,
-        ...(previousSession?.method === "browser-session-cookie"
-          ? { replaceSessionId: previousSession.sessionId }
-          : {}),
-        client: { ...requestMetadata, label: passwordAuth ? "Password login" : "Local browser" },
-      })
-      .pipe(Effect.mapError((cause) => new ServerAuthAuthenticatedSessionIssueError({ cause })));
+    const session = yield* issueUnlessRevoked(
+      startedAt,
+      sessions
+        .issue({
+          method: "browser-session-cookie",
+          subject: descriptor.loginMode,
+          scopes: AuthStandardClientScopes,
+          ...(previousSession?.method === "browser-session-cookie"
+            ? { replaceSessionId: previousSession.sessionId }
+            : {}),
+          client: { ...requestMetadata, label: passwordAuth ? "Password login" : "Local browser" },
+        })
+        .pipe(Effect.mapError((cause) => new ServerAuthAuthenticatedSessionIssueError({ cause }))),
+    );
     return {
       response: {
         authenticated: true,
@@ -691,10 +709,20 @@ export const make = Effect.gen(function* () {
     );
 
   const revokeOtherSessionsExcept = (sessionId: AuthSessionId) =>
-    sessions.revokeAllExcept(sessionId).pipe(
-      Effect.mapError((cause) => new ServerAuthOtherSessionsRevocationError({ cause })),
-      Effect.withSpan("EnvironmentAuth.revokeOtherSessionsExcept"),
-    );
+    sessionIssuance
+      .withPermits(1)(
+        Effect.uninterruptible(
+          Effect.gen(function* () {
+            const count = yield* sessions.revokeAllExcept(sessionId);
+            otherSessionRevocations++;
+            return count;
+          }),
+        ),
+      )
+      .pipe(
+        Effect.mapError((cause) => new ServerAuthOtherSessionsRevocationError({ cause })),
+        Effect.withSpan("EnvironmentAuth.revokeOtherSessionsExcept"),
+      );
 
   const listClientSessions: EnvironmentAuth["Service"]["listClientSessions"] = (currentSessionId) =>
     listSessions().pipe(
@@ -851,8 +879,8 @@ export const make = Effect.gen(function* () {
     return yield* revokeSession(session.value.sessionId);
   });
 
-  const issueMcpClientSession: EnvironmentAuth["Service"]["issueMcpClientSession"] = (input) =>
-    sessions
+  const issueMcpClientSession: EnvironmentAuth["Service"]["issueMcpClientSession"] = (input) => {
+    const issue = sessions
       .issue({
         subject: MCP_CLIENT_SUBJECT,
         method: "bearer-access-token",
@@ -870,6 +898,10 @@ export const make = Effect.gen(function* () {
         Effect.mapError((cause) => new ServerAuthSessionTokenIssueError({ cause })),
         Effect.withSpan("EnvironmentAuth.issueMcpClientSession"),
       );
+    return input.approvedAtRevocationCount === undefined
+      ? issue
+      : issueUnlessRevoked(input.approvedAtRevocationCount, issue);
+  };
 
   const authenticateBrowserSession: EnvironmentAuth["Service"]["authenticateBrowserSession"] = (
     request,
@@ -906,6 +938,7 @@ export const make = Effect.gen(function* () {
     authenticateMcpClient,
     revokeMcpClientToken,
     issueMcpClientSession,
+    otherSessionRevocationCount,
     authenticateBrowserSession,
   });
 });

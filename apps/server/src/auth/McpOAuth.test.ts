@@ -482,6 +482,40 @@ it.live("signs in a hosted agent with an https callback that asked for a client 
   ),
 );
 
+it.live("issues no session for a sign-in approved before all other sessions were revoked", () =>
+  withRoutes((handler, auth) =>
+    Effect.gen(function* () {
+      const clientId = yield* registeredClientId(handler);
+      const params = authorizeParams(clientId);
+      const approved = yield* approveWithBrowser(handler, params, "approval-required");
+      const code = new URL(approved.redirectTo!).searchParams.get("code")!;
+      const owner = yield* auth.issueSession();
+      yield* auth.revokeOtherClientSessions(owner.sessionId);
+
+      const response = yield* handler(
+        at(
+          "/oauth/mcp/token",
+          form({
+            grant_type: "authorization_code",
+            code,
+            redirect_uri: params.redirect_uri,
+            client_id: clientId,
+            code_verifier: verifier,
+          }),
+        ),
+      );
+      expect(response.status).toBe(400);
+      expect(yield* json<unknown>(response)).toEqual({
+        error: "invalid_grant",
+        error_description: "The authorization code is invalid or expired.",
+      });
+      expect((yield* auth.listSessions()).map((session) => session.sessionId)).toEqual([
+        owner.sessionId,
+      ]);
+    }),
+  ),
+);
+
 it.live("rejects a wrong PKCE verifier and spends the code", () =>
   withRoutes((handler) =>
     Effect.gen(function* () {
@@ -653,6 +687,7 @@ it("matches loopback redirects on everything but the port, and https redirects e
 it.effect("a browser may only approve scopes it holds", () => {
   let scopes: ReadonlyArray<AuthEnvironmentScope> = ["access:write", "orchestration:read"];
   const auth = Layer.mock(EnvironmentAuth.EnvironmentAuth)({
+    otherSessionRevocationCount: Effect.succeed(0),
     authenticateBrowserSession: () =>
       Effect.succeed({
         sessionId: AuthSessionId.make("scope-test-session"),
