@@ -318,6 +318,9 @@ const CONVERSATION_PAGES = 10;
 const DIFF_MAX_OUTPUT_BYTES = 8 * 1024 * 1024;
 const DIFF_TIMEOUT_MS = 60_000;
 const isVcsProcessExitError = Schema.is(VcsProcessExitError);
+const encodeApprovalHead = Schema.encodeEffect(
+  Schema.fromJsonString(Schema.Struct({ sha: Schema.String })),
+);
 const DIFF_FILE_MAX_OUTPUT_BYTES = 1024 * 1024;
 // REST list rows carry full descriptions, so a page can pass the 1 MB default output cap.
 const MERGE_REQUEST_LIST_MAX_OUTPUT_BYTES = 16 * 1024 * 1024;
@@ -592,6 +595,7 @@ export class GitLabPullRequestCli extends Context.Service<
       readonly verdict: PullRequestReviewVerdict;
       readonly body: string;
       readonly comments: ReadonlyArray<PullRequestReviewCommentDraft>;
+      readonly expectedHeadSha?: string | undefined;
     }) => Effect.Effect<void, GitLabPullRequestCliError>;
 
     readonly replyToDiscussion: (input: {
@@ -2540,6 +2544,11 @@ export const make = Effect.gen(function* () {
           host: input.host,
           path: `${mergeRequest}/approve`,
           method: "POST",
+          ...(input.expectedHeadSha === undefined
+            ? {}
+            : {
+                stdin: yield* encodeApprovalHead({ sha: input.expectedHeadSha }).pipe(Effect.orDie),
+              }),
         });
       }
     }),
