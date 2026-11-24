@@ -945,6 +945,39 @@ export const layer = Layer.effect(
             }).pipe(Effect.ignoreCause({ log: true })),
           { concurrency: "unbounded", discard: true },
         );
+        // A rename keeps the instance live, so its new label only arrives from a fresh read.
+        const presentation = new Map(
+          yield* Effect.forEach(carriedOver.values(), (instance) =>
+            Effect.map(
+              buildSnapshotSource(instance).getSnapshot,
+              ({ displayName, accentColor }) =>
+                [instance.instanceId, { displayName, accentColor }] as const,
+            ),
+          ),
+        );
+        const [beforePresentation, afterPresentation] = yield* Ref.modify(
+          providersRef,
+          (providers) => {
+            const next = providers.map((provider) => {
+              const label = presentation.get(provider.instanceId);
+              if (label === undefined) return provider;
+              const { displayName, accentColor } = label;
+              if (provider.displayName === displayName && provider.accentColor === accentColor) {
+                return provider;
+              }
+              const next = { ...provider };
+              if (displayName === undefined) delete next.displayName;
+              else next.displayName = displayName;
+              if (accentColor === undefined) delete next.accentColor;
+              else next.accentColor = accentColor;
+              return next;
+            });
+            return [[providers, next] as const, next];
+          },
+        );
+        if (haveProvidersChanged(beforePresentation, afterPresentation)) {
+          yield* PubSub.publish(changesPubSub, afterPresentation);
+        }
         yield* upsertProviders(unavailableProviders, {
           persist: false,
           replace: true,
