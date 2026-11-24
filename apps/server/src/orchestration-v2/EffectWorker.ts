@@ -270,9 +270,11 @@ export const layerExecutor: Layer.Layer<
                 Effect.catch((error) =>
                   Effect.gen(function* () {
                     if (
-                      !("turnCompleted" in error) ||
-                      !error.turnCompleted ||
-                      effect.request.type !== "provider-turn.steer"
+                      effect.request.type !== "provider-turn.steer" ||
+                      !(
+                        ("turnCompleted" in error && error.turnCompleted) ||
+                        ("steerDeclined" in error && error.steerDeclined)
+                      )
                     ) {
                       return yield* error;
                     }
