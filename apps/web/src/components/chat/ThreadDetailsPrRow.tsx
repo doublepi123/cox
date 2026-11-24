@@ -161,10 +161,15 @@ export function ThreadDetailsPrRow({
     checks: detail?.checks ?? [],
   });
 
+  const [confirmingMerge, setConfirmingMerge] = useState(false);
+  const [armedMergeHead, setArmedMergeHead] = useState<string>();
+
   const { actionPending, perform } = usePullRequestActionRunner({
     environmentId,
     reference,
     terminology,
+    headSha: confirmingMerge ? armedMergeHead : detail?.headSha,
+    onFailure: () => detailQuery.refresh(),
     onSuccess: () => {
       checksQuery.refresh();
       onActed?.();
@@ -176,7 +181,6 @@ export function ThreadDetailsPrRow({
     environmentId,
     (project?.id as ProjectId | undefined) ?? null,
   );
-  const [confirmingMerge, setConfirmingMerge] = useState(false);
 
   const rowAction = resolveThreadPanelPullRequestAction(detail);
   if (confirmingMerge && rowAction !== "merge") {
@@ -359,7 +363,10 @@ export function ThreadDetailsPrRow({
                 destructive: false,
                 suffix: null,
                 tooltip: `Merge this ${terminology.singular} (${selectedMergeMethod})`,
-                onClick: () => setConfirmingMerge(true),
+                onClick: () => {
+                  setArmedMergeHead(detail?.headSha);
+                  setConfirmingMerge(true);
+                },
               }
             : null;
 

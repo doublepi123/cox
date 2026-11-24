@@ -2189,8 +2189,14 @@ export const make = Effect.gen(function* () {
                     ),
                   )
                 : Effect.succeed(false);
-            return mergeSettings.pipe(
-              Effect.flatMap((removeAgentCreditsOnMerge) =>
+            return pinnedHead(project, input, "runAction").pipe(
+              Effect.flatMap((expectedHeadSha) =>
+                Effect.map(mergeSettings, (removeAgentCreditsOnMerge) => ({
+                  expectedHeadSha,
+                  removeAgentCreditsOnMerge,
+                })),
+              ),
+              Effect.flatMap(({ expectedHeadSha, removeAgentCreditsOnMerge }) =>
                 project.api
                   .runAction({
                     cwd: project.project.workspaceRoot,
@@ -2198,6 +2204,7 @@ export const make = Effect.gen(function* () {
                     host: project.host,
                     number: input.number,
                     action: input.action,
+                    ...(expectedHeadSha === undefined ? {} : { expectedHeadSha }),
                     ...(removeAgentCreditsOnMerge ? { removeAgentCreditsOnMerge: true } : {}),
                     ...(input.stackNumber === undefined ? {} : { stackNumber: input.stackNumber }),
                     ...(input.expectedStackHeads === undefined
@@ -2251,6 +2258,39 @@ export const make = Effect.gen(function* () {
           : operation;
       }),
     );
+
+  // Hosts that cannot pin a write to a commit still refuse a head that already moved.
+  const pinnedHead = (
+    project: SupportedProject,
+    input: { readonly number: number; readonly expectedHeadSha?: string | undefined },
+    operation: string,
+  ): Effect.Effect<string | undefined, PullRequestError> => {
+    const expected = input.expectedHeadSha;
+    return expected === undefined
+      ? Effect.undefined
+      : project.api
+          .getChangeRequest({
+            cwd: project.project.workspaceRoot,
+            repository: project.repository,
+            host: project.host,
+            number: input.number,
+          })
+          .pipe(
+            Effect.mapError(toPullRequestError(operation)),
+            Effect.flatMap((current) =>
+              typeof current.headSha === "string" &&
+              expected.length >= 7 &&
+              current.headSha.toLowerCase().startsWith(expected.toLowerCase())
+                ? Effect.succeed(current.headSha)
+                : Effect.fail(
+                    new PullRequestOperationError({
+                      operation,
+                      detail: `The head is now ${current.headSha ?? "unknown"}, not ${expected}. Review the new commits first.`,
+                    }),
+                  ),
+            ),
+          );
+  };
 
   const comment: PullRequestService["Service"]["comment"] = (input) =>
     (input.body.trim().length === 0
@@ -2411,17 +2451,22 @@ export const make = Effect.gen(function* () {
                 "You need write access on this repository to comment on a line of a change request.",
               );
             }
-            return project.api
-              .submitReview({
-                cwd: project.project.workspaceRoot,
-                repository: project.repository,
-                host: project.host,
-                number: input.number,
-                verdict: input.verdict,
-                body: input.body,
-                comments: input.comments,
-              })
-              .pipe(Effect.mapError(toPullRequestError("submitReview")));
+            return pinnedHead(project, input, "submitReview").pipe(
+              Effect.flatMap((expectedHeadSha) =>
+                project.api
+                  .submitReview({
+                    cwd: project.project.workspaceRoot,
+                    repository: project.repository,
+                    host: project.host,
+                    number: input.number,
+                    verdict: input.verdict,
+                    body: input.body,
+                    comments: input.comments,
+                    ...(expectedHeadSha === undefined ? {} : { expectedHeadSha }),
+                  })
+                  .pipe(Effect.mapError(toPullRequestError("submitReview"))),
+              ),
+            );
           }),
         );
       }),

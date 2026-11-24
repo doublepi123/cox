@@ -4,6 +4,7 @@ import { AsyncResult } from "effect/reactivity";
 import { expect, it, vi } from "vite-plus/test";
 
 const state = vi.hoisted(() => ({
+  headSha: "shown-head",
   status: "success" as PullRequestCheck["status"],
   extraStatus: null as PullRequestCheck["status"] | null,
   mergeMethods: ["merge"] as Array<"merge" | "squash" | "rebase">,
@@ -34,6 +35,7 @@ const queryData = () => ({
   title: "Test PR",
   state: "open",
   isDraft: false,
+  headSha: state.headSha,
   mergeability: "mergeable",
   headBranch: "feature",
   baseBranch: "main",
@@ -130,6 +132,21 @@ it("merges with the last selected merge method", async () => {
         .click();
     });
   await clickMerge(container);
+  state.headSha = "pushed-head";
+  await act(async () => {
+    await screen.rerender(
+      <ThreadDetailsPrRow
+        environmentId={EnvironmentId.make("environment")}
+        pr={null}
+        number={1}
+        status={null}
+        project={null}
+        label="Test PR"
+        openAriaLabel="Open PR"
+        onOpen={vi.fn()}
+      />,
+    );
+  });
   const dialog = document.querySelector('[role="alertdialog"]')!;
   expect(dialog.textContent).toContain("using squash");
   await clickMerge(dialog);
