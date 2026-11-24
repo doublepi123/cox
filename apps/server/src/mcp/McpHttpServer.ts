@@ -42,6 +42,7 @@ import * as McpInvocationContext from "./McpInvocationContext.ts";
 import { WorkflowToolkit } from "./toolkits/workflow/tools.ts";
 import * as WorkflowHandlers from "./toolkits/workflow/handlers.ts";
 import * as MilestoneEvents from "../milestones/MilestoneEvents.ts";
+import * as ServerSettings from "../serverSettings.ts";
 import * as McpToolAccess from "./McpToolAccess.ts";
 import * as OrchestratorMcpService from "./OrchestratorMcpService.ts";
 import { PreviewControlsToolkit } from "./toolkits/previewControls/tools.ts";
@@ -190,6 +191,7 @@ const withModeLimit = (
 const makeMcpAuthMiddleware = Effect.gen(function* () {
   const registry = yield* McpSessionRegistry.McpSessionRegistry;
   const clients = yield* Effect.serviceOption(McpClientAuthenticator);
+  const settings = yield* Effect.serviceOption(ServerSettings.ServerSettingsService);
 
   const authenticateRequest = Effect.fn("McpHttpServer.authenticateRequest")(function* (
     request: HttpServerRequest.HttpServerRequest,
@@ -216,7 +218,10 @@ const makeMcpAuthMiddleware = Effect.gen(function* () {
     const origin =
       limited.client?.webOrigin ??
       Option.getOrUndefined(Option.map(requestUrl(request), (url) => url.origin));
-    return { ...limited, origin };
+    const workflows = Option.isSome(settings)
+      ? yield* settings.value.getSettings.pipe(Effect.map((current) => current.workflowsEnabled), Effect.orElseSucceed(() => false))
+      : false;
+    return { ...limited, origin, workflows };
   });
   return Effect.fnUntraced(function* (httpEffect) {
     const request = yield* HttpServerRequest.HttpServerRequest;
@@ -1190,9 +1195,9 @@ export const layerTools = Layer.mergeAll(
   layerComputerToolkit,
 );
 
-const layerWorkflowEvents = Layer.effectDiscard(
+export const layerWorkflowEvents = Layer.effectDiscard(
   Effect.gen(function* () {
-    const annotations = Context.make(McpSchema.EnabledWhen, McpInvocationContext.hiddenFromThreads);
+    const annotations = Context.make(McpSchema.EnabledWhen, McpInvocationContext.hiddenUnlessWorkflowEvents);
     for (const options of yield* MilestoneEvents.make) {
       yield* McpServer.registerEvent({ ...options, annotations });
     }

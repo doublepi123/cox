@@ -108,6 +108,7 @@ export interface McpInvocationScope {
   readonly thread: McpThreadCaller | undefined;
   readonly client: McpClientCaller | undefined;
   readonly origin?: string | undefined;
+  readonly workflows?: boolean;
 }
 
 /**
@@ -144,6 +145,12 @@ export const hiddenFromThreads = (): boolean => {
   const fiber = Fiber.getCurrent();
   const scope = fiber && Context.getOrUndefined(fiber.context, McpInvocationContext);
   return scope?.thread === undefined;
+};
+
+export const hiddenUnlessWorkflowEvents = (): boolean => {
+  const fiber = Fiber.getCurrent();
+  const scope = fiber && Context.getOrUndefined(fiber.context, McpInvocationContext);
+  return scope?.workflows === true && scope.thread === undefined;
 };
 
 export const hiddenFromOutsideClients = (): boolean => {
