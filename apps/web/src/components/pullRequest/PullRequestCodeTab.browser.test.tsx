@@ -7,6 +7,7 @@ import {
   type PullRequestDetailView,
   type PullRequestDiffResult,
 } from "@t3tools/contracts";
+import { page } from "vite-plus/test/browser";
 import { expect, it, vi } from "vite-plus/test";
 
 import "~/index.css";
@@ -159,12 +160,17 @@ function setup({ paged }: { paged: boolean }) {
 const tab = (
   refreshToken: number,
   revealRequest: { readonly path: string; readonly nonce: number } | null = null,
+  withViewed = false,
 ) => (
   <PullRequestCodeTab
     scrollerRef={() => {}}
     environmentId={EnvironmentId.make("environment")}
     reference={detail}
-    detail={detail}
+    detail={
+      withViewed
+        ? { ...detail, capabilities: { ...detail.capabilities, viewedFiles: "environment" } }
+        : detail
+    }
     selectedCommitOid={null}
     onSelectedCommitChange={() => {}}
     onRefresh={() => {}}
@@ -196,6 +202,24 @@ it("keeps tests in source order when a source basename contains a dot", async ()
     });
   } finally {
     await screen.getByRole("button", { name: "Hide file tree" }).click();
+  }
+});
+
+it("gives the Viewed checkbox a full touch target when the label is hidden", async () => {
+  setup({ paged: false });
+  const { innerWidth, innerHeight } = window;
+  await page.viewport(400, 700);
+  try {
+    const container = document.createElement("div");
+    container.className = "flex h-[600px] w-[390px]";
+    await using screen = await render(tab(0, null, true), { container });
+    const checkbox = screen.getByRole("checkbox", { name: "Viewed" });
+    await expect.element(checkbox).toBeVisible();
+    const target = checkbox.element().closest("[data-viewed-toggle]")?.getBoundingClientRect();
+    expect(target?.width).toBeGreaterThanOrEqual(44);
+    expect(target?.height).toBeGreaterThanOrEqual(44);
+  } finally {
+    await page.viewport(innerWidth, innerHeight);
   }
 });
 
