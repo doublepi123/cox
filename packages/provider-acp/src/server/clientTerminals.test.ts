@@ -361,35 +361,46 @@ describe("AcpClientTerminals", () => {
     ),
   );
 
-  it.live("bounds unreleased terminal handles without invalidating existing ids", () =>
-    withTerminals((terminals) =>
-      Effect.gen(function* () {
-        const terminalIds: string[] = [];
-        for (let index = 0; index < 64; index += 1) {
-          const created = yield* terminals.create({
-            sessionId: "session",
-            command: process.execPath,
-            args: ["-e", `process.stdout.write('${index}');`],
-          });
-          yield* terminals.waitForExit({
-            sessionId: "session",
-            terminalId: created.terminalId,
-          });
-          terminalIds.push(created.terminalId);
-        }
+  it.effect("bounds unreleased terminal handles without invalidating existing ids", () =>
+    Effect.gen(function* () {
+      const child = ChildProcessSpawner.makeHandle({
+        pid: ChildProcessSpawner.ProcessId(1),
+        exitCode: Effect.succeed(ChildProcessSpawner.ExitCode(0)),
+        isRunning: Effect.succeed(false),
+        kill: () => Effect.void,
+        stdin: Sink.drain,
+        stdout: Stream.empty,
+        stderr: Stream.empty,
+        all: Stream.empty,
+        getInputFd: () => Sink.drain,
+        getOutputFd: () => Stream.empty,
+        unref: Effect.succeed(Effect.void),
+      });
+      const terminals = yield* makeAcpClientTerminals({ defaultCwd: process.cwd() }).pipe(
+        Effect.provideService(
+          ChildProcessSpawner.ChildProcessSpawner,
+          ChildProcessSpawner.make(() => Effect.succeed(child)),
+        ),
+      );
+      yield* Effect.addFinalizer(() => terminals.disposeAll);
 
-        const rejected = yield* terminals
-          .create({
-            sessionId: "session",
-            command: process.execPath,
-            args: ["-e", ""],
-          })
-          .pipe(Effect.result);
-        expect(Result.isFailure(rejected)).toBe(true);
-        expect(terminals.readOutputSnapshot("session", terminalIds[0]!)).toBeDefined();
-        expect(terminals.readOutputSnapshot("session", terminalIds.at(-1)!)).toBeDefined();
-      }),
-    ),
+      const request = { sessionId: "session", command: "fixture" };
+      const terminalIds: string[] = [];
+      for (let index = 0; index < 64; index += 1) {
+        const { terminalId } = yield* terminals.create(request);
+        yield* terminals.waitForExit({ sessionId: request.sessionId, terminalId });
+        terminalIds.push(terminalId);
+      }
+
+      const rejected = yield* Effect.flip(terminals.create(request));
+      expect(rejected.message).toContain("limit of 64 unreleased terminals");
+      expect(new Set(terminalIds).size).toBe(64);
+      for (const terminalId of terminalIds) {
+        const handle = { sessionId: request.sessionId, terminalId };
+        expect((yield* terminals.output(handle)).exitStatus?.exitCode).toBe(0);
+        expect(terminals.readOutputSnapshot(handle.sessionId, handle.terminalId)).toBeDefined();
+      }
+    }).pipe(Effect.scoped),
   );
 
   it.live("bounds aggregate output retained across unreleased terminals", () =>
