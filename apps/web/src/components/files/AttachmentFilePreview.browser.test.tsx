@@ -2429,6 +2429,77 @@ it.each([
   },
 );
 
+it.each([
+  [false, "Forecast"],
+  [true, "Overview"],
+] as const)(
+  "moves through Excel tabs before the preceding sheet commits (wrap: %s)",
+  async (wrap, expected) => {
+    const { default: JSZip } = await import("jszip");
+    const zip = new JSZip();
+    const relationship = "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
+    const names = ["Overview", "Actuals", "Forecast"];
+    zip.file(
+      "xl/workbook.xml",
+      `<workbook xmlns:r="${relationship}"><sheets>${names
+        .map(
+          (name, index) =>
+            `<sheet name="${name}" sheetId="${index + 1}" r:id="s${index}"${wrap && index === 2 ? ' state="hidden"' : ""}/>`,
+        )
+        .join("")}</sheets></workbook>`,
+    );
+    zip.file(
+      "xl/_rels/workbook.xml.rels",
+      `<Relationships>${names
+        .map(
+          (_, index) =>
+            `<Relationship Id="s${index}" Type="${relationship}/worksheet" Target="worksheets/sheet${index}.xml"/>`,
+        )
+        .join("")}</Relationships>`,
+    );
+    for (const [index] of names.entries()) {
+      zip.file(
+        `xl/worksheets/sheet${index}.xml`,
+        `<worksheet><sheetData><row r="1"><c r="A1"><v>${index}</v></c></row></sheetData></worksheet>`,
+      );
+    }
+    const bytes = await zip.generateAsync({ type: "arraybuffer" });
+    const { default: Spreadsheet } = await import("./office/Spreadsheet");
+    await using screen = await render(
+      <div style={{ display: "flex", height: 400, width: 600 }}>
+        <Spreadsheet
+          bytes={bytes}
+          onDetails={() => {}}
+          onError={(error) => {
+            throw error;
+          }}
+        />
+      </div>,
+    );
+    const overview = await vi.waitFor(() => {
+      const tab = screen.container.querySelector<HTMLButtonElement>(
+        '[role="tab"][aria-selected="true"]',
+      );
+      expect(tab).not.toBeNull();
+      return tab!;
+    });
+    await act(() => {
+      overview.focus();
+      for (let press = 0; press < 2; press++) {
+        document.activeElement?.dispatchEvent(
+          new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true, cancelable: true }),
+        );
+      }
+    });
+    expect(document.activeElement?.textContent).toBe(expected);
+    await vi.waitFor(() => {
+      expect(screen.container.querySelector('[role="grid"]')?.getAttribute("aria-label")).toBe(
+        expected,
+      );
+    });
+  },
+);
+
 it("copies every indexed line rather than the mounted preview rows", async () => {
   const text = Array.from({ length: 10_000 }, (_, i) => `line-${i}`).join("\n");
   const copyContents = { current: null as (() => Promise<string>) | null };
