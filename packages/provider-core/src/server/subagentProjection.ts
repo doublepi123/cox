@@ -298,7 +298,7 @@ export function subagentResultForRun(
 export function delegatedTaskProgress(projection: {
   readonly runs: OrchestrationV2ThreadProjection["runs"];
   readonly messages: ReadonlyArray<
-    Pick<OrchestrationV2ConversationMessage, "runId" | "notification">
+    Pick<OrchestrationV2ConversationMessage, "runId" | "notification" | "createdBy">
   >;
   readonly subagents: ReadonlyArray<
     Pick<OrchestrationV2ThreadProjection["subagents"][number], "status" | "completionDelivery">
@@ -317,8 +317,17 @@ export function delegatedTaskProgress(projection: {
   const workRuns = projection.runs.filter(
     (run) => !monitorRuns.has(run.id) && run.status !== "rolled_back",
   );
+  const userRunIds = new Set(
+    projection.messages.flatMap((message) =>
+      message.createdBy === "user" && message.notification === undefined && message.runId !== null
+        ? [message.runId]
+        : [],
+    ),
+  );
   const active = workRuns.some(
-    (run) => !terminal(run.status) && !(run.status === "queued" && run.queueHeld === true),
+    (run) =>
+      !terminal(run.status) &&
+      (run.status !== "queued" || run.queueHeld !== true || userRunIds.has(run.id)),
   );
   const children =
     projection.subagents.some(
