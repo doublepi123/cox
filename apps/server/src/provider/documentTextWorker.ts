@@ -179,6 +179,20 @@ function withoutNotesPagePlaceholders(node: XmlNode): XmlNode {
       .map((child) => (typeof child === "string" ? child : withoutNotesPagePlaceholders(child))),
   };
 }
+function slideRelationshipId(slide: XmlNode, inheritedAttributes: XmlNode["attrs"]) {
+  for (const [name, value] of Object.entries(slide.attrs)) {
+    if (!name.endsWith(":id")) continue;
+    const binding = `xmlns:${name.slice(0, -3)}`;
+    const namespace = slide.attrs[binding] ?? inheritedAttributes[binding];
+    if (
+      namespace === "http://schemas.openxmlformats.org/officeDocument/2006/relationships" ||
+      namespace === "http://purl.oclc.org/ooxml/officeDocument/relationships"
+    )
+      return value;
+  }
+  return slide.attrs["r:id"] ?? slide.attrs.id;
+}
+
 function* inCell(parts: Iterable<TextPart>): Generator<TextPart, void> {
   yield CELL_START;
   yield* parts;
@@ -682,9 +696,12 @@ async function* document(path: string, extension: string): AsyncGenerator<TextPa
     } else if (extension === ".pptx") {
       const rels = relations("ppt/_rels/presentation.xml.rels");
       let index = 0;
-      for (const slide of all(read("ppt/presentation.xml"), "sldId")) {
+      const presentation = all(read("ppt/presentation.xml"), "presentation").next().value;
+      const slideList = presentation && all(presentation, "sldIdLst").next().value;
+      const inheritedAttributes = { ...presentation?.attrs, ...slideList?.attrs };
+      for (const slide of presentation ? all(slideList ?? presentation, "sldId") : []) {
         yield `\n\n## Slide ${++index}\n`;
-        const target = rels.get(slide.attrs["r:id"] ?? slide.attrs.id)?.Target;
+        const target = rels.get(slideRelationshipId(slide, inheritedAttributes))?.Target;
         if (!target) {
           skip(`slide relationship ${index}`);
           continue;

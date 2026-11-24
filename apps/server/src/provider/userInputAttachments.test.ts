@@ -925,7 +925,7 @@ describe("question answer paths", () => {
           bounded: true,
           parts: {
             "ppt/presentation.xml":
-              '<p:presentation><p:sldIdLst><p:sldId id="1" r:id="b"/><p:sldId id="2" r:id="a"/></p:sldIdLst></p:presentation>',
+              '<p:presentation xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><p:sldIdLst xmlns:links="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><p:sldId r:id="b" id="1"/><p:sldId links:id="a" id="2"/></p:sldIdLst></p:presentation>',
             "ppt/_rels/presentation.xml.rels":
               '<Relationships><Relationship Id="a" Target="slides/slide1.xml"/><Relationship Id="b" Target="slides/slide2.xml"/></Relationships>',
             "ppt/slides/slide1.xml": "<p:sld><a:p><a:r><a:t>Departure</a:t></a:r></a:p></p:sld>",
