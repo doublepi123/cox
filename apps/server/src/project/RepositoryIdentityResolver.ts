@@ -48,15 +48,34 @@ function isLocalRemoteUrl(url: string): boolean {
   return colonIndex === -1 || (slashIndex !== -1 && slashIndex < colonIndex);
 }
 
-function parseRemoteFetchUrls(stdout: string): Map<string, string> {
+// `git remote -v` applies url.*.insteadOf, which can point a GitHub remote at a proxy or mirror.
+// A configured URL that names a forge wins; a shorthand like `gh:` is known only once rewritten.
+function parseConfiguredRemoteUrls(config: string): Map<string, string> {
+  const urls = new Map<string, string>();
+  for (const line of config.split("\n")) {
+    const match = /^remote\.(\S+)\.url (.+)$/u.exec(line);
+    // Git fetches from the first of several configured URLs.
+    if (match?.[1] && match[2] && !urls.has(match[1])) urls.set(match[1], match[2]);
+  }
+  return urls;
+}
+
+function parseRemoteFetchUrls(
+  stdout: string,
+  configuredUrls: ReadonlyMap<string, string>,
+): Map<string, string> {
   const remotes = new Map<string, string>();
-  for (const line of stdout.split("\n")) {
-    const trimmed = line.trim();
-    if (trimmed.length === 0) continue;
+  for (const line of stdout.split(/\r?\n/u)) {
     // Partial clones append the promisor filter, e.g. `(fetch) [blob:none]`.
-    const match = /^(\S+)\s+(\S+)\s+\((fetch|push)\)(?:\s+\[[^\]]+\])?$/.exec(trimmed);
+    const match = /^(\S+)\t(.+) \((fetch|push)\)(?:\s+\[[^\]]+\])?$/u.exec(line);
     if (!match) continue;
-    const [, remoteName = "", remoteUrl = "", direction = ""] = match;
+    const [, remoteName = "", fetchUrl = "", direction = ""] = match;
+    const configured = configuredUrls.get(remoteName);
+    const remoteUrl =
+      configured !== undefined &&
+      (sourceControlDefinitions.recognizeRemote(configured)?.kind ?? "unknown") !== "unknown"
+        ? configured
+        : fetchUrl;
     if (
       direction !== "fetch" ||
       remoteName.length === 0 ||
@@ -237,19 +256,27 @@ const resolveRepositoryIdentityFromCacheKey = Effect.fn(
   cacheKey: RepositoryIdentityCacheKey,
 ): Effect.fn.Return<RepositoryIdentity | null, never, ProcessRunner.ProcessRunner> {
   const processRunner = yield* ProcessRunner.ProcessRunner;
-  const remoteResult = yield* processRunner
-    .run({
-      command: "git",
-      args: ["-C", cacheKey.rootPath, ...(cacheKey.isBare ? ["--git-dir=."] : []), "remote", "-v"],
-      env: gitEnv(yield* HostProcess.Platform),
-      timeoutBehavior: "timedOutResult",
-    })
-    .pipe(Effect.option);
-  if (remoteResult._tag === "None" || remoteResult.value.code !== 0) {
-    return null;
-  }
-
-  const remotes = parseRemoteFetchUrls(remoteResult.value.stdout);
+  const env = gitEnv(yield* HostProcess.Platform);
+  const run = (args: ReadonlyArray<string>) =>
+    processRunner
+      .run({
+        command: "git",
+        args: ["-C", cacheKey.rootPath, ...(cacheKey.isBare ? ["--git-dir=."] : []), ...args],
+        env,
+        timeoutBehavior: "timedOutResult",
+      })
+      .pipe(Effect.option);
+  const [remoteResult, config] = yield* Effect.all(
+    [run(["remote", "-v"]), run(["config", "--get-regexp", "^remote\\..*\\.url$"])],
+    { concurrency: 2 },
+  );
+  if (remoteResult._tag === "None" || remoteResult.value.code !== 0) return null;
+  const remotes = parseRemoteFetchUrls(
+    remoteResult.value.stdout,
+    parseConfiguredRemoteUrls(
+      config._tag === "Some" && config.value.code === 0 ? config.value.stdout : "",
+    ),
+  );
   const remote = pickPrimaryRemote(remotes);
   return remote
     ? buildRepositoryIdentity({
