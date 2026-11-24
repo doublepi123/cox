@@ -90,3 +90,34 @@ it.effect("prints durations that round up to a second in seconds", () =>
     assert.deepStrictEqual(row?.trim().split(/\s+/).slice(3, 6), ["999ms", "1s", "1s"]);
   }).pipe(Effect.provide(services), Effect.scoped),
 );
+
+it.effect("prints exact dates while keeping sub-millisecond windows and rates", () =>
+  Effect.gen(function* () {
+    const lines = ["1795478399998000000", "1795478399998999950", "1795478399999999999"].map(
+      (endTimeUnixNano) => JSON.stringify({ name: "rpc", durationMs: 1, endTimeUnixNano }),
+    );
+    const summarizer = makeTraceSpanSummary(1_795_478_399_998.25);
+    lines.forEach(summarizer.addLine);
+    const summary = summarizer.finish();
+    assert.strictEqual(summary.spanCount, 2);
+    assert.strictEqual(summary.spans[0]?.perMinute?.toFixed(1), "120000.0");
+
+    const fs = yield* FileSystem.FileSystem;
+    const baseDir = yield* fs.makeTempDirectoryScoped({ prefix: "cox-trace-boundary-" });
+    yield* fs.makeDirectory(`${baseDir}/userdata/logs`, { recursive: true });
+    yield* fs.writeFileString(`${baseDir}/userdata/logs/server.trace.ndjson`, lines.join("\n"));
+    yield* run(["summary", "--base-dir", baseDir]);
+    assert.include(
+      (yield* TestConsole.logLines).join("\n"),
+      "from 2026-11-23T23:59:59.998Z to 2026-11-23T23:59:59.999Z",
+    );
+  }).pipe(Effect.provide(services), Effect.scoped),
+);
+
+it("keeps reading end times in other numeric spellings", () => {
+  const summarizer = makeTraceSpanSummary();
+  summarizer.addLine(
+    JSON.stringify({ name: "rpc", durationMs: 1, endTimeUnixNano: "1795478400001e6" }),
+  );
+  assert.strictEqual(summarizer.finish().lastEndMs, 1_795_478_400_001);
+});
