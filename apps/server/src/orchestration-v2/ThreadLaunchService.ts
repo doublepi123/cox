@@ -9,6 +9,7 @@ import {
   type ModelSelection,
   type OrchestrationV2Actor,
   type OrchestrationV2CreationSource,
+  type OrchestrationV2WorkflowOrigin,
   type OrchestrationV2ProviderThreadNativeMetadata,
   type OrchestrationV2ThreadProjection,
   type ProviderDriverKind,
@@ -91,6 +92,7 @@ export interface ThreadLaunchInput {
   /** The caller chose `title`, so a first message keeps it. */
   readonly titleRenamed?: boolean;
   readonly modelSelection: ModelSelection;
+  readonly workflowRun?: OrchestrationV2WorkflowOrigin;
   readonly runtimeMode: RuntimeMode;
   readonly interactionMode: ProviderInteractionMode;
   readonly workspaceStrategy: ThreadLaunchWorkspaceStrategy;
@@ -1048,6 +1050,7 @@ const make = Effect.gen(function* () {
                 ...(input.importedNativeThread === undefined
                   ? {}
                   : { importedNativeThread: input.importedNativeThread }),
+                ...(input.workflowRun === undefined ? {} : { workflowRun: input.workflowRun }),
                 createdBy: input.createdBy,
                 creationSource: input.creationSource,
               });

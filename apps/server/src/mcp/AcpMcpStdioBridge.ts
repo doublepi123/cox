@@ -13,6 +13,17 @@ import { discardResponseBody, responsePayloads } from "@t3tools/shared/mcpRespon
 
 export class AcpMcpBridgeError extends Error {
   readonly _tag = "AcpMcpBridgeError";
+  constructor(
+    message: string,
+    options?: ErrorOptions & {
+      readonly rpcError?: { readonly code: number; readonly message: string };
+    },
+  ) {
+    super(message, options);
+    this.rpcError = options?.rpcError;
+  }
+
+  readonly rpcError: { readonly code: number; readonly message: string } | undefined;
 }
 
 const bridgeError = (cause: unknown): AcpMcpBridgeError =>
@@ -119,9 +130,20 @@ export const mcpToolSession = (
     const responses = yield* send({ jsonrpc: "2.0", id, method, params });
     const envelope = asEnvelope(responses.find((entry) => asEnvelope(entry)?.id === id));
     if (envelope === null || envelope.error !== undefined) {
+      const error = envelope?.error;
+      const rpcError =
+        typeof error === "object" &&
+        error !== null &&
+        "code" in error &&
+        typeof error.code === "number" &&
+        "message" in error &&
+        typeof error.message === "string"
+          ? { code: error.code, message: error.message }
+          : undefined;
       return yield* Effect.fail(
         new AcpMcpBridgeError(
           `Cox MCP ${method} failed${envelope?.error === undefined ? "." : `: ${JSON.stringify(envelope.error)}`}`,
+          rpcError === undefined ? undefined : { rpcError },
         ),
       );
     }

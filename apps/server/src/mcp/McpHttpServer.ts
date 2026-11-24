@@ -39,6 +39,9 @@ import {
 } from "../telemetry/ProviderDimensions.ts";
 import { advertisedJsonSchema } from "./advertisedJsonSchema.ts";
 import * as McpInvocationContext from "./McpInvocationContext.ts";
+import { WorkflowToolkit } from "./toolkits/workflow/tools.ts";
+import * as WorkflowHandlers from "./toolkits/workflow/handlers.ts";
+import * as MilestoneEvents from "../milestones/MilestoneEvents.ts";
 import * as McpToolAccess from "./McpToolAccess.ts";
 import * as OrchestratorMcpService from "./OrchestratorMcpService.ts";
 import { PreviewControlsToolkit } from "./toolkits/previewControls/tools.ts";
@@ -1176,6 +1179,7 @@ export const layerTools = Layer.mergeAll(
   layerPreviewToolkit,
   layerOrchestratorToolkit,
   layerThreadToolkit,
+  toolkitRegistration(WorkflowToolkit, WorkflowHandlers.layer),
   layerAttachmentToolkit,
   layerProjectRegistration,
   layerEnvironmentToolkit,
@@ -1186,4 +1190,13 @@ export const layerTools = Layer.mergeAll(
   layerComputerToolkit,
 );
 
-export const layer = layerMcpTransport(layerTools);
+const layerWorkflowEvents = Layer.effectDiscard(
+  Effect.gen(function* () {
+    const annotations = Context.make(McpSchema.EnabledWhen, McpInvocationContext.hiddenFromThreads);
+    for (const options of yield* MilestoneEvents.make) {
+      yield* McpServer.registerEvent({ ...options, annotations });
+    }
+  }),
+);
+
+export const layer = layerMcpTransport(Layer.merge(layerTools, layerWorkflowEvents));

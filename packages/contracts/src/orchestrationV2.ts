@@ -138,6 +138,14 @@ export const OrchestrationV2DelegatedFrom = Schema.Struct({
 });
 export type OrchestrationV2DelegatedFrom = typeof OrchestrationV2DelegatedFrom.Type;
 
+export const OrchestrationV2WorkflowOrigin = Schema.Struct({
+  environmentId: EnvironmentId,
+  runId: TrimmedNonEmptyString,
+  workflow: TrimmedNonEmptyString,
+  step: TrimmedNonEmptyString,
+});
+export type OrchestrationV2WorkflowOrigin = typeof OrchestrationV2WorkflowOrigin.Type;
+
 export const OrchestrationV2NativeRefStrength = Schema.Literals(["strong", "weak", "none"]);
 export type OrchestrationV2NativeRefStrength = typeof OrchestrationV2NativeRefStrength.Type;
 
@@ -155,12 +163,19 @@ export const OrchestrationV2AppThreadLineage = Schema.Struct({
   relationshipToParent: Schema.NullOr(Schema.Literals(["fork", "subagent"])),
   rootThreadId: ThreadId,
   sideChat: Schema.optional(Schema.Boolean),
+  /** An agent step of a workflow run, which the thread's `workflowRun` names. */
+  workflowStep: Schema.optional(Schema.Boolean),
 });
 export type OrchestrationV2AppThreadLineage = typeof OrchestrationV2AppThreadLineage.Type;
 
-/** Subagents and side chats live inside their parent's view, never in thread lists. */
+/**
+ * Subagents and side chats live inside their parent's view, and a workflow run's agent steps
+ * inside the run's, never in thread lists.
+ */
 export const isListedThreadLineage = (lineage: OrchestrationV2AppThreadLineage): boolean =>
-  lineage.relationshipToParent !== "subagent" && lineage.sideChat !== true;
+  lineage.relationshipToParent !== "subagent" &&
+  lineage.sideChat !== true &&
+  lineage.workflowStep !== true;
 
 export const OrchestrationV2ContextTransferType = Schema.Literals([
   "fork",
@@ -460,6 +475,7 @@ export const OrchestrationV2AppThread = Schema.Struct({
   historyOrigin: Schema.optional(OrchestrationV2ThreadHistoryOrigin),
   linkOrigin: Schema.optional(OrchestrationV2LinkOrigin),
   delegatedFrom: Schema.optional(OrchestrationV2DelegatedFrom),
+  workflowRun: Schema.optional(OrchestrationV2WorkflowOrigin),
   lineage: OrchestrationV2AppThreadLineage,
   forkedFrom: Schema.NullOr(
     Schema.Union([
@@ -2418,6 +2434,7 @@ export const OrchestrationV2ThreadShell = Schema.Struct({
   historyOrigin: Schema.optional(OrchestrationV2ThreadHistoryOrigin),
   linkOrigin: Schema.optional(OrchestrationV2LinkOrigin),
   delegatedFrom: Schema.optional(OrchestrationV2DelegatedFrom),
+  workflowRun: Schema.optional(OrchestrationV2WorkflowOrigin),
   latestRunId: Schema.NullOr(RunId),
   latestRunRequestedAt: Schema.optional(Schema.NullOr(Schema.DateTimeUtc)),
   latestRunStartedAt: Schema.optional(Schema.NullOr(Schema.DateTimeUtc)),
@@ -3252,6 +3269,7 @@ export const OrchestrationV2Command = Schema.Union([
     interactionMode: ProviderInteractionMode,
     branch: Schema.NullOr(TrimmedNonEmptyString),
     worktreePath: Schema.NullOr(TrimmedNonEmptyString),
+    workflowRun: Schema.optional(OrchestrationV2WorkflowOrigin),
     importedNativeThread: Schema.optional(
       Schema.Struct({
         ref: Schema.Struct({

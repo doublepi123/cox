@@ -16,6 +16,7 @@ import { extendConnectionAttemptTimeout, keepOutboundFetchOnHttp1 } from "./outb
 import { sharedServerCommandFlags } from "./cli/config.ts";
 import { projectCommand } from "./cli/project.ts";
 import { threadCommand } from "./cli/thread.ts";
+import { workflowCommand } from "./cli/workflow.ts";
 import { runDefaultServerCommand, serveCommand, startCommand } from "./cli/server.ts";
 import { claudeHistoryCommand } from "./cli/claudeHistory.ts";
 import { themeCommand } from "./cli/theme.ts";
@@ -36,6 +37,7 @@ export const makeCli = () =>
       browserCommand,
       projectCommand,
       threadCommand,
+      workflowCommand,
       claudeHistoryCommand,
       themeCommand,
       traceCommand,

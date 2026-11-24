@@ -280,6 +280,7 @@ const T3_MCP_TOOLS: Readonly<Record<string, T3McpToolDefinition>> = {
     "question-respond",
   ),
   cox_submit_output: tool(["Submit", "Submitting", "Submitted", "the result"], "thread-send"),
+  cox_workflow: tool(["Use", "Using", "Used", "workflow runs"], "thread-send"),
   cox_queue_list: tool(["List", "Listing", "Listed", "queued messages"], "queue-list"),
   cox_queue_read: tool(["Read", "Reading", "Read", "a queued message"], "queue-read"),
   cox_queue_edit: tool(["Edit", "Editing", "Edited", "a queued message"], "queue-edit"),

@@ -89,6 +89,7 @@ describe("runMigrations", () => {
         [83, "TaskFolders"],
         [84, "WorktreePathKeyIndex"],
         [85, "DeferredSlashCommandIndex"],
+        [86, "Workflows"],
       ]);
 
       const tables = yield* sql<{ readonly name: string }>`

@@ -16,6 +16,7 @@ import {
   ComposerContextId,
   type ChatAttachment,
   CommandId,
+  EnvironmentId,
   DEFAULT_SERVER_SETTINGS,
   GitCommandError,
   TextGenerationError,
@@ -2865,4 +2866,38 @@ it.effect("replays an accepted send after the project disables the instance", ()
       assert.fail(`expected ThreadManagementProviderInstanceDisabledError, got ${fresh._tag}`);
     }
   }).pipe(Effect.provide(Layer.mergeAll(harness.layer, layerFiles)));
+});
+
+it.effect("lists workflow agent threads only when child threads are requested", () => {
+  const harness = makeHarness();
+  return Effect.gen(function* () {
+    const launches = yield* ThreadLaunch.ThreadLaunchService;
+    const threads = yield* ThreadManagement.ThreadManagementService;
+    const regular = yield* launches.launch(
+      launchInput({ command: "command:regular", thread: "thread:regular" }),
+    );
+    const workflowRun = {
+      environmentId: EnvironmentId.make("environment:local"),
+      runId: "run:1",
+      workflow: "review",
+      step: "agent",
+    };
+    const launched = yield* launches.launch({
+      ...launchInput({ command: "command:workflow-step", thread: "thread:workflow-step" }),
+      createdBy: "system",
+      creationSource: "server",
+      workflowRun,
+    });
+    assert.deepEqual(launched.projection.thread.workflowRun, workflowRun);
+    const listed = yield* threads.listProjectThreads({ projectId, includeSubagents: false });
+    assert.deepEqual(
+      listed.map((thread) => thread.id),
+      [regular.threadId],
+    );
+    const all = yield* threads.listProjectThreads({ projectId, includeSubagents: true });
+    assert.include(
+      all.map((thread) => thread.id),
+      launched.threadId,
+    );
+  }).pipe(Effect.provide(harness.layer));
 });

@@ -238,6 +238,7 @@ parentPort.on("message", ({ id, sql, params, cached, values, raw, safeIntegers }
       statement.setReturnArrays(values);
       parentPort.postMessage({ id, rows: statement.all(...params) });
     } else {
+      if (!raw) statement.setReadBigInts(true);
       const result = statement.run(...params);
       parentPort.postMessage({ id, rows: raw ? result : [] });
     }
@@ -1010,6 +1011,7 @@ const make = Effect.fn("makeWithDatabase")(function* (
                 if (arrays) statement.setReturnArrays(true);
                 return statement.all(...(params as any));
               }
+              if (mode !== "raw") statement.setReadBigInts(true);
               const result = statement.run(...(params as any));
               return mode === "raw" ? (result as unknown as ReadonlyArray<unknown>) : [];
             });

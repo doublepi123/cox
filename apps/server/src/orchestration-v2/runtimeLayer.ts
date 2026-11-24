@@ -54,6 +54,7 @@ import * as ResourceCleanupService from "./ResourceCleanupService.ts";
 import * as RuntimePolicy from "./RuntimePolicy.ts";
 import * as RuntimeRequestService from "./RuntimeRequestService.ts";
 import * as ThreadManagementService from "./ThreadManagementService.ts";
+import * as WorkflowRuntime from "../workflows/WorkflowRuntime.ts";
 import * as ThreadLaunchService from "./ThreadLaunchService.ts";
 import * as ThreadForkService from "./ThreadForkService.ts";
 import * as TurnItemPositionStore from "./TurnItemPositionStore.ts";
@@ -389,6 +390,12 @@ export const layer = Layer.mergeAll(
   layerLegacyV1ThreadImporterProvided,
 );
 
+const layerWorkflowsProvided = WorkflowRuntime.layer.pipe(
+  Layer.provide(
+    Layer.mergeAll(layerThreadLaunchProvided, layerThreadManagementProvided, layerProjectService),
+  ),
+);
+
 export const layerProduction = Layer.mergeAll(
   WorktreeBranchSync.layer.pipe(
     Layer.provide(Layer.merge(layerThreadManagementProvided, ProjectionStore.layer)),
@@ -398,6 +405,7 @@ export const layerProduction = Layer.mergeAll(
   layerManagedProjectFoldersProvided,
   layerThreadLaunchProvided,
   layerScheduledTaskProvided,
+  layerWorkflowsProvided,
   layerScratchThreadPromotionProvided,
   layerSecretRequestsProvided,
   UsageLimitRecoveryWorker.layer.pipe(
