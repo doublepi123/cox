@@ -389,6 +389,7 @@ function* rtf(source: string): Generator<string, void> {
   if (!source.startsWith("{\\rtf")) throw new Error("Invalid RTF document");
   let state = {
     skip: false,
+    hiddenText: false,
     uc: 1,
     font: 0,
     fontTable: false,
@@ -399,6 +400,7 @@ function* rtf(source: string): Generator<string, void> {
   const fonts = new Map<number, typeof state.decoder>();
   let defaultFont = 0;
   const decoder = () => fonts.get(state.font) ?? state.decoder;
+  const hidden = () => state.skip || state.hiddenText;
   const symbols = new Map([
     ["endash", "–"],
     ["emdash", characterEntities.mdash],
@@ -428,7 +430,7 @@ function* rtf(source: string): Generator<string, void> {
       const word = /^([a-z]+)(-?\d+)? ?/i.exec(rest);
       if (hex) {
         if (fallback) fallback--;
-        else if (!state.skip) yield decoder().decode(Uint8Array.of(Number.parseInt(hex[1]!, 16)));
+        else if (!hidden()) yield decoder().decode(Uint8Array.of(Number.parseInt(hex[1]!, 16)));
         i += 3;
       } else if (word) {
         i += word[0].length;
@@ -466,7 +468,11 @@ function* rtf(source: string): Generator<string, void> {
           const codePage = FONT_CODE_PAGES.get(value);
           if (codePage) fonts.set(state.font, new TextDecoder(codePage));
         }
-        if (control === "plain") state.font = defaultFont;
+        if (control === "v") state.hiddenText = value !== 0;
+        else if (control === "plain") {
+          state.hiddenText = false;
+          state.font = defaultFont;
+        }
         if (control === "ansicpg") {
           // Per-byte decoding only supports single-byte Windows code pages.
           if (value !== 874 && (value < 1250 || value > 1258))
@@ -476,23 +482,25 @@ function* rtf(source: string): Generator<string, void> {
           if (!Number.isSafeInteger(value) || value < 0)
             throw new Error("Invalid RTF fallback count");
           state.uc = value;
-        } else if (control === "u" && !state.skip) {
-          yield String.fromCharCode(value < 0 ? value + 65536 : value);
+        } else if (control === "u") {
+          if (!hidden()) yield String.fromCharCode(value < 0 ? value + 65536 : value);
           fallback = state.uc;
-        } else if (!state.skip && ["par", "line", "row"].includes(control)) yield "\n";
-        else if (!state.skip && ["tab", "cell"].includes(control)) yield "\t";
-        else if (!state.skip && symbols.has(control)) yield symbols.get(control)!;
+        } else if (!hidden() && ["par", "line"].includes(control)) yield "\n";
+        else if (!hidden() && control === "tab") yield "\t";
+        else if (!state.skip && control === "row") yield "\n";
+        else if (!state.skip && control === "cell") yield "\t";
+        else if (!hidden() && symbols.has(control)) yield symbols.get(control)!;
       } else {
         i++;
         if (fallback) fallback--;
         else if (rest[0] === "*") state.skip = true;
-        else if (!state.skip && (rest[0] === "\n" || rest[0] === "\r")) yield "\n";
-        else if (!state.skip && ["\\", "{", "}"].includes(rest[0]!)) yield rest[0]!;
-        else if (!state.skip && symbols.has(rest[0]!)) yield symbols.get(rest[0]!)!;
+        else if (!hidden() && (rest[0] === "\n" || rest[0] === "\r")) yield "\n";
+        else if (!hidden() && ["\\", "{", "}"].includes(rest[0]!)) yield rest[0]!;
+        else if (!hidden() && symbols.has(rest[0]!)) yield symbols.get(rest[0]!)!;
       }
-    } else if (!state.skip && char !== "\n" && char !== "\r") {
+    } else if (char !== "\n" && char !== "\r") {
       if (fallback) fallback--;
-      else
+      else if (!hidden())
         yield char.charCodeAt(0) < 128 ? char : decoder().decode(Uint8Array.of(char.charCodeAt(0)));
     }
   }
