@@ -15,7 +15,8 @@ describe("squashAtomCommandFailure", () => {
 
     expect(error).toBeInstanceOf(Error);
     expect(error).toMatchObject({
-      message: "RPC contract is registered but unavailable in the control plane: projectClone.start",
+      message:
+        "RPC contract is registered but unavailable in the control plane: projectClone.start",
     });
   });
 });
