@@ -54,6 +54,7 @@ function sgr(pen: string): string {
 const lineLengths = new WeakMap<Line, number>();
 
 function lineLength(line: Line): number {
+  if (line.length <= 1) return line[0]?.text.length ?? 0;
   const cached = lineLengths.get(line);
   if (cached !== undefined) return cached;
   let length = 0;
@@ -415,8 +416,13 @@ class Terminal {
 
   write(text: string): void {
     let line = this.lines[this.row]!;
-    const length = lineWidth(line);
     const width = textWidth(text);
+    if (this.col === 0 && line.length === 0 && text.length <= this.maxChars) {
+      this.lines[this.row] = [{ pen: this.pen, text }];
+      this.col = width;
+      return;
+    }
+    const length = lineWidth(line);
     if (this.col === length && this.owned.has(line)) {
       const units = lineLength(line);
       pushRun(line as Array<Run>, { pen: this.pen, text });
