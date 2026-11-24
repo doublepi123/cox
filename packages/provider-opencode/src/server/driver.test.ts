@@ -211,7 +211,9 @@ it.layer(layer)("OpenCodeDriver runtime selection", (it) => {
         ["/project-a", "orchestrator"],
         ["/project-b", "reviewer"],
       ] as const) {
-        const snapshot = yield* instance.snapshotForCwd!(cwd);
+        const loading = yield* instance.snapshotForCwd!(cwd).pipe(Effect.forkChild);
+        yield* TestClock.adjust("10 seconds");
+        const snapshot = yield* Fiber.join(loading);
         assert.strictEqual(snapshot.status, "ready");
         assert.isNotEmpty(snapshot.models);
         assert.deepEqual(snapshot.optionDescriptors?.[0], {

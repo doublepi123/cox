@@ -762,7 +762,7 @@ export class ClientUpdates {
             AbortSignal.any([signal, AbortSignal.timeout(15 * 60_000)]),
           );
           if (replacement === undefined)
-            throw new Error("A newer desktop update is no longer available.");
+            throw new Error("A newer desktop update is no longer available.", { cause: error });
           installer = replacement.path;
           installArtifact = replacement.artifact;
         }
