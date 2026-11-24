@@ -557,7 +557,7 @@ describe("acpRegistrySnapshotReadiness", () => {
       ];
       const modelConfigurations = yield* discoverAcpRegistryModelOptions({
         getConfigOptions: Effect.sync(() => config(modelId)),
-        getModeState: Effect.void,
+        getModeState: Effect.sync(() => undefined),
         setConfigOption: (_option, value) =>
           Effect.sync(() => {
             modelId = String(value);
