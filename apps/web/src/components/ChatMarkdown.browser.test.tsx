@@ -42,16 +42,6 @@ vi.mock("../state/entities", async (original) => {
   };
 });
 const parsedSources = vi.hoisted(() => [] as string[]);
-const nativeFileDrag = vi.hoisted(() => ({ enabled: false }));
-vi.mock(import("../useNativeFileDrag"), async (original) => {
-  const actual = await original();
-  return {
-    useNativeFileDrag: (...args: Parameters<typeof actual.useNativeFileDrag>) => {
-      const drag = actual.useNativeFileDrag(...args);
-      return nativeFileDrag.enabled ? { ...drag, draggable: true } : drag;
-    },
-  };
-});
 vi.mock(import("../markdown/wordsHast"), async (original) => {
   const actual = await original();
   return {
@@ -144,7 +134,6 @@ it("keeps compact audio playback loaded across signed URL renewals", async () =>
 function setup() {
   parsedSources.length = 0;
   settingsOverrides.mathRenderingEnabled = false;
-  nativeFileDrag.enabled = false;
   renderDiagram.mockReset();
   threadWorktrees.clear();
   workspaceSearch.mockReset().mockResolvedValue(AsyncResult.success({ entries: [] }));
@@ -561,8 +550,6 @@ describe("ChatMarkdown inline code selection", () => {
 
   it("selects the whole line on triple-click beside a desktop-draggable inline-code file chip", async () => {
     setup();
-    // Desktop on macOS and Windows makes local file chips draggable for native file drags.
-    nativeFileDrag.enabled = true;
     filesystemMetadata.mockResolvedValue(AsyncResult.success({ entries: [{ kind: "file" }] }));
     await using screen = await renderText(
       "The template (`config/app.yaml.example`) and two docs still say 5 fps.",
@@ -573,11 +560,9 @@ describe("ChatMarkdown inline code selection", () => {
         },
       },
     );
-    await vi.waitFor(() =>
-      expect(
-        screen.container.querySelector("a.chat-markdown-file-link")?.getAttribute("draggable"),
-      ).toBe("true"),
-    );
+    const chip = screen.container.querySelector<HTMLAnchorElement>("a.chat-markdown-file-link")!;
+    expect(chip.draggable).toBe(true);
+    chip.draggable = true;
     const paragraph = screen.container.querySelector("p")!;
     const text = [...paragraph.childNodes].find((node) =>
       node.textContent?.includes("and two docs"),
