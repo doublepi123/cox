@@ -46,6 +46,7 @@ import { WorkflowToolkit } from "./toolkits/workflow/tools.ts";
 import * as WorkflowHandlers from "./toolkits/workflow/handlers.ts";
 import * as MilestoneEvents from "../milestones/MilestoneEvents.ts";
 import * as ServerSettings from "../serverSettings.ts";
+import * as McpWebhookTransport from "./McpWebhookTransport.ts";
 import * as McpToolAccess from "./McpToolAccess.ts";
 import * as OrchestratorMcpService from "./OrchestratorMcpService.ts";
 import { PreviewControlsToolkit } from "./toolkits/previewControls/tools.ts";
@@ -240,7 +241,12 @@ const makeMcpAuthMiddleware = Effect.gen(function* () {
       Effect.map(normalizeMcpHttpResponse),
       Effect.map((response) => {
         const { body } = response;
-        if (admitted.client === undefined || Option.isNone(sessions) || body._tag !== "Stream") {
+        if (
+          admitted.client === undefined ||
+          Option.isNone(sessions) ||
+          body._tag !== "Stream" ||
+          request.headers["mcp-method"] === "events/stream"
+        ) {
           return response;
         }
         const invalidated = sessions.value
@@ -1225,19 +1231,57 @@ export const layerWorkflowEvents = Layer.effectDiscard(
       McpSchema.EnabledWhen,
       McpInvocationContext.hiddenUnlessWorkflowEvents,
     );
-    for (const options of yield* MilestoneEvents.makeWorkflowEvents) {
+    for (const options of (yield* MilestoneEvents.make).workflows) {
       yield* McpServer.registerEvent({ ...options, annotations });
     }
   }),
 );
 
+const webhookPrincipal = Effect.serviceOption(McpInvocationContext.McpInvocationContext).pipe(
+  Effect.flatMap((scope) => {
+    const client = Option.getOrUndefined(scope)?.client;
+    return client === undefined
+      ? Effect.fail(
+          new McpSchema.Forbidden({
+            message: "Webhook delivery needs an outside client's sign-in",
+          }),
+        )
+      : Effect.succeed(client.sessionId);
+  }),
+);
+
+/** Webhooks reach public addresses only, through a client pinned to the address it checked. */
+const layerWebhookTransport = Layer.unwrap(
+  Effect.gen(function* () {
+    const transport = McpWebhookTransport.make(yield* McpWebhookTransport.allowedHosts);
+    return Layer.merge(
+      Layer.succeed(McpServer.CallbackGuard, {
+        allowsPlaintext: transport.allowsPlaintext,
+        check: Effect.fn("McpHttpServer.webhookCallbackCheck")(function* (url: URL) {
+          return yield* transport
+            .check(url)
+            .pipe(Effect.mapError((error) => new McpServer.CallbackRejected(error)));
+        }),
+      }),
+      transport.layerClient,
+    );
+  }).pipe(Effect.orDie),
+);
+
+/**
+ * Milestones as MCP events (SEP-3415) for outside clients to poll, stream or receive by webhook.
+ * Protocol-level, so no thread lists them.
+ */
 export const layerMilestoneEvents = Layer.effectDiscard(
   Effect.gen(function* () {
     const annotations = Context.make(McpSchema.EnabledWhen, McpInvocationContext.hiddenFromThreads);
-    for (const options of yield* MilestoneEvents.make) {
+    for (const options of (yield* MilestoneEvents.make).threads) {
       yield* McpServer.registerEvent({ ...options, annotations });
     }
   }),
+).pipe(
+  Layer.provide(McpServer.layerEventWebhooks({ principal: webhookPrincipal })),
+  Layer.provide(layerWebhookTransport),
 );
 
 export const layer = layerMcpTransport(
