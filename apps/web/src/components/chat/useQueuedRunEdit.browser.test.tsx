@@ -100,11 +100,15 @@ const ENV = EnvironmentId.make("env-1");
 const THREAD_A: ScopedThreadRef = { environmentId: ENV, threadId: ThreadId.make("thread-a") };
 const THREAD_B: ScopedThreadRef = { environmentId: ENV, threadId: ThreadId.make("thread-b") };
 const RUN = RunId.make("run-1");
+const MODEL = { instanceId: ProviderInstanceId.make("codex"), model: "original-model" };
 
 type HookResult = ReturnType<typeof useQueuedRunEdit>;
 
 function projection(runs: ReadonlyArray<RunStatus>) {
-  return { runs, messages: [] } as unknown as ThreadStructure;
+  return {
+    runs: runs.map((run) => ({ ...run, modelSelection: MODEL })),
+    messages: [],
+  } as unknown as ThreadStructure;
 }
 
 function setRuns(ref: ScopedThreadRef, status: string) {
@@ -193,7 +197,37 @@ async function beginChangedEdit(hook: { current: HookResult | null }) {
   );
 }
 
+it("saves a model choice only to the queued edit", async () => {
+  const { hook } = setup();
+  mocks.editQueuedRun.mockResolvedValue({ _tag: "Success" });
+  await using _screen = await render(view(THREAD_A, "queued", hook));
+  await beginChangedEdit(hook);
+  const { draftTarget } = requireHook(hook);
+  const draftStore = useComposerDraftStore.getState();
+  expect(
+    draftStore.getComposerDraft(draftTarget)?.modelSelectionByProvider[MODEL.instanceId],
+  ).toEqual(MODEL);
+  const modelSelection = { ...MODEL, model: "edited-model" };
+  await act(() =>
+    draftStore.setModelSelection(draftTarget, modelSelection, {
+      explicit: true,
+      replaceOptions: true,
+    }),
+  );
+  await act(() =>
+    requireHook(hook).saveEdit({ ...savedContent("changed"), modelSelection }, () => {}),
+  );
+  expect(mocks.editQueuedRun).toHaveBeenCalledWith(
+    expect.objectContaining({
+      input: expect.objectContaining({ runId: RUN, modelSelection }),
+    }),
+  );
+  expect(useComposerDraftStore.getState().getComposerDraft(THREAD_A)).toBeNull();
+  expect(useComposerDraftStore.getState().getComposerDraft(draftTarget)).toBeNull();
+});
+
 const savedContent = (prompt: string) => ({
+  modelSelection: MODEL,
   prompt,
   images: [],
   files: [],

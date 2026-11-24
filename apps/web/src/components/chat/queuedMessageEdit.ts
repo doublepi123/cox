@@ -1,5 +1,6 @@
 import { resolveQueuedEditExit } from "@t3tools/client-runtime/queued-run-edit";
-import type { ChatAttachment } from "@t3tools/contracts";
+import type { ChatAttachment, ModelSelection } from "@t3tools/contracts";
+import * as Equal from "effect/Equal";
 import {
   composerDraftHasUserContent,
   useComposerDraftStore,
@@ -12,12 +13,19 @@ export function recoverQueuedMessageEdit(input: {
   readonly editTarget: ComposerThreadTarget;
   readonly threadTarget: ComposerThreadTarget;
   readonly originalText: string;
+  readonly originalModelSelection?: ModelSelection;
   readonly removedExistingAttachment?: boolean;
 }): "kept" | "discarded" | "clean" {
   const store = useComposerDraftStore.getState();
   const draft = store.getComposerDraft(input.editTarget);
+  const selection = draft?.activeProvider
+    ? draft.modelSelectionByProvider[draft.activeProvider]
+    : undefined;
+  const selectionChanged =
+    selection !== undefined && !Equal.equals(selection, input.originalModelSelection);
   const recovery = resolveQueuedEditExit({
     editChanged:
+      selectionChanged ||
       input.removedExistingAttachment === true ||
       (draft !== null &&
         (draft.prompt !== input.originalText || draft.images.length > 0 || draft.files.length > 0)),
@@ -27,9 +35,13 @@ export function recoverQueuedMessageEdit(input: {
   });
   if (recovery === "kept") {
     store.moveComposerPromptAndImages(input.editTarget, input.threadTarget);
-  } else {
-    store.clearComposerContent(input.editTarget);
+    if (selectionChanged)
+      store.setModelSelection(input.threadTarget, selection, {
+        explicit: true,
+        replaceOptions: true,
+      });
   }
+  store.clearDraftThread(input.editTarget);
   return recovery;
 }
 

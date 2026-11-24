@@ -11,6 +11,7 @@ import {
   type EnvironmentContextRecord,
   type EnvironmentId,
   type MessageId,
+  type ModelSelection,
   type OrchestrationMessageContext,
   type PreviewAnnotationPayload,
   type RunId,
@@ -63,6 +64,8 @@ interface EditingQueuedRun {
   readonly runId: RunId;
   readonly messageId: MessageId;
   readonly originalText: string;
+  readonly originalModelSelection?: ModelSelection;
+  readonly followsThreadSelection: boolean;
   readonly existingAttachments: ReadonlyArray<ChatAttachment>;
   readonly context?: OrchestrationMessageContext | undefined;
   readonly removedExistingAttachment?: true;
@@ -75,6 +78,7 @@ const queuedRunEdits = makeQueuedRunEditStore<EditingQueuedRun>({
 });
 
 interface QueuedRunEditContent {
+  readonly modelSelection: ModelSelection;
   readonly prompt: string;
   readonly images: ReadonlyArray<ComposerImageAttachment>;
   readonly files: ReadonlyArray<ComposerFileAttachment>;
@@ -94,6 +98,7 @@ async function submitQueuedRunEdit(input: {
   readonly draftTarget: ComposerThreadTarget;
   readonly editing: EditingQueuedRun;
   readonly content: QueuedRunEditContent;
+  readonly modelSelection?: ModelSelection;
   readonly editQueuedRun: ReturnType<typeof useEditQueuedRunCommand>;
 }): Promise<string | null> {
   const { environmentId, draftTarget, editing, content } = input;
@@ -152,6 +157,7 @@ async function submitQueuedRunEdit(input: {
         threadId: editing.threadId,
         runId: editing.runId,
         text: restoreAttachmentOnlyBootstrapPrompt(editText, uploads.length > 0),
+        ...(input.modelSelection ? { modelSelection: input.modelSelection } : {}),
         edit: {
           messageId: editing.messageId,
           attachments: uploads,
@@ -225,9 +231,7 @@ export function useQueuedRunEdit(input: {
     window.requestAnimationFrame(() => composerRef.current?.focusAtEnd());
   };
   const clearEditDraft = (runId: RunId) =>
-    useComposerDraftStore
-      .getState()
-      .clearComposerContent(queuedEditDraftTarget(routeThreadRef, runId));
+    useComposerDraftStore.getState().clearDraftThread(queuedEditDraftTarget(routeThreadRef, runId));
 
   const beginEdit = useStableCallback((request: EditQueuedRunRequest) => {
     if (activeThreadId === null) return;
@@ -235,8 +239,22 @@ export function useQueuedRunEdit(input: {
     const target = queuedEditDraftTarget(routeThreadRef, request.runId);
     const text = stripAttachmentOnlyBootstrapPrompt(request.text);
     const store = useComposerDraftStore.getState();
-    store.clearComposerContent(target);
+    store.clearDraftThread(target);
     store.setPrompt(target, text);
+    const message = serverProjection?.messages.find(
+      (candidate) => candidate.id === request.messageId,
+    );
+    const run = serverProjection?.runs.find((candidate) => candidate.id === request.runId);
+    const followsThreadSelection = message?.followsThreadSelection === true;
+    const originalModelSelection = followsThreadSelection
+      ? serverProjection?.thread.modelSelection
+      : run?.modelSelection;
+    if (originalModelSelection && !followsThreadSelection) {
+      store.setModelSelection(target, originalModelSelection, {
+        explicit: true,
+        replaceOptions: true,
+      });
+    }
     const threadRef = { environmentId, threadId: activeThreadId };
     queuedRunEdits.begin(
       editKey,
@@ -246,8 +264,9 @@ export function useQueuedRunEdit(input: {
         messageId: request.messageId,
         originalText: text,
         existingAttachments: request.attachments,
-        context: serverProjection?.messages.find((message) => message.id === request.messageId)
-          ?.context,
+        followsThreadSelection,
+        ...(originalModelSelection ? { originalModelSelection } : {}),
+        context: message?.context,
       },
       {
         runs: makeQueuedRunsAtom({
@@ -268,6 +287,9 @@ export function useQueuedRunEdit(input: {
             editTarget: queuedEditDraftTarget(routeThreadRef, edit.runId),
             threadTarget: threadDraftTarget,
             originalText: edit.originalText,
+            ...(edit.originalModelSelection
+              ? { originalModelSelection: edit.originalModelSelection }
+              : {}),
             removedExistingAttachment: edit.removedExistingAttachment === true,
           });
           if (recovery === "clean") return;
@@ -338,6 +360,10 @@ export function useQueuedRunEdit(input: {
       draftTarget,
       editing,
       content,
+      ...(!editing.followsThreadSelection ||
+      useComposerDraftStore.getState().getComposerDraft(draftTarget)?.modelSelectionExplicit
+        ? { modelSelection: content.modelSelection }
+        : {}),
       editQueuedRun: editQueuedRunCommand,
     });
     setThreadError(editing.threadId, error);

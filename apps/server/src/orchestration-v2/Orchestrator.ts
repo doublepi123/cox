@@ -2071,25 +2071,32 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
       const followsCurrent = followsCurrentConversation(queuedMessage);
       const freshContext = queuedRun.freshContext === true;
       const contextBoundary = freshContext ? ordinal : contextBoundaryOrdinal(projection.runs);
+      const providerChanged =
+        storedProviderThread.providerInstanceId !== queuedRun.providerInstanceId;
       const followsLatestContext =
         !freshContext &&
-        (followsCurrent || providerThreadPredatesBoundary(storedProviderThread, contextBoundary));
+        (followsCurrent ||
+          providerChanged ||
+          providerThreadPredatesBoundary(storedProviderThread, contextBoundary));
       const targetProviderThread = followsLatestContext
         ? activeProviderThread?.providerInstanceId === queuedRun.providerInstanceId &&
           !providerThreadPredatesBoundary(activeProviderThread, contextBoundary)
           ? activeProviderThread
           : rootProviderThreadsForProvider(projection, queuedRun.providerInstanceId)[0]
-        : freshContext &&
-            (storedProviderThread.firstRunOrdinal !== null ||
-              storedProviderThread.nativeThreadRef !== null)
+        : providerChanged ||
+            (freshContext &&
+              (storedProviderThread.firstRunOrdinal !== null ||
+                storedProviderThread.nativeThreadRef !== null))
           ? undefined
           : storedProviderThread;
       const queuedProviderThread: OrchestrationV2ProviderThread = targetProviderThread ?? {
         id: idAllocator.derive.providerThread({
           driver: targetAdapter.driver,
-          nativeThreadId: freshContext
-            ? `pending:${queuedRun.id}:fresh`
-            : `pending:${queuedRun.id}`,
+          nativeThreadId: providerChanged
+            ? `pending:${queuedRun.id}:${queuedRun.providerInstanceId}`
+            : freshContext
+              ? `pending:${queuedRun.id}:fresh`
+              : `pending:${queuedRun.id}`,
         }),
         driver: targetAdapter.driver,
         providerInstanceId: queuedRun.providerInstanceId,
@@ -10492,10 +10499,11 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
         cause: "A guest's message cannot be edited. Cancel it instead.",
       });
     }
+    const modelSelection = command.modelSelection ?? queuedRunModelSelection(projection, queuedRun);
     yield* ensureGoalCommandSupported(
       command,
       { text: command.text, attachments: command.attachments ?? queuedMessage.attachments },
-      queuedRun.providerInstanceId,
+      modelSelection.instanceId,
     );
     const editProblem =
       queuedRun.outputSchema === undefined
@@ -10517,6 +10525,18 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
 
     const now = yield* DateTime.now;
     const emitEvent = emit(events, command);
+    if (command.modelSelection !== undefined) {
+      yield* emitEvent({
+        type: "run.updated",
+        threadId: command.threadId,
+        runId: queuedRun.id,
+        ...(queuedRun.rootNodeId === null ? {} : { nodeId: queuedRun.rootNodeId }),
+        providerInstanceId: modelSelection.instanceId,
+        occurredAt: now,
+        payload: { ...queuedRun, modelSelection, providerInstanceId: modelSelection.instanceId },
+      });
+    }
+    const { followsThreadSelection: _followsThreadSelection, ...pinnedMessage } = queuedMessage;
     const editedAttachments =
       command.attachments === undefined ? {} : { attachments: command.attachments };
     yield* emitEvent({
@@ -10527,7 +10547,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
       providerInstanceId: queuedRun.providerInstanceId,
       occurredAt: now,
       payload: withoutGuestAttribution({
-        ...queuedMessage,
+        ...(command.modelSelection === undefined ? queuedMessage : pinnedMessage),
         text: command.text,
         ...editedAttachments,
         ...(command.context ? { context: command.context } : {}),

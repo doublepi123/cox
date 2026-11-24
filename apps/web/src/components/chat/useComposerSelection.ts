@@ -44,6 +44,7 @@ interface ComposerSelectionInput {
   readonly interactionMode: ProviderInteractionMode;
   readonly interactionModeEnabled: boolean;
   readonly isLocalDraftThread: boolean;
+  readonly isEditingQueuedRun: boolean;
   readonly canOverrideServerThreadEnvMode: boolean;
   readonly setPendingServerThreadEnvModeEntry: Dispatch<
     SetStateAction<{ readonly threadId: ThreadId; readonly mode: DraftThreadEnvMode } | null>
@@ -75,6 +76,7 @@ export function useComposerSelection(input: ComposerSelectionInput) {
     interactionMode,
     interactionModeEnabled,
     isLocalDraftThread,
+    isEditingQueuedRun,
     canOverrideServerThreadEnvMode,
     setPendingServerThreadEnvModeEntry,
     setPendingServerThreadStartFromOriginByThreadId,
@@ -208,12 +210,18 @@ export function useComposerSelection(input: ComposerSelectionInput) {
       return;
     }
     const activeThreadRef = scopeThreadRef(activeThread.environmentId, activeThread.id);
-    setComposerDraftModelSelection(activeThreadRef, nextModelSelection, {
-      explicit: true,
-      replaceOptions: true,
-    });
-    setStickyComposerModelSelection(nextModelSelection);
-    if (!isLocalDraftThread) applyThreadModelPick(activeThreadRef);
+    setComposerDraftModelSelection(
+      isEditingQueuedRun ? composerDraftTarget : activeThreadRef,
+      nextModelSelection,
+      {
+        explicit: true,
+        replaceOptions: true,
+      },
+    );
+    if (!isEditingQueuedRun) {
+      setStickyComposerModelSelection(nextModelSelection);
+      if (!isLocalDraftThread) applyThreadModelPick(activeThreadRef);
+    }
     if (options?.focusComposer !== false) scheduleComposerFocus();
   };
   const onProviderModelSelectStable = useStableCallback(onProviderModelSelect);

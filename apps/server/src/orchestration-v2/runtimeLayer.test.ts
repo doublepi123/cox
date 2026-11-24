@@ -7921,9 +7921,19 @@ it.layer(layerTest)("OrchestrationV2LayerLive lifecycle", (it) => {
         threadId,
         runId: queuedRun.id,
         text: "Updated queued text.",
+        modelSelection: { ...modelSelection, model: "edited-queued-model" },
       });
 
       const afterEdit = yield* orchestrator.getThreadProjection(threadId);
+      assert.equal(
+        afterEdit.runs.find((run) => run.id === queuedRun.id)?.modelSelection.model,
+        "edited-queued-model",
+      );
+      assert.deepEqual(afterEdit.thread.modelSelection, modelSelection);
+      assert.isUndefined(
+        afterEdit.messages.find((message) => message.id === queuedRun.userMessageId)
+          ?.followsThreadSelection,
+      );
       assert.equal(
         afterEdit.messages.find((message) => message.id === queuedRun.userMessageId)?.text,
         "Updated queued text.",

@@ -2835,6 +2835,7 @@ export default function ChatView(props: ChatViewProps) {
     interactionMode,
     interactionModeEnabled,
     isLocalDraftThread,
+    isEditingQueuedRun: queuedRunEdit.isEditing,
     canOverrideServerThreadEnvMode,
     setPendingServerThreadEnvModeEntry,
     setPendingServerThreadStartFromOriginByThreadId,
