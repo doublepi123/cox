@@ -4,7 +4,7 @@ import { Navigate, useNavigate } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 
 import ChatView from "./ChatView";
-import { BackgroundThreadContext } from "./chat/backgroundThread";
+import { BackgroundThreadContext, HiddenThreadContext } from "./chat/backgroundThread";
 import { SidebarInset } from "./ui/sidebar";
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "./ui/empty";
 import { useTranslation } from "../i18n";
@@ -170,7 +170,9 @@ export function ThreadRouteView({
 
   return (
     <SidebarInset viewport="small" inert={background}>
-      <BackgroundThreadContext value={background}>{view}</BackgroundThreadContext>
+      <HiddenThreadContext value={background}>
+        <BackgroundThreadContext value={background}>{view}</BackgroundThreadContext>
+      </HiddenThreadContext>
       {background ? null : redirect}
     </SidebarInset>
   );

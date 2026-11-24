@@ -5,3 +5,4 @@ import { createContext } from "react";
  * parent's panel; its global shortcuts and listeners stand down.
  */
 export const BackgroundThreadContext = createContext(false);
+export const HiddenThreadContext = createContext(false);
