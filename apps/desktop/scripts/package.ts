@@ -328,6 +328,7 @@ const artifacts = await build({
           "Commands you run in Cox may need to read and write your calendar events.",
         NSCalendarsWriteOnlyAccessUsageDescription:
           "Commands you run in Cox may need to add events to your calendars.",
+        NSAppleEventsUsageDescription: "Commands you run in Cox may need to control other apps.",
       },
       ...(process.env.CSC_NAME
         ? { identity: process.env.CSC_NAME }

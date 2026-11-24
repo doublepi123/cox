@@ -222,4 +222,16 @@ describe("localized native menus", () => {
     expect(verification).toContain('"CFBundleLocalizations"');
     expect(verification).toContain('"zh-Hans", "zh-Hant"');
   });
+
+  it("declares Apple Events access in the macOS bundle and entitlements", () => {
+    const packaging = readFileSync(new URL("../scripts/package.ts", import.meta.url), "utf8");
+    const entitlements = readFileSync(
+      new URL("../entitlements.mac.plist", import.meta.url),
+      "utf8",
+    );
+    expect(packaging).toMatch(/NSAppleEventsUsageDescription:\s*"[^"]+"/u);
+    expect(entitlements).toMatch(
+      /<key>com\.apple\.security\.automation\.apple-events<\/key>\s*<true\/>/u,
+    );
+  });
 });
