@@ -227,7 +227,11 @@ export function UsagePriceOverrides({
   const editAlias = (row: UsagePriceDraft, value: string) => {
     const { alias: _alias, ...rest } = row;
     const original = usageAliasCell(selected, row.model);
-    updateOrDropDraft(matchesSaved(row, original, value) ? rest : { ...rest, alias: value });
+    updateOrDropDraft(
+      matchesSaved(row, original, value)
+        ? { ...rest, values: value === "" ? rest.values : {} }
+        : { ...rest, alias: value },
+    );
   };
   const save = async (retry = false) => {
     if (pending) return;
