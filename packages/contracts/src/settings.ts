@@ -1740,6 +1740,17 @@ export const ServerSettingsPatch = Schema.Struct({
 });
 export type ServerSettingsPatch = typeof ServerSettingsPatch.Type;
 
+/** The host runs saved project scripts, some without anyone asking: on worktree creation and on settle. */
+function carriesProjectScripts(patch: ServerSettingsPatch): boolean {
+  return (
+    patch.defaultProjectScripts !== undefined ||
+    Object.values(patch.projectScriptOverrides ?? {}).some((scripts) => scripts !== null) ||
+    Object.values(patch.projectSettingsOverrides ?? {}).some(
+      (overrides) => overrides?.defaultProjectScripts !== undefined,
+    )
+  );
+}
+
 export function requiredScopesForServerSettingsPatch(
   patch: ServerSettingsPatch,
 ): ReadonlyArray<AuthEnvironmentScope> {
@@ -1772,6 +1783,7 @@ export function requiredScopesForServerSettingsPatch(
   return [
     ...(changesSettings || !changesProviders ? [AuthSettingsWriteScope] : []),
     ...(changesProviders ? [AuthProvidersManageScope] : []),
+    ...(carriesProjectScripts(patch) ? [AuthOrchestrationOperateScope] : []),
   ];
 }
 
@@ -1783,8 +1795,10 @@ export function requiredScopesForProjectMutation(
     return [AuthOrchestrationOperateScope];
   }
   return [
-    AuthOrchestrationOperateScope,
-    ...requiredScopesForServerSettingsPatch({ defaultProjectScripts: mutation.scripts }),
+    ...new Set([
+      AuthOrchestrationOperateScope,
+      ...requiredScopesForServerSettingsPatch({ defaultProjectScripts: mutation.scripts }),
+    ]),
   ];
 }
 
