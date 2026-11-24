@@ -2,6 +2,32 @@
 
 ## Unreleased
 
+## Desktop 0.2.41 — 2026-11-24
+
+- ⇧⌘V (Paste as Text) pastes plain text in the composer on macOS again.
+- A macOS backend that froze recovers when Cox Desktop is opened again, and a
+  backend whose launcher died exits even when its shutdown hangs.
+- Native context menu labels show ampersands, and Cox Desktop declares Apple
+  Events access for computer-use cleanup.
+
+## 0.2.35 — 2026-11-24
+
+- Port the November 24 T3 batch: 256 of 362 upstream commits ported and 22
+  already covered by Cox; see `docs/upstream-audit-2026-11-24`.
+- Durable workflows (Settings → Labs, off by default): agents and the `cox`
+  CLI can run multi-step workflows that survive restarts, with their runs shown
+  in the web UI.
+- Outside agents can poll or stream milestones as MCP events, or receive them
+  through signed webhooks. Agent feedback reports are kept on this machine
+  after scrubbing and are never uploaded.
+- Security: remote logins and webhook tokens stay with their own host, API
+  request bodies have a 1 MiB default limit, revoking other sessions also ends
+  sign-ins in progress, and Windows system tools run by absolute path.
+- Fixes for checkpoints, delegated tasks, queued messages and steering, ACP
+  memory use, Antigravity, Claude, Codex, Cursor, OpenCode and Pi sessions,
+  Office, RTF, EPUB and TIFF attachments and previews, pull requests, the
+  sidebar, settings, keyboard and IME handling.
+
 ## 0.2.34 — 2026-11-23
 
 - A model response that loses its connection partway through no longer ends
