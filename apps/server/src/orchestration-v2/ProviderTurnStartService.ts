@@ -105,6 +105,7 @@ const NON_COMPLETING_TERMINAL_RUN_STATUSES: ReadonlySet<OrchestrationV2Run["stat
 ]);
 
 const isProviderTurnStartError = Schema.is(ProviderTurnStartError);
+const isProviderAdapterTurnStartError = Schema.is(ProviderAdapter.ProviderAdapterTurnStartError);
 const isProviderAdapterOpenSessionError = Schema.is(
   ProviderAdapter.ProviderAdapterOpenSessionError,
 );
@@ -124,6 +125,7 @@ const PROMPT_REFUSAL_TAGS = [
 
 const refusedBeforePrompt = (error: unknown): boolean =>
   PROMPT_REFUSAL_TAGS.some((tag) => Predicate.isTagged(error, tag)) ||
+  (isProviderAdapterTurnStartError(error) && error.refusedBeforePrompt === true) ||
   (Predicate.hasProperty(error, "cause") && refusedBeforePrompt(error.cause));
 // The provider may have acted on a request it never answered, so a retry could duplicate it.
 const OUTCOME_UNKNOWN_TAGS = ["CodexAppServerUnresponsiveError"] as const;

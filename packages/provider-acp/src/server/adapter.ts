@@ -348,6 +348,8 @@ function mergeAcpAppContext(
   return merged;
 }
 
+const refusedWithSessionIntact = Schema.is(AcpModelSelectionError);
+
 export interface AcpAdapterV2Flavor {
   readonly watchPromptOutcome?: (sessionId: string) => Effect.Effect<PromptOutcomeCheck>;
   readonly buildPrompt?: (input: {
@@ -8705,6 +8707,9 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
                     providerThreadId: turnInput.providerThread.id,
                     runId: turnInput.runId,
                     cause,
+                    // The prompt is sent from a forked fiber, and its failures settle the turn
+                    // instead of reaching here, so no prompt was sent when this fails.
+                    ...(refusedWithSessionIntact(cause) ? { refusedBeforePrompt: true } : {}),
                   }),
               ),
             ),

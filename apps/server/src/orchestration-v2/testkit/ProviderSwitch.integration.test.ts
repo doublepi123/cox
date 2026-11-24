@@ -18,6 +18,7 @@ import {
   ProviderSessionId,
   ProviderThreadId,
   ProviderTurnId,
+  RunId,
   ScheduledTaskId,
   ThreadId,
   TurnItemId,
@@ -1627,6 +1628,17 @@ describe("orchestration v2 provider switching", () => {
       new ClaudeAgentSdkQueryRunnerError({
         method: "setMcpServers",
         cause: new ClaudeMcpRegistrationTimeoutError(),
+      }),
+    ],
+    // ACP rejects a model it cannot select before sending the prompt.
+    [
+      "an ACP start that rejected the model",
+      new ProviderAdapter.ProviderAdapterTurnStartError({
+        driver: ProviderDriverKind.make("grok"),
+        threadId: ThreadId.make("thread:acp-refused-start"),
+        providerThreadId: ProviderThreadId.make("provider-thread:acp-refused-start"),
+        runId: RunId.make("run:acp-refused-start"),
+        refusedBeforePrompt: true,
       }),
     ],
   ] as const)("keeps the native session after turns refused for %s", ([, refusalCause]) =>
