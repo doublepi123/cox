@@ -687,7 +687,7 @@ export const makeVcsDriverShape = Effect.fn("makeGitVcsDriverShape")(function* (
       },
     ).pipe(Effect.catchIf(isMissingExecutable, () => Effect.succeed(null)));
     if (result === null || result.exitCode !== 0) return null;
-    const lines = result.stdout.replace(/\r?\n$/u, "").split(/\r?\n/u);
+    const lines = result.stdout.replace(/\n$/u, "").split("\n");
     if (lines[0]?.trim() !== "true") return null;
     // A newline inside a path breaks the line framing; ask for each path on its own.
     if (lines.length !== 3) {
@@ -701,16 +701,16 @@ export const makeVcsDriverShape = Effect.fn("makeGitVcsDriverShape")(function* (
       ]).pipe(Effect.orElseSucceed(() => null));
       return {
         kind: "git" as const,
-        rootPath: root.stdout.trim(),
-        metadataPath: gitCommonDir?.stdout.trim() || null,
+        rootPath: root.stdout.replace(/\n$/, ""),
+        metadataPath: gitCommonDir?.stdout.replace(/\n$/, "") || null,
         freshness: yield* nowFreshness(),
       };
     }
 
     return {
       kind: "git" as const,
-      rootPath: lines[1]!.trim(),
-      metadataPath: lines[2]!.trim() || null,
+      rootPath: lines[1]!,
+      metadataPath: lines[2] || null,
       freshness: yield* nowFreshness(),
     };
   });
