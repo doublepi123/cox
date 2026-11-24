@@ -13,7 +13,9 @@ import {
   TurnItemId,
 } from "@t3tools/contracts";
 import * as DateTime from "effect/DateTime";
+import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
+import * as Fiber from "effect/Fiber";
 import * as Layer from "effect/Layer";
 import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import { expect, it } from "vite-plus/test";
@@ -973,6 +975,83 @@ it("readThread and sendToThread reach threads in other projects", async () => {
       .pipe(Effect.flip);
     expect(stopped.code).toBe("parent_not_active");
   }).pipe(Effect.provide(layer), Effect.runPromise);
+});
+
+it("requestSecret closes its card when the call is aborted while the card is being recorded", async () => {
+  const statuses: Array<string> = [];
+  const projection = () =>
+    ({
+      thread: baseThread({
+        threadId: parentThreadId,
+        title: "Parent",
+        instanceId: parentInstanceId,
+        model: "gpt-5.4",
+      }),
+      runs: [
+        { ...makeRun({ id: activeRunId, ordinal: 1, status: "running" }), rootNodeId: taskId },
+      ],
+      visibleTurnItems: [],
+      turnItems: [],
+      providerTurns: [],
+      runtimeRequests: [],
+      messages: [],
+      contextTransfers: [],
+      subagents: [],
+      updatedAt: now,
+    }) as unknown as OrchestrationV2ThreadProjection;
+
+  await Effect.gen(function* () {
+    const recorded = yield* Deferred.make<void>();
+    const release = yield* Deferred.make<void>();
+    const layer = layerOrchestratorService.pipe(
+      Layer.provide(
+        Layer.mergeAll(
+          Layer.mock(ThreadManagementService.ThreadManagementService)({
+            getThreadRecords: () => Effect.sync(projection),
+            getThreadShell: () =>
+              Effect.sync(() => projection().thread as unknown as OrchestrationV2ThreadShell),
+            // The pending card is stored before the dispatch returns to the caller.
+            dispatch: (command) =>
+              Effect.gen(function* () {
+                if (command.type !== "secret_request.record") return {} as never;
+                statuses.push(command.secretStatus);
+                if (command.secretStatus === "pending") {
+                  yield* Deferred.succeed(recorded, undefined);
+                  yield* Deferred.await(release);
+                }
+                return {} as never;
+              }),
+          } satisfies Partial<ThreadManagementService.ThreadManagementService["Service"]>),
+          ServerSettings.layerTest(),
+          Layer.mock(ProviderRegistry.ProviderRegistry)({
+            getProviders: Effect.succeed([]),
+          } satisfies Partial<ProviderRegistry.ProviderRegistry["Service"]>),
+          Layer.mock(ProjectService.ProjectService)({}),
+          Layer.mock(SecretRequests.SecretRequests)({}),
+          Layer.mock(ScheduledTaskService.ScheduledTaskService)({}),
+          Layer.mock(ProviderAdapterRegistry.ProviderAdapterRegistryV2)({}),
+          NodeCrypto.layer,
+        ),
+      ),
+    );
+    yield* Effect.gen(function* () {
+      const service = yield* OrchestratorMcpService.OrchestratorMcpService;
+      const request = yield* service
+        .requestSecret(makeScope(), {
+          label: "Staging password",
+          reason: "Signs in the QA account.",
+        })
+        .pipe(Effect.forkChild({ startImmediately: true }));
+      yield* Deferred.await(recorded);
+      const abort = yield* Fiber.interrupt(request).pipe(
+        Effect.forkChild({ startImmediately: true }),
+      );
+      yield* Deferred.succeed(release, undefined);
+      yield* Fiber.join(abort);
+    }).pipe(Effect.provide(layer));
+  }).pipe(Effect.runPromise);
+
+  expect(statuses).toEqual(["pending", "cancelled"]);
 });
 
 it("requestSecret delivers a fields card as one file per field", async () => {
