@@ -394,6 +394,7 @@ export const make = Effect.gen(function* () {
         ),
     );
 
+    const deferred = new Set<ThreadId>();
     const lookupCandidates = (yield* Effect.forEach(
       candidates,
       (thread) => {
@@ -406,7 +407,16 @@ export const make = Effect.gen(function* () {
           autoSettleOnMerge: projectSettings.sidebarAutoSettleOnMerge,
           autoSettleKeepPullRequests: projectSettings.sidebarAutoSettleKeepPullRequests,
         });
-        return settledAt === null ? Effect.succeed(thread) : settleThread(thread, null);
+        if (settledAt === null) return Effect.succeed(thread);
+        if (
+          projectSettings.sidebarAutoSettleKeepPullRequests &&
+          thread.branch !== null &&
+          visibleThreadPullRequests(thread.pullRequests ?? []).length === 0
+        ) {
+          deferred.add(thread.id);
+          return Effect.succeed(thread);
+        }
+        return settleThread(thread, null);
       },
       { concurrency: 8 },
     ))
@@ -569,9 +579,19 @@ export const make = Effect.gen(function* () {
         return yield* Effect.die(new Error("thread project not found"));
       }
       const refresh = group.filter((member) => shellClosedThreads.delete(member.id)).length > 0;
-      const pullRequest = yield* git.branchPullRequest({ cwd, branch: thread.branch }, { refresh });
+      const pullRequest = yield* git.branchPullRequest(
+        { cwd, branch: thread.branch },
+        { refresh, freshGitState: group.some((member) => deferred.has(member.id)) },
+      );
       return ownedByAnotherThread(pullRequest) ? undefined : pullRequest;
     });
+
+    const settleDeferred = (group: ReadonlyArray<(typeof lookupCandidates)[number]>) =>
+      Effect.forEach(
+        group.filter((thread) => deferred.has(thread.id)),
+        (thread) => settleThread(thread, null),
+        { discard: true },
+      );
 
     yield* Effect.forEach(
       groups.values(),
@@ -584,10 +604,16 @@ export const make = Effect.gen(function* () {
               () => Effect.void,
             ),
           );
-          if (pullRequest === undefined) return;
-          yield* Effect.forEach(group, (thread) => settleThread(thread, pullRequest), {
-            discard: true,
-          });
+          if (pullRequest === undefined) return yield* settleDeferred(group);
+          yield* Effect.forEach(
+            group,
+            (thread) =>
+              settleThread(
+                thread,
+                deferred.has(thread.id) && pullRequest?.state !== "open" ? null : pullRequest,
+              ),
+            { discard: true },
+          );
         }).pipe(
           Effect.catchCauseIf(
             (cause) => !Cause.hasInterruptsOnly(cause),
@@ -595,7 +621,7 @@ export const make = Effect.gen(function* () {
               Effect.logWarning("automatic thread settlement skipped", {
                 threadIds: group.map((thread) => thread.id),
                 cause: Cause.pretty(cause),
-              }),
+              }).pipe(Effect.andThen(settleDeferred(group))),
           ),
         ),
       { concurrency: 8, discard: true },
