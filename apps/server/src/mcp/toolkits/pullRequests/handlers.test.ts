@@ -174,6 +174,10 @@ const makeHarness = Effect.fn("makePullRequestsToolkitHarness")(function* (
       listShells: () => Effect.succeed(options.projects ?? (project ? [project] : [])),
     }),
     Layer.mock(PullRequestService.PullRequestService)({
+      addressedProject: (id) =>
+        Effect.succeed(
+          (options.projects ?? (project ? [project] : [])).find((item) => item.id === id),
+        ),
       summary:
         options.summary ??
         (() =>

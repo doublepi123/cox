@@ -422,6 +422,8 @@ it.effect("lists GitHub Enterprise PRs for a stored unknown repository after hos
       result.entries.map(({ host, number }) => [host, number]),
       [["code.example.test", 42]],
     );
+    const addressed = yield* service.addressedProject("p1" as ProjectId);
+    assert.strictEqual(addressed?.repositoryIdentity?.provider, "github");
   }),
 );
 

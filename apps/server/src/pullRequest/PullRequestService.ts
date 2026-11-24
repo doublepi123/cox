@@ -226,6 +226,9 @@ export class PullRequestService extends Context.Service<
       effect: Effect.Effect<A, E, R>,
     ) => Effect.Effect<A, E, R>;
     readonly detail: (input: PullRequestRef) => Effect.Effect<PullRequestDetail, PullRequestError>;
+    readonly addressedProject: (
+      projectId: ProjectId,
+    ) => Effect.Effect<OrchestrationProjectShell | undefined, PullRequestError>;
     readonly preview: (
       input: PullRequestRef,
     ) => Effect.Effect<PullRequestPreview, PullRequestError>;
@@ -330,6 +333,7 @@ export interface SupportedProject {
   readonly cursorKey: string;
   readonly project: OrchestrationProjectShell;
   readonly api: PullRequestProviderApi;
+  readonly kind: SourceControlProviderKind;
   readonly repository: string;
   readonly host: string;
   /** Unlike Azure repository names, remotes are unique across an organization. */
@@ -338,6 +342,8 @@ export interface SupportedProject {
 }
 
 interface WorkspaceProjects {
+  /** Every project read, with its repository identity resolved. */
+  readonly projects: ReadonlyArray<OrchestrationProjectShell>;
   readonly supported: ReadonlyArray<SupportedProject>;
   readonly unimplemented: ReadonlyMap<
     string,
@@ -974,6 +980,7 @@ export const make = Effect.gen(function* () {
             cursorKey: key,
             project,
             api: withRateLimitBackoff(api, host, rateLimits),
+            kind,
             repository,
             host,
             remote:
@@ -985,7 +992,19 @@ export const make = Effect.gen(function* () {
                 : sourceControlDefinitions.canonicalRepositoryKey(repositoryKey.toLowerCase()),
           });
         }
-        return { supported, unimplemented, viewerRoots };
+        return { projects, supported, unimplemented, viewerRoots };
+      }),
+    );
+
+  const addressedProject: PullRequestService["Service"]["addressedProject"] = (projectId) =>
+    listWorkspaceProjects({ projectId }).pipe(
+      Effect.map(({ projects, supported }) => {
+        const match = supported[0];
+        if (match === undefined) return projects.find((project) => project.id === projectId);
+        const identity = match.project.repositoryIdentity;
+        return identity == null || identity.provider === match.kind
+          ? match.project
+          : { ...match.project, repositoryIdentity: { ...identity, provider: match.kind } };
       }),
     );
 
@@ -1035,7 +1054,7 @@ export const make = Effect.gen(function* () {
               return Effect.gen(function* () {
                 const publicHost = sourceControlDefinitions.findByPublicHost(host);
                 const api = publicHost === undefined ? null : registry.get(publicHost.kind);
-                if (api?.readsPublicHostWithoutCheckout) {
+                if (publicHost !== undefined && api?.readsPublicHostWithoutCheckout) {
                   const selected = yield* projects.getShell(ref.projectId).pipe(
                     Effect.mapError(
                       (cause) =>
@@ -1051,6 +1070,7 @@ export const make = Effect.gen(function* () {
                       cursorKey: listCursorKey(host, repository),
                       project: selected.value,
                       api: withRateLimitBackoff(api, host, rateLimits),
+                      kind: publicHost.kind,
                       repository,
                       host,
                       remote: sourceControlDefinitions.repositoryKeyFromRemote(
@@ -3857,6 +3877,7 @@ export const make = Effect.gen(function* () {
       Cache.get(watchFingerprintCache, refCacheKey(input)),
     ),
     activity: credentialCached(activity),
+    addressedProject,
     preview: credentialCached(preview),
     threadComments,
     diff: credentialCached(diff),

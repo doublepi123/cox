@@ -190,6 +190,7 @@ function projectForPullRequest(
 
 const make = Effect.gen(function* () {
   const engine = yield* Orchestrator.OrchestratorV2;
+  const pullRequests = yield* PullRequestService.PullRequestService;
   const reviewGuides = yield* PullRequestReviewGuideService.PullRequestReviewGuideService;
 
   const projects = yield* ProjectService.ProjectService;
@@ -231,10 +232,9 @@ const make = Effect.gen(function* () {
       | typeof PullRequestUnlinkFailedError
       | typeof PullRequestWatchFailedError,
   ) =>
-    projects.getShell(thread.projectId).pipe(
-      Effect.map(Option.getOrUndefined),
-      Effect.mapError((cause) => new Failure({ cause })),
-    );
+    pullRequests
+      .addressedProject(thread.projectId)
+      .pipe(Effect.mapError((cause) => new Failure({ cause })));
 
   const dispatchFailure =
     (
@@ -277,7 +277,6 @@ const make = Effect.gen(function* () {
       next: `This PR is already ${state}, so there is nothing to watch. Report that and end your turn.`,
     });
     if (watching && before?.snapshot?.state === "merged") return alreadyEnded("merged");
-    const pullRequests = yield* PullRequestService.PullRequestService;
     const summary =
       watching && !wasWatching
         ? yield* pullRequests
@@ -336,7 +335,12 @@ const make = Effect.gen(function* () {
     const known = yield* projects
       .listShells()
       .pipe(Effect.mapError((cause) => new PullRequestListFailedError({ cause })));
-    const callerProject = known.find((project) => project.id === callerThread?.projectId);
+    const callerProject =
+      callerThread === undefined
+        ? undefined
+        : yield* pullRequests
+            .addressedProject(callerThread.projectId)
+            .pipe(Effect.mapError((cause) => new PullRequestListFailedError({ cause })));
     // A pull request named by host and repository builds its URL through the project that holds
     // it, which need not be the caller's.
     const urlProject = (input: PullRequestTargetInput) =>
@@ -348,7 +352,14 @@ const make = Effect.gen(function* () {
           ) ?? callerProject)
         : callerProject;
     return yield* Effect.forEach(targets, (input) =>
-      resolveTarget(input, urlProject(input)).pipe(
+      Effect.gen(function* () {
+        const project = urlProject(input);
+        const addressed =
+          project === undefined || project === callerProject
+            ? project
+            : yield* pullRequests.addressedProject(project.id);
+        return yield* resolveTarget(input, addressed);
+      }).pipe(
         Effect.map((target) => ({
           input,
           target,
