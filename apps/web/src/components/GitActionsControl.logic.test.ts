@@ -80,6 +80,22 @@ describe("when: ref is clean, up to date, and has no open PR", () => {
 });
 
 describe("when: on default ref without open PR", () => {
+  it("resolveQuickAction pushes without committing when the tree is clean and ahead", () => {
+    const withUpstream = resolveQuickAction(
+      status({ refName: "main", aheadCount: 1 }),
+      false,
+      true,
+    );
+    assert.deepInclude(withUpstream, { kind: "run_action", action: "push", label: "Push" });
+
+    const withoutUpstream = resolveQuickAction(
+      status({ refName: "main", aheadCount: 1, hasUpstream: false }),
+      false,
+      true,
+    );
+    assert.deepInclude(withoutUpstream, { kind: "run_action", action: "push", label: "Push" });
+  });
+
   it("resolveQuickAction returns commit and push when local changes exist", () => {
     const quick = resolveQuickAction(
       status({ refName: "main", hasWorkingTreeChanges: true }),
