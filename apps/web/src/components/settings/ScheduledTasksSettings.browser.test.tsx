@@ -1,3 +1,4 @@
+import { createModelCapabilities } from "@t3tools/shared/model";
 import { RegistryContext, useAtomValue } from "@effect/atom-react";
 import { Atom, AtomRegistry } from "effect/reactivity";
 import {
@@ -110,7 +111,9 @@ const providers: ReadonlyArray<ServerProvider> = [
     skills: [],
   },
 ];
-const providerList = Atom.make<ReadonlyArray<ServerProvider> | null>(providers);
+let effortTasks: ScheduledTask[] | null = null;
+let effortSettings: typeof DEFAULT_UNIFIED_SETTINGS | null = null;
+let providerList = Atom.make<ReadonlyArray<ServerProvider> | null>(providers);
 
 function setup() {
   state.connected = true;
@@ -118,6 +121,9 @@ function setup() {
   state.secondary = false;
   state.threadModes = false;
   savedTasks.mockClear();
+  effortTasks = null;
+  effortSettings = null;
+  providerList = Atom.make<ReadonlyArray<ServerProvider> | null>(providers);
   permissions.clear();
   permissions.set(environmentId, Atom.make(true));
   permissions.set(secondaryId, Atom.make(true));
@@ -194,7 +200,7 @@ vi.mock(import("../../state/query"), async (original) => ({
     data:
       request === null || request === threadFamilyRead
         ? request
-        : { tasks: state.tasksLoaded ? [task] : [] },
+        : { tasks: state.tasksLoaded ? (effortTasks ?? [task]) : [] },
     error: null,
     isPending: false,
     refresh: vi.fn(),
@@ -231,15 +237,16 @@ vi.mock(import("../../state/queries"), async (original) => ({
 }));
 vi.mock(import("../../hooks/useSettings"), async (original) => ({
   ...(await original()),
-  useEnvironmentSettings: (() => ({
-    ...DEFAULT_UNIFIED_SETTINGS,
-    providerInstances: {
-      [ProviderInstanceId.make("codex")]: {
-        driver: ProviderDriverKind.make("codex"),
-        enabled: true,
+  useEnvironmentSettings: (() =>
+    effortSettings ?? {
+      ...DEFAULT_UNIFIED_SETTINGS,
+      providerInstances: {
+        [ProviderInstanceId.make("codex")]: {
+          driver: ProviderDriverKind.make("codex"),
+          enabled: true,
+        },
       },
-    },
-  })) as never,
+    }) as never,
 }));
 
 describe("ScheduledTasksSettings", () => {
@@ -401,4 +408,174 @@ describe("ScheduledTasksSettings", () => {
     await expect.element(dialog).toHaveAttribute("data-open");
     await expect.element(name).toHaveValue("My draft");
   });
+});
+
+function setupEffortTask() {
+  setup();
+  const selection = {
+    ...task.modelSelection,
+    options: [{ id: "reasoningEffort", value: "high" }],
+  };
+  effortTasks = [{ ...task, threadId: null, modelSelection: selection }];
+  effortSettings = {
+    ...DEFAULT_UNIFIED_SETTINGS,
+    defaultModelSelection: selection,
+    providerInstances: {
+      [selection.instanceId]: { driver: ProviderDriverKind.make("codex"), enabled: true },
+    },
+  };
+  providerList = Atom.make<ReadonlyArray<ServerProvider> | null>([
+    {
+      instanceId: selection.instanceId,
+      driver: ProviderDriverKind.make("codex"),
+      enabled: true,
+      installed: true,
+      version: null,
+      status: "ready",
+      auth: { status: "authenticated" },
+      checkedAt: "2026-11-03T00:00:00.000Z",
+      models: [
+        {
+          slug: selection.model,
+          name: "GPT-5.4",
+          isCustom: false,
+          capabilities: createModelCapabilities({
+            optionDescriptors: [
+              {
+                id: "reasoningEffort",
+                label: "Reasoning effort",
+                type: "select",
+                options: [
+                  { id: "low", label: "Low", isDefault: true },
+                  { id: "high", label: "High" },
+                ],
+                currentValue: "low",
+              },
+            ],
+          }),
+        },
+        { slug: "plain", name: "Plain model", isCustom: false, capabilities: null },
+        { slug: "gpt-5.5", name: "Bound model", isCustom: false, capabilities: null },
+      ],
+      skills: [],
+      slashCommands: [],
+    },
+  ]);
+  return selection;
+}
+
+async function fillTitleAndPrompt() {
+  await userEvent.fill(page.getByRole("textbox", { name: "Name" }), "Effort task");
+  await userEvent.fill(page.getByRole("textbox", { name: "Prompt", exact: true }), "Review issues");
+}
+
+it.each([false, true])(
+  "keeps model options when the same model is reselected (existing task: %s)",
+  async (editing) => {
+    const selection = setupEffortTask();
+    await using screen = await render(
+      <ScheduledTasksSettings {...(editing ? { taskId: task.id } : {})} />,
+    );
+    if (!editing) {
+      await screen.getByRole("button", { name: "New task" }).click();
+      await expect
+        .element(page.getByRole("combobox", { name: "Workspace" }), { timeout: 2000 })
+        .toBeVisible();
+      await page.getByRole("combobox", { name: "Workspace" }).click();
+      await expect
+        .element(page.getByRole("option", { name: "Use the project checkout" }), { timeout: 2000 })
+        .toBeVisible();
+      await page.getByRole("option", { name: "Use the project checkout" }).click();
+    }
+    await fillTitleAndPrompt();
+    await expect
+      .element(page.getByRole("button", { name: "GPT-5.4", exact: true }), { timeout: 2000 })
+      .toBeVisible();
+    await page.getByRole("button", { name: "GPT-5.4", exact: true }).click();
+    await expect
+      .element(page.getByRole("option", { name: /GPT-5.4/ }), { timeout: 2000 })
+      .toBeVisible();
+    await page.getByRole("option", { name: /GPT-5.4/ }).click();
+    await expect
+      .element(page.getByRole("button", { name: "High", exact: true }), { timeout: 2000 })
+      .toBeVisible();
+    await expect
+      .element(page.getByRole("button", { name: editing ? "Save task" : "Create task" }), {
+        timeout: 2000,
+      })
+      .toBeVisible();
+    await page.getByRole("button", { name: editing ? "Save task" : "Create task" }).click();
+    await vi.waitFor(() =>
+      expect(savedTasks).toHaveBeenLastCalledWith({
+        environmentId,
+        input: expect.objectContaining({ modelSelection: selection }),
+      }),
+    );
+  },
+);
+
+it("saves a changed effort and drops options when switching models", async () => {
+  const selection = setupEffortTask();
+  await using screen = await render(<ScheduledTasksSettings taskId={task.id} />);
+  await fillTitleAndPrompt();
+  await expect
+    .element(page.getByRole("button", { name: "High", exact: true }), { timeout: 2000 })
+    .toBeVisible();
+  await page.getByRole("button", { name: "High", exact: true }).click();
+  await expect
+    .element(page.getByRole("menuitemradio", { name: /^Low/ }), { timeout: 2000 })
+    .toBeVisible();
+  await page.getByRole("menuitemradio", { name: /^Low/ }).click();
+  await expect
+    .element(page.getByRole("button", { name: "Low", exact: true }), { timeout: 2000 })
+    .toBeVisible();
+  await expect
+    .element(page.getByRole("button", { name: "Save task" }), { timeout: 2000 })
+    .toBeVisible();
+  await page.getByRole("button", { name: "Save task" }).click();
+  await vi.waitFor(() =>
+    expect(savedTasks).toHaveBeenLastCalledWith({
+      environmentId,
+      input: expect.objectContaining({
+        modelSelection: {
+          ...selection,
+          options: expect.arrayContaining([{ id: "reasoningEffort", value: "low" }]),
+        },
+      }),
+    }),
+  );
+
+  await screen.rerender(<ScheduledTasksSettings />);
+  await screen.rerender(<ScheduledTasksSettings taskId={task.id} />);
+  await expect
+    .element(page.getByRole("button", { name: "GPT-5.4", exact: true }), { timeout: 2000 })
+    .toBeVisible();
+  await page.getByRole("button", { name: "GPT-5.4", exact: true }).click();
+  await expect
+    .element(page.getByRole("option", { name: /Plain model/ }), { timeout: 2000 })
+    .toBeVisible();
+  await page.getByRole("option", { name: /Plain model/ }).click();
+  expect(page.getByRole("button", { name: "High", exact: true }).query()).toBeNull();
+  await expect
+    .element(page.getByRole("button", { name: "Save task" }), { timeout: 2000 })
+    .toBeVisible();
+  await page.getByRole("button", { name: "Save task" }).click();
+  await vi.waitFor(() =>
+    expect(savedTasks).toHaveBeenLastCalledWith({
+      environmentId,
+      input: expect.objectContaining({
+        modelSelection: { instanceId: selection.instanceId, model: "plain" },
+      }),
+    }),
+  );
+});
+
+it("does not offer reasoning effort for runs bound to an existing thread", async () => {
+  setupEffortTask();
+  effortTasks = [{ ...effortTasks![0]!, threadId: task.threadId }];
+  await using _screen = await render(<ScheduledTasksSettings taskId={task.id} />);
+  await expect.element(page.getByRole("dialog")).toBeVisible();
+  await expect
+    .element(page.getByRole("button", { name: "High", exact: true }))
+    .not.toBeInTheDocument();
 });
