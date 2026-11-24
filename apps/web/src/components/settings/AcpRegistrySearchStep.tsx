@@ -175,14 +175,27 @@ export function AcpRegistrySearchStep({
             <InputGroupAddon>
               <SearchIcon />
             </InputGroupAddon>
+            {/* Native search inputs clear on Escape even during IME composition. */}
             <InputGroupInput
               aria-label={t("Search ACP Registry")}
+              enterKeyHint="search"
               disabled={preparingId !== null}
               onChange={(event) => registry.type(event.currentTarget.value)}
+              onKeyDown={(event) => {
+                if (event.key !== "Escape" || event.defaultPrevented) return;
+                if (event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return;
+                const composing = event.nativeEvent.isComposing || event.keyCode === 229;
+                if (!composing && !query && !event.repeat) return;
+                event.stopPropagation();
+                if (composing) return;
+                event.preventDefault();
+                if (query) registry.type("");
+              }}
               maxLength={ACP_REGISTRY_QUERY_LIMIT}
               placeholder={t("Search agents…")}
               size="sm"
-              type="search"
+              role="searchbox"
+              type="text"
               value={query}
             />
           </InputGroup>
