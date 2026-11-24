@@ -691,6 +691,37 @@ export const resolveMiseProviderMaintenance = Effect.fn("resolveMiseProviderMain
   },
 );
 
+const resolveMacPortsOwner = Effect.fn("resolveMacPortsOwner")(function* (
+  context: ProviderMaintenanceResolutionContext,
+) {
+  if (context.platform === "win32") return null;
+  const fileSystem = yield* FileSystem.FileSystem;
+  const path = yield* Path.Path;
+  const commandPaths = [...new Set([context.resolvedCommandPath, context.realCommandPath])];
+  // A MacPorts prefix holds `bin/port`, so every prefix containing a command path is an ancestor.
+  const portPaths = new Set<string>();
+  for (const commandPath of commandPaths) {
+    for (let dir = path.dirname(commandPath); ; dir = path.dirname(dir)) {
+      portPaths.add(path.join(dir, "bin", "port"));
+      if (path.dirname(dir) === dir) break;
+    }
+  }
+  for (const portPath of portPaths) {
+    if (!(yield* fileSystem.exists(portPath).pipe(Effect.orElseSucceed(() => false)))) continue;
+    const prefix = `${normalizeCommandPath(path.dirname(path.dirname(portPath)))}/`;
+    const owned = commandPaths.filter((commandPath) =>
+      normalizeCommandPath(commandPath).startsWith(prefix),
+    );
+    if (owned.length === 0) continue;
+    const output = yield* runProbe(portPath, ["provides", ...owned], context.env);
+    // A failed registry lookup is no proof that the files are free to update.
+    if (output === null) return "";
+    const name = /\bis provided by: (\S+)/.exec(output)?.[1];
+    if (name !== undefined) return /^[\w.+-]+$/.test(name) ? name : "";
+  }
+  return null;
+});
+
 export const resolvePackageManagedProviderMaintenance = Effect.fn(
   "resolvePackageManagedProviderMaintenance",
 )(function* (
@@ -710,6 +741,13 @@ export const resolvePackageManagedProviderMaintenance = Effect.fn(
   });
   const commandPaths = [context.resolvedCommandPath, context.realCommandPath];
   const packageName = definition.npmPackageName;
+  const macPortsName = yield* resolveMacPortsOwner(context);
+  if (macPortsName !== null) {
+    return {
+      ...manual,
+      ...(macPortsName ? { manualCommand: `sudo port upgrade ${macPortsName}` } : {}),
+    };
+  }
   // WinGet-managed claude update exits 0 without updating; T3 does not run winget upgrade.
   if (
     definition.provider === "claudeAgent" &&
