@@ -6307,6 +6307,29 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
     ) {
       dispatchMode = { type: "start_immediately" };
     }
+    if (
+      command.deliveryIntent === "auto" &&
+      command.createdBy === "agent" &&
+      (dispatchMode.type === "steer_active" || dispatchMode.type === "restart_active")
+    ) {
+      const queued = queuedRunsInDeliveryOrder(projection);
+      if (queued.length > 0) {
+        const messages = yield* projectionStore
+          .getMessagesById(
+            command.threadId,
+            queued.map((run) => run.userMessageId),
+          )
+          .pipe(mapDispatchError(command));
+        if (
+          [...messages.values()].some(
+            (message) =>
+              message.createdBy === "agent" && message.senderThreadId === command.senderThreadId,
+          )
+        ) {
+          dispatchMode = { type: "queue_after_active" };
+        }
+      }
+    }
     const freshContext = command.freshContext === true;
     // A result is asked of one whole turn, so a send that declares one never joins a running turn.
     // A run that continues one cut short still owes that run's result.
