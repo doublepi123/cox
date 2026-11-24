@@ -274,6 +274,7 @@ const make = Effect.gen(function* () {
                       projectStart: { refName: worktreeBaseRef, baseRefName },
                       baseBranch: input.baseRef,
                       startFromOrigin,
+                      projectCommands: true,
                     })
                     .pipe(
                       Effect.map((created) => {
@@ -322,6 +323,7 @@ const make = Effect.gen(function* () {
                   root: worktree.taskFolder,
                   force: true,
                   forget: true,
+                  projectCommands: true,
                   deleteBranch: worktree.refName,
                 }),
         ).pipe(Effect.ignoreCause({ log: true }));

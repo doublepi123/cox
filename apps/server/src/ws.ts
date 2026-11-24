@@ -26,6 +26,7 @@ import {
   AuthAccessStreamError,
   type AuthAccessStreamEvent,
   AuthOrchestrationOperateScope,
+  AuthTerminalOperateScope,
   type ScheduledTaskListResult,
   WorkflowRequestError,
   AuthSessionId,
@@ -1417,6 +1418,10 @@ export const layerWsRpc = (
               ...result,
               tasks: result.tasks.map(({ webhook: _webhook, ...task }) => task),
             };
+
+      const projectCommands =
+        currentSession.scopes.includes(AuthOrchestrationOperateScope) ||
+        currentSession.scopes.includes(AuthTerminalOperateScope);
 
       const acpRegistryProject = Effect.fn("ws.acpRegistry.project")(function* (
         projectId: ProjectId,
@@ -3069,7 +3074,7 @@ export const layerWsRpc = (
         [WS_METHODS.vcsListRefs]: (input) => gitWorkflow.listRefs(input),
         [WS_METHODS.vcsCreateWorktree]: (input) =>
           // A project that tracks repositories gets a task folder, as its new worktree threads do.
-          taskFolders.createForProjectFolder(input).pipe(
+          taskFolders.createForProjectFolder(input, { projectCommands }).pipe(
             Effect.mapError(
               (cause) =>
                 new GitCommandError({
@@ -3087,26 +3092,28 @@ export const layerWsRpc = (
           ),
         [WS_METHODS.vcsRemoveWorktree]: (input) =>
           // A thread's worktree may be a task folder: its repositories' worktrees go with it.
-          taskFolders.removeIfTaskFolder({ path: input.path, force: input.force === true }).pipe(
-            Effect.mapError(
-              (cause) =>
-                new GitCommandError({
-                  operation: "TaskFolders.remove",
-                  command: "git worktree remove",
-                  cwd: input.cwd,
-                  detail: cause.detail,
-                }),
+          taskFolders
+            .removeIfTaskFolder({ path: input.path, force: input.force === true, projectCommands })
+            .pipe(
+              Effect.mapError(
+                (cause) =>
+                  new GitCommandError({
+                    operation: "TaskFolders.remove",
+                    command: "git worktree remove",
+                    cwd: input.cwd,
+                    detail: cause.detail,
+                  }),
+              ),
+              Effect.flatMap((removed) =>
+                removed ? Effect.void : gitWorkflow.removeWorktree(input),
+              ),
+              // The client refreshes project status after deletion. Notify subscribers to the removed checkout.
+              Effect.tap(() =>
+                vcsStatusBroadcaster
+                  .refreshLocalStatus(input.path)
+                  .pipe(Effect.ignoreCause({ log: true }), Effect.forkDetach, Effect.asVoid),
+              ),
             ),
-            Effect.flatMap((removed) =>
-              removed ? Effect.void : gitWorkflow.removeWorktree(input),
-            ),
-            // The client refreshes project status after deletion. Notify subscribers to the removed checkout.
-            Effect.tap(() =>
-              vcsStatusBroadcaster
-                .refreshLocalStatus(input.path)
-                .pipe(Effect.ignoreCause({ log: true }), Effect.forkDetach, Effect.asVoid),
-            ),
-          ),
         [WS_METHODS.vcsCreateRef]: (input) =>
           (input.switchRef
             ? assertCheckoutIdle("GitWorkflowService.createRef", input.cwd)

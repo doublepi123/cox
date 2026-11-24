@@ -140,6 +140,9 @@ What the commands can rely on, and what they must do:
 - **One command runs at a time per project**, so a command can update a shared file in the project
   folder without its own locking.
 - **Each command has ten minutes.**
+- **The commands run only for requests that may run commands on the host.** A client with neither
+  `orchestration:operate` nor `terminal:operate` cannot create a task folder for a project that
+  declares a layout. It can remove an existing task folder without running the project’s `remove` command.
 
 A project with no other repository can declare a layout too. This example gives each thread
 a worktree with its submodules checked out. The command runs in `sh`, and in `cmd.exe` on Windows,

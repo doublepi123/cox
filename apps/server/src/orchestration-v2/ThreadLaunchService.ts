@@ -556,6 +556,7 @@ const make = Effect.gen(function* () {
               projectStart: { refName: startRef, baseRefName },
               baseBranch: input.workspaceStrategy.baseRef,
               startFromOrigin: input.workspaceStrategy.startFromOrigin === true,
+              projectCommands: true,
               onClaimed: (taskFolder, branch) =>
                 Effect.sync(() => {
                   createdTaskFolderBranch = branch;
@@ -772,6 +773,7 @@ const make = Effect.gen(function* () {
                       root: createdTaskFolderRoot,
                       force: true,
                       forget: true,
+                      projectCommands: true,
                       deleteBranch: createdTaskFolderBranch,
                     })
                     .pipe(Effect.mapError(mapError(input, "provision-worktree", threadId)))
