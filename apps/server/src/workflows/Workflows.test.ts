@@ -22,7 +22,18 @@ import * as TestClock from "effect/testing/TestClock";
 import { daily, every, Tick, webhook, WebhookRequest } from "./triggers.ts";
 import { pullRequests } from "./forgeApi.ts";
 import { cancel, runs, signal, signalAll, start, store } from "./stepServices.ts";
-import { type InRun, invoke, skip, sleep, step, stop, text, title, wait, workflow } from "./workflow.ts";
+import {
+  type InRun,
+  invoke,
+  skip,
+  sleep,
+  step,
+  stop,
+  text,
+  title,
+  wait,
+  workflow,
+} from "./workflow.ts";
 import { type AgentResult, WorkflowAgentError, WorkflowAgents } from "./WorkflowAgents.ts";
 import WorkflowsMigration from "../persistence/Migrations/086_Workflows.ts";
 import * as WorkflowEngine from "./WorkflowEngine.ts";
@@ -1635,104 +1646,98 @@ it.effect(
     }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
 );
 
-it.effect(
-  "the store is shared by runs and survives an engine restart",
-  () =>
-    Effect.gen(function* () {
-      const { boot } = yield* harness();
-      yield* boot(
-        Effect.gen(function* () {
-          const workflows = yield* Workflows.Workflows;
-          const runs = yield* Effect.forEach(["a", "b", "c"], (key) =>
-            workflows.start("tally", {}, { idempotencyKey: key }),
-          );
-          const counted = yield* Effect.forEach(runs, (run) =>
-            workflows.waitFor(run.runId, status("completed")),
-          );
-          assert.sameMembers(
-            counted.map((run) => run.result),
-            [1, 2, 3],
-          );
-        }),
-      );
-      yield* boot(
-        Effect.gen(function* () {
-          const workflows = yield* Workflows.Workflows;
-          const next = yield* workflows.start("tally", {}, { idempotencyKey: "d" });
-          assert.equal((yield* workflows.waitFor(next.runId, status("completed"))).result, 4);
-          // A key read with another schema is the step's failure, with the key in the reason.
-          const wrong = yield* workflows.start("tally", { wrong: true }, { idempotencyKey: "w" });
-          const paused = yield* workflows.waitFor(wrong.runId, status("paused"));
-          assert.include(paused.detail ?? "", "The stored value at tally does not fit its schema");
-        }),
-      );
-    }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
+it.effect("the store is shared by runs and survives an engine restart", () =>
+  Effect.gen(function* () {
+    const { boot } = yield* harness();
+    yield* boot(
+      Effect.gen(function* () {
+        const workflows = yield* Workflows.Workflows;
+        const runs = yield* Effect.forEach(["a", "b", "c"], (key) =>
+          workflows.start("tally", {}, { idempotencyKey: key }),
+        );
+        const counted = yield* Effect.forEach(runs, (run) =>
+          workflows.waitFor(run.runId, status("completed")),
+        );
+        assert.sameMembers(
+          counted.map((run) => run.result),
+          [1, 2, 3],
+        );
+      }),
+    );
+    yield* boot(
+      Effect.gen(function* () {
+        const workflows = yield* Workflows.Workflows;
+        const next = yield* workflows.start("tally", {}, { idempotencyKey: "d" });
+        assert.equal((yield* workflows.waitFor(next.runId, status("completed"))).result, 4);
+        // A key read with another schema is the step's failure, with the key in the reason.
+        const wrong = yield* workflows.start("tally", { wrong: true }, { idempotencyKey: "w" });
+        const paused = yield* workflows.waitFor(wrong.runId, status("paused"));
+        assert.include(paused.detail ?? "", "The stored value at tally does not fit its schema");
+      }),
+    );
+  }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
 );
 
-it.effect(
-  "a failed store transaction leaves its signal unsent",
-  () =>
-    Effect.gen(function* () {
-      const { boot } = yield* harness();
-      yield* boot(
-        Effect.gen(function* () {
-          const workflows = yield* Workflows.Workflows;
-          const waiting = yield* workflows.start("door", { door: "east" }, { idempotencyKey: "e" });
-          yield* workflows.waitFor(waiting.runId, status("waiting"));
-          const opener = yield* workflows.start(
-            "opener",
-            { door: "east", fail: true },
-            { idempotencyKey: "o" },
-          );
-          yield* workflows.waitFor(opener.runId, status("paused"));
-          assert.equal((yield* workflows.get(waiting.runId)).run.status, "waiting");
-          const clean = yield* workflows.start(
-            "opener",
-            { door: "east", fail: false },
-            { idempotencyKey: "o2" },
-          );
-          yield* workflows.waitFor(clean.runId, status("completed"));
-          assert.equal(
-            (yield* workflows.waitFor(waiting.runId, status("completed"))).result,
-            "came in",
-          );
-        }),
-      );
-    }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
+it.effect("a failed store transaction leaves its signal unsent", () =>
+  Effect.gen(function* () {
+    const { boot } = yield* harness();
+    yield* boot(
+      Effect.gen(function* () {
+        const workflows = yield* Workflows.Workflows;
+        const waiting = yield* workflows.start("door", { door: "east" }, { idempotencyKey: "e" });
+        yield* workflows.waitFor(waiting.runId, status("waiting"));
+        const opener = yield* workflows.start(
+          "opener",
+          { door: "east", fail: true },
+          { idempotencyKey: "o" },
+        );
+        yield* workflows.waitFor(opener.runId, status("paused"));
+        assert.equal((yield* workflows.get(waiting.runId)).run.status, "waiting");
+        const clean = yield* workflows.start(
+          "opener",
+          { door: "east", fail: false },
+          { idempotencyKey: "o2" },
+        );
+        yield* workflows.waitFor(clean.runId, status("completed"));
+        assert.equal(
+          (yield* workflows.waitFor(waiting.runId, status("completed"))).result,
+          "came in",
+        );
+      }),
+    );
+  }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
 );
 
-it.effect(
-  "a retried workflow step deduplicates signals and sends newly issued ones",
-  () =>
-    Effect.gen(function* () {
-      const { boot } = yield* harness();
-      yield* boot(
-        Effect.gen(function* () {
-          const workflows = yield* Workflows.Workflows;
-          // A retry sends again what the first try sent, and what it sends anew is new.
-          const doors = ["ra", "rb", "rc"];
-          const held = yield* Effect.forEach(doors, (door) =>
-            workflows.start("door", { door }, { idempotencyKey: door }),
-          );
-          yield* Effect.forEach(held, (run) => workflows.waitFor(run.runId, status("waiting")));
-          const relay = yield* workflows.start("relay", { doors }, { idempotencyKey: "relay" });
-          yield* workflows.waitFor(relay.runId, status("completed"));
-          // Each try is an attempt, though both were one run of the step.
-          assert.equal((yield* workflows.get(relay.runId)).steps[0]?.attempts, 2);
-          assert.equal(
-            yield* workflows.signal({ workflow: "door", channel: "rc" }, "late", { id: "rc-late" }),
-            "buffered",
-          );
-          const opened = yield* Effect.forEach(held, (run) =>
-            workflows.waitFor(run.runId, status("completed")),
-          );
-          assert.deepStrictEqual(
-            opened.map((run) => run.result),
-            ["came in", "came in", "came in"],
-          );
-        }),
-      );
-    }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
+it.effect("a retried workflow step deduplicates signals and sends newly issued ones", () =>
+  Effect.gen(function* () {
+    const { boot } = yield* harness();
+    yield* boot(
+      Effect.gen(function* () {
+        const workflows = yield* Workflows.Workflows;
+        // A retry sends again what the first try sent, and what it sends anew is new.
+        const doors = ["ra", "rb", "rc"];
+        const held = yield* Effect.forEach(doors, (door) =>
+          workflows.start("door", { door }, { idempotencyKey: door }),
+        );
+        yield* Effect.forEach(held, (run) => workflows.waitFor(run.runId, status("waiting")));
+        const relay = yield* workflows.start("relay", { doors }, { idempotencyKey: "relay" });
+        yield* workflows.waitFor(relay.runId, status("completed"));
+        // Each try is an attempt, though both were one run of the step.
+        assert.equal((yield* workflows.get(relay.runId)).steps[0]?.attempts, 2);
+        assert.equal(
+          yield* workflows.signal({ workflow: "door", channel: "rc" }, "late", { id: "rc-late" }),
+          "buffered",
+        );
+        const opened = yield* Effect.forEach(held, (run) =>
+          workflows.waitFor(run.runId, status("completed")),
+        );
+        assert.deepStrictEqual(
+          opened.map((run) => run.result),
+          ["came in", "came in", "came in"],
+        );
+      }),
+    );
+  }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
 );
 
 it.effect("an invoked run reports how it ended, and cancelling the parent cancels it", () =>

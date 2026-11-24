@@ -5,7 +5,6 @@ import { type PullRequestRef, WorkflowReferenceKind } from "@t3tools/contracts";
 import * as Cause from "effect/Cause";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
-import type * as Schema from "effect/Schema";
 
 import type { ReferenceInput, WorkflowStore } from "./WorkflowStore.ts";
 

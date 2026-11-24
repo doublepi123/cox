@@ -58,7 +58,11 @@ const setup = Effect.fn("setup")(function* (
       (definitions: ReadonlyArray<WorkflowDefinition>) =>
         engine?.(definitions) ??
         WorkflowEngine.layer(definitions).pipe(
-          Layer.provide(agents === undefined ? Layer.mock(WorkflowAgents)({}) : Layer.succeed(WorkflowAgents, agents)),
+          Layer.provide(
+            agents === undefined
+              ? Layer.mock(WorkflowAgents)({})
+              : Layer.succeed(WorkflowAgents, agents),
+          ),
           Layer.provide(database),
           Layer.provide(NodeCrypto.layer),
         ),

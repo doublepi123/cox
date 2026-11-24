@@ -219,7 +219,10 @@ const makeMcpAuthMiddleware = Effect.gen(function* () {
       limited.client?.webOrigin ??
       Option.getOrUndefined(Option.map(requestUrl(request), (url) => url.origin));
     const workflows = Option.isSome(settings)
-      ? yield* settings.value.getSettings.pipe(Effect.map((current) => current.workflowsEnabled), Effect.orElseSucceed(() => false))
+      ? yield* settings.value.getSettings.pipe(
+          Effect.map((current) => current.workflowsEnabled),
+          Effect.orElseSucceed(() => false),
+        )
       : false;
     return { ...limited, origin, workflows };
   });
@@ -1197,7 +1200,10 @@ export const layerTools = Layer.mergeAll(
 
 export const layerWorkflowEvents = Layer.effectDiscard(
   Effect.gen(function* () {
-    const annotations = Context.make(McpSchema.EnabledWhen, McpInvocationContext.hiddenUnlessWorkflowEvents);
+    const annotations = Context.make(
+      McpSchema.EnabledWhen,
+      McpInvocationContext.hiddenUnlessWorkflowEvents,
+    );
     for (const options of yield* MilestoneEvents.make) {
       yield* McpServer.registerEvent({ ...options, annotations });
     }

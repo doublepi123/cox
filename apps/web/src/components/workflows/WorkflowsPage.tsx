@@ -132,8 +132,8 @@ export function WorkflowsPage() {
     select({ ...env, run: runId, ...toggleWorkflowPaneTab(pane, tab) });
 
   return (
-    <SidebarInset className="h-dvh min-h-0 overflow-hidden overscroll-y-none">
-      <div className="flex min-h-0 min-w-0 flex-1">
+    <SidebarInset>
+      <div className="flex h-dvh min-h-0 min-w-0 flex-1 overflow-hidden overscroll-y-none">
         {/* Below md there is room for one thing, and an open pane is that thing. */}
         <div
           className={cn(

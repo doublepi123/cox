@@ -235,21 +235,22 @@ export function WorkflowRunsView({
           )}
         >
           <div className="space-y-2 p-2 pb-1">
-            <ToggleGroup
-              aria-label={gt("Which runs")}
-              className="w-full *:flex-1"
-              value={[tab]}
-              onValueChange={(next) => {
-                const value = TABS.find((candidate) => candidate.value === next[0]);
-                if (value !== undefined) setPickedTab(value.value);
-              }}
-            >
-              {TABS.map(({ value, label }) => (
-                <Toggle key={value} value={value}>
-                  {m(label)}
-                </Toggle>
-              ))}
-            </ToggleGroup>
+            <div className="[&_[data-slot=toggle]]:flex-1 [&>[data-slot=toggle-group]]:w-full">
+              <ToggleGroup
+                aria-label={gt("Which runs")}
+                value={[tab]}
+                onValueChange={(next) => {
+                  const value = TABS.find((candidate) => candidate.value === next[0]);
+                  if (value !== undefined) setPickedTab(value.value);
+                }}
+              >
+                {TABS.map(({ value, label }) => (
+                  <Toggle key={value} value={value}>
+                    {m(label)}
+                  </Toggle>
+                ))}
+              </ToggleGroup>
+            </div>
             {groups.workflows.length > 1 ? (
               <Select
                 value={workflow}
@@ -281,59 +282,63 @@ export function WorkflowRunsView({
               </p>
             )}
           </div>
-          <ScrollArea className="min-h-0 flex-1">
-            <nav aria-label={gt("Workflow runs")} className="p-2 pt-1">
-              {listed.length === 0 ? (
-                <p className="px-2 py-6 text-center text-xs text-muted-foreground">
-                  {section?.neverRan ? gt("Has not run yet.") : m(NOTHING[tab])}
-                </p>
-              ) : (
-                <ul className="space-y-0.5">
-                  {listed.map((node) => (
-                    <WorkflowRunListItem
-                      key={node.run.runId}
-                      node={node}
-                      current={node.run.runId === currentRunId}
-                      onSelect={onSelect}
-                    />
-                  ))}
-                </ul>
-              )}
-              {tab === "all" && visible.skipped > 0 && !openedSkipped ? (
-                <div className="flex justify-center pt-2">
-                  <Button size="xs" variant="ghost" onClick={() => setShowSkipped(!showSkipped)}>
-                    {showSkipped
-                      ? gt("Hide skipped")
-                      : gt("Show {count} skipped", { count: visible.skipped })}
-                  </Button>
-                </div>
-              ) : null}
-            </nav>
-          </ScrollArea>
+          <div className="min-h-0 flex-1">
+            <ScrollArea>
+              <nav aria-label={gt("Workflow runs")} className="p-2 pt-1">
+                {listed.length === 0 ? (
+                  <p className="px-2 py-6 text-center text-xs text-muted-foreground">
+                    {section?.neverRan ? gt("Has not run yet.") : m(NOTHING[tab])}
+                  </p>
+                ) : (
+                  <ul className="space-y-0.5">
+                    {listed.map((node) => (
+                      <WorkflowRunListItem
+                        key={node.run.runId}
+                        node={node}
+                        current={node.run.runId === currentRunId}
+                        onSelect={onSelect}
+                      />
+                    ))}
+                  </ul>
+                )}
+                {tab === "all" && visible.skipped > 0 && !openedSkipped ? (
+                  <div className="flex justify-center pt-2">
+                    <Button size="xs" variant="ghost" onClick={() => setShowSkipped(!showSkipped)}>
+                      {showSkipped
+                        ? gt("Hide skipped")
+                        : gt("Show {count} skipped", { count: visible.skipped })}
+                    </Button>
+                  </div>
+                ) : null}
+              </nav>
+            </ScrollArea>
+          </div>
         </div>
-        <ScrollArea
+        <div
           className={cn(
             "@container/feed min-h-0 min-w-0 flex-1",
             selectedRunId === null ? "hidden md:block" : "block",
           )}
         >
-          {shown === null ? (
-            selectedRunId === null ? null : (
-              notHere
-            )
-          ) : (
-            <WorkflowRunFeed
-              key={shown.run.runId}
-              environmentId={environmentId}
-              node={shown}
-              parent={all.find((node) => node.run.runId === shown.run.parentRunId)?.run ?? null}
-              shownTab={shownTab}
-              onSelect={onSelect}
-              onOpenThread={(thread) => onOpenThread(shown.run.runId, thread)}
-              onOpenReference={(reference) => onOpenReference(shown.run.runId, reference)}
-            />
-          )}
-        </ScrollArea>
+          <ScrollArea>
+            {shown === null ? (
+              selectedRunId === null ? null : (
+                notHere
+              )
+            ) : (
+              <WorkflowRunFeed
+                key={shown.run.runId}
+                environmentId={environmentId}
+                node={shown}
+                parent={all.find((node) => node.run.runId === shown.run.parentRunId)?.run ?? null}
+                shownTab={shownTab}
+                onSelect={onSelect}
+                onOpenThread={(thread) => onOpenThread(shown.run.runId, thread)}
+                onOpenReference={(reference) => onOpenReference(shown.run.runId, reference)}
+              />
+            )}
+          </ScrollArea>
+        </div>
       </div>
     </div>
   );

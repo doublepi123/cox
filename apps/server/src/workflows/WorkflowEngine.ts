@@ -10,7 +10,6 @@ import {
   Sharding,
   SingleRunner,
 } from "effect/cluster";
-import * as Digest from "effect/crypto/Digest";
 import * as SecureRandom from "effect/crypto/SecureRandom";
 import * as DateTime from "effect/DateTime";
 import * as Duration from "effect/Duration";
@@ -118,7 +117,6 @@ const make = Effect.fn("WorkflowEngine.make")(function* (
   const agents = yield* WorkflowAgents;
   const stopTurn = plain(agents.interrupt);
   const random = yield* SecureRandom.SecureRandom;
-  const digest = yield* Digest.Digest;
   const context = yield* Effect.context<WorkflowEngine.WorkflowEngine>();
   // The engine keeps 64-bit ids, which this SQLite client only reads when asked for BigInts.
   const withEngine = <A, E>(effect: Effect.Effect<A, E, WorkflowEngine.WorkflowEngine>) =>

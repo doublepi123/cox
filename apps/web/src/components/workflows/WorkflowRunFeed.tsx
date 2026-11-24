@@ -448,16 +448,17 @@ export function WorkflowRunFeed({
         className="mx-auto flex w-full max-w-5xl min-w-0 flex-col px-5 pt-5 pb-10"
       >
         <header className="space-y-1">
-          <Button
-            size="sm"
-            variant="ghost"
-            className="-ms-2.5 md:hidden"
-            onClick={() => onSelect(null)}
-            aria-label={gt("Back to the list of runs")}
-          >
-            <ArrowLeftIcon />
-            {gt("Runs")}
-          </Button>
+          <div className="-ms-2.5 md:hidden">
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => onSelect(null)}
+              aria-label={gt("Back to the list of runs")}
+            >
+              <ArrowLeftIcon />
+              {gt("Runs")}
+            </Button>
+          </div>
           {parent === null ? null : (
             <button
               type="button"
