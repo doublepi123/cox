@@ -91,11 +91,23 @@ const resolveTarget = Effect.fn("PullRequestsToolkit.resolveTarget")(function* (
     return yield* new PullRequestTargetIncompleteError({});
   }
   const projectHost = projectHostAndProvider(project);
-  const host = (input.host ?? projectHost.host)?.toLowerCase();
+  const own =
+    project?.repositoryIdentity == null || input.repository.includes("/")
+      ? null
+      : pullRequestSyncKey(
+          {
+            projectId: project.id,
+            host: input.host,
+            repository: input.repository,
+            number: input.number,
+          },
+          project.repositoryIdentity,
+        );
+  const host = (own?.host ?? input.host ?? projectHost.host)?.toLowerCase();
   if (host === undefined) {
     return yield* new PullRequestHostRequiredError({});
   }
-  const repository = input.repository.toLowerCase();
+  const repository = (own?.repository ?? input.repository).toLowerCase();
   // Without a URL, a public forge host says what shape its change request URLs take;
   // any other host is taken to run the project's own forge.
   const recognizedKind = sourceControlDefinitions.recognizeRemote(`https://${host}`)?.kind;
