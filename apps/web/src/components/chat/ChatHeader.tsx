@@ -5,6 +5,7 @@ import {
   type ScopedThreadRef,
   type ThreadId,
 } from "@t3tools/contracts";
+import { contextMenuSourceOf } from "~/contextMenuSource";
 import { scopeThreadRef } from "@t3tools/client-runtime/environment";
 import type { EnvironmentProject } from "@t3tools/client-runtime/state/shell";
 import {
@@ -246,15 +247,15 @@ export const ChatHeader = memo(function ChatHeader({
     // oxlint-disable-next-line react/exhaustive-effect-dependencies -- A pending title menu belongs to the thread that was clicked, so switching threads drops it.
     [activeThreadEnvironmentId, activeThreadId],
   );
-  const openTitleMenuNow = () => {
+  const openTitleMenuNow = (event: ReactMouseEvent<HTMLButtonElement>) => {
     cancelPendingTitleMenu();
     const rect = titleButtonRef.current?.getBoundingClientRect();
     if (!rect) return;
-    openMenu({ x: rect.left, y: rect.bottom + 4 });
+    openMenu({ x: rect.left, y: rect.bottom + 4 }, contextMenuSourceOf(event));
   };
   const openMenuFromTitle = (event: ReactMouseEvent<HTMLButtonElement>) => {
     if (isTrailingDoubleClick(event.detail)) return;
-    openTitleMenuNow();
+    openTitleMenuNow(event);
   };
   const handleTitleDoubleClick = (event: ReactMouseEvent) => {
     if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
@@ -272,16 +273,17 @@ export const ChatHeader = memo(function ChatHeader({
       const api = readLocalApi();
       if (!api) return;
       void api.contextMenu
-        .show([{ id: "project-settings", label: t("Project settings"), icon: "settings" }], {
-          x: event.clientX,
-          y: event.clientY,
-        })
+        .show(
+          [{ id: "project-settings", label: t("Project settings"), icon: "settings" }],
+          { x: event.clientX, y: event.clientY },
+          contextMenuSourceOf(event),
+        )
         .then((action) => {
           if (action === "project-settings") onOpenProjectSettings?.();
         });
       return;
     }
-    openMenu({ x: event.clientX, y: event.clientY });
+    openMenu({ x: event.clientX, y: event.clientY }, contextMenuSourceOf(event));
   };
   const handleRenameKeyDown = (event: ReactKeyboardEvent<HTMLInputElement>) => {
     if (event.nativeEvent.isComposing || event.keyCode === 229) return;

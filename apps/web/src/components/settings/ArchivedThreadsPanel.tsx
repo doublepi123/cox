@@ -1,3 +1,5 @@
+import type { ContextMenuSource } from "@t3tools/contracts";
+import { contextMenuSourceOf } from "../../contextMenuSource";
 import { useTranslation } from "../../i18n";
 import { useRef, useState } from "react";
 import type { ScopedThreadRef } from "@t3tools/contracts";
@@ -151,6 +153,7 @@ export function ArchivedThreadsPanel() {
   const handleArchivedThreadContextMenu = async (
     threadRef: ScopedThreadRef,
     position: { x: number; y: number },
+    source: ContextMenuSource,
   ) => {
     const api = readLocalApi();
     if (!api) return;
@@ -160,6 +163,7 @@ export function ArchivedThreadsPanel() {
         { id: "delete", label: t("Delete"), destructive: true },
       ],
       position,
+      source,
     );
 
     if (clicked === "unarchive") {
@@ -234,6 +238,7 @@ export function ArchivedThreadsPanel() {
                           x: event.clientX,
                           y: event.clientY,
                         },
+                        contextMenuSourceOf(event),
                       ),
                     );
                     if (result._tag === "Failure") {

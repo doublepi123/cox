@@ -1,4 +1,5 @@
 import type { ScopedThreadRef } from "@t3tools/contracts";
+import { contextMenuSourceOf } from "../../contextMenuSource";
 import { useOpenLink } from "~/browser/useOpenLink";
 import { sourceControlClients } from "@t3tools/client-runtime/source-control-clients";
 import { ArrowLeftIcon, ExternalLinkIcon } from "lucide-react";
@@ -24,6 +25,7 @@ const openNumberContextMenu = (event: ReactMouseEvent, detail: CrumbsPullRequest
     url: detail.url,
     openLabel: openOnHostLabel(sourceControlClients.get(detail.provider)),
     position: { x: event.clientX, y: event.clientY },
+    source: contextMenuSourceOf(event),
   });
 };
 

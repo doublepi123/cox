@@ -1,4 +1,9 @@
-import type { ConfirmDialogOptions, ContextMenuItem, LocalApi } from "@t3tools/contracts";
+import type {
+  ConfirmDialogOptions,
+  ContextMenuItem,
+  ContextMenuSource,
+  LocalApi,
+} from "@t3tools/contracts";
 
 import { requestConfirmDialog } from "./confirmDialog";
 import { dismissContextMenu, showContextMenuFallback } from "./contextMenuFallback";
@@ -25,7 +30,8 @@ export function createLocalApi(): LocalApi {
       show: async <Item extends string>(
         items: readonly ContextMenuItem<Item>[],
         position?: { x: number; y: number },
-      ): Promise<Item | null> => showContextMenuFallback(items, position),
+        source?: ContextMenuSource,
+      ): Promise<Item | null> => showContextMenuFallback(items, position, source),
       close: async () => {
         dismissContextMenu();
       },

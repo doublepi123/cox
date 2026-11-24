@@ -345,6 +345,8 @@ export interface ConfirmDialogOptions {
   readonly variant?: ConfirmDialogVariant;
 }
 
+export type ContextMenuSource = "keyboard" | "mouse";
+
 export interface LocalApi {
   dialogs: {
     confirm: (message: string, options?: ConfirmDialogOptions) => Promise<boolean>;
@@ -356,6 +358,7 @@ export interface LocalApi {
     show: <T extends string>(
       items: readonly ContextMenuItem<T>[],
       position?: { x: number; y: number },
+      source?: ContextMenuSource,
     ) => Promise<T | null>;
     close: () => Promise<void>;
   };
