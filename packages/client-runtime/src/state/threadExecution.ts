@@ -10,6 +10,8 @@ import {
   latestProviderTurnForAttempt,
   PROVIDER_DISPLAY_NAMES,
   type ModelSelection,
+  type ProviderDriverKind,
+  type ProviderInstanceId,
   type OrchestrationV2NotificationSource,
   type OrchestrationV2PendingBackgroundTask,
   type OrchestrationV2ProviderGoal,
@@ -105,17 +107,17 @@ function latestMatchingRun(
   );
 }
 
-function providerStarting(
-  projection: ThreadStructure,
-  run: OrchestrationV2ThreadProjection["runs"][number],
-): Pick<ThreadRunSummary, "providerStartingLabel" | "providerStarting"> {
-  const session = projection.providerSessions.findLast(
-    (candidate) => candidate.providerInstanceId === run.providerInstanceId,
-  );
-  const provider = session && PROVIDER_DISPLAY_NAMES[session.driver];
+export type ProviderDrivers = ReadonlyArray<Pick<ServerProvider, "instanceId" | "driver">>;
+
+export function presentProviderStarting(input: {
+  readonly instanceId: ProviderInstanceId;
+  readonly driver: ProviderDriverKind | undefined;
+  readonly phase?: string | undefined;
+}): Pick<ThreadRunSummary, "providerStartingLabel" | "providerStarting"> {
+  const provider = input.driver === undefined ? undefined : PROVIDER_DISPLAY_NAMES[input.driver];
   let providerStartingLabel = provider === undefined ? "Starting" : `Starting ${provider}`;
   if (provider !== undefined) {
-    switch (session?.startupPhase) {
+    switch (input.phase) {
       case "plugins":
         providerStartingLabel = `Loading ${provider} plugins`;
         break;
@@ -128,6 +130,9 @@ function providerStarting(
       case "skills":
         providerStartingLabel = `Loading ${provider} rules and skills`;
         break;
+      case "resume":
+        providerStartingLabel = `Resuming ${provider} session`;
+        break;
       case "connecting":
         providerStartingLabel = `Connecting to ${provider}`;
         break;
@@ -135,19 +140,49 @@ function providerStarting(
   }
   return {
     providerStartingLabel,
-    ...(session
-      ? { providerStarting: { instanceId: run.providerInstanceId, driver: session.driver } }
-      : {}),
+    ...(input.driver === undefined
+      ? {}
+      : { providerStarting: { instanceId: input.instanceId, driver: input.driver } }),
   };
+}
+
+function providerStarting(
+  run: OrchestrationV2ThreadProjection["runs"][number],
+  session: OrchestrationV2ProviderSession | undefined,
+  phase: string | undefined,
+  providers: ProviderDrivers | undefined,
+) {
+  return presentProviderStarting({
+    instanceId: run.providerInstanceId,
+    driver:
+      session?.driver ??
+      providers?.find((provider) => provider.instanceId === run.providerInstanceId)?.driver,
+    phase,
+  });
+}
+
+function runHasProviderOutput(projection: ThreadStructure, runId: RunId) {
+  return projection.turnItems.some(
+    (item) => item.runId === runId && item.providerTurnId !== null && item.type !== "user_message",
+  );
 }
 
 function summarizeThreadRun(
   projection: ThreadStructure,
   run: OrchestrationV2ThreadProjection["runs"][number],
+  providers?: ProviderDrivers,
 ): ThreadRunSummary {
   const turnStatus = ACTIVITY_RUN_STATUSES.has(run.status)
     ? latestProviderTurnForAttempt(projection.providerTurns, run.activeAttemptId)?.status
     : undefined;
+  const session = projection.providerSessions.findLast(
+    (candidate) => candidate.providerInstanceId === run.providerInstanceId,
+  );
+  const phase =
+    session?.startupPhaseThreadId === undefined ||
+    session.startupPhaseThreadId === projection.thread.id
+      ? session?.startupPhase
+      : undefined;
   return {
     runId: run.id,
     status: run.status,
@@ -159,13 +194,16 @@ function summarizeThreadRun(
         (message) => message.runId === run.id && message.role === "assistant",
       )?.id ?? null,
     // A run counts as running before its provider opens; until a turn appears,
-    // the provider can still be launching for minutes.
+    // the provider can still be launching for minutes. Some providers keep
+    // preparing after their turn opens and report that step until the first output.
     ...(turnStatus === undefined
       ? PROVIDER_STARTING_RUN_STATUSES.has(run.status)
-        ? providerStarting(projection, run)
+        ? providerStarting(run, session, phase, providers)
         : {}
       : turnStatus === "pending" || turnStatus === "running"
-        ? {}
+        ? phase === undefined || runHasProviderOutput(projection, run.id)
+          ? {}
+          : providerStarting(run, session, phase, providers)
         : { turnEnded: true }),
     ...(run.sourcePlanRef === undefined ? {} : { sourcePlanRef: run.sourcePlanRef }),
   };
@@ -195,11 +233,14 @@ export function deriveLatestThreadRun(projection: ThreadStructure): ThreadRunSum
   return run === null ? null : summarizeThreadRun(projection, run);
 }
 
-export function deriveThreadActivityRun(projection: ThreadStructure): ThreadRunSummary | null {
+export function deriveThreadActivityRun(
+  projection: ThreadStructure,
+  providers?: ProviderDrivers,
+): ThreadRunSummary | null {
   const run =
     latestMatchingRun(projection, (candidate) => ACTIVITY_RUN_STATUSES.has(candidate.status)) ??
     presentedLatestRun(projection);
-  return run === null ? null : summarizeThreadRun(projection, run);
+  return run === null ? null : summarizeThreadRun(projection, run, providers);
 }
 
 /**

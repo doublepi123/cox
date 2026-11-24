@@ -4564,6 +4564,58 @@ describe("ClaudeAdapterV2 background wake turns", () => {
     ),
   );
 
+  it.effect("reports connecting while a turn's first API request is unanswered", () =>
+    Effect.gen(function* () {
+      const harness = yield* makeWakeHarnessWithOptions();
+      const status = (uuid: string) =>
+        claudeSdkFrame({
+          type: "system",
+          subtype: "status",
+          status: "requesting",
+          uuid,
+          session_id: WAKE_NATIVE_SESSION,
+        });
+      yield* harness.runtime.startTurn(
+        makeClaudeTestTurnInput({
+          threadId: harness.threadId,
+          providerThread: harness.providerThread,
+          now: DateTime.makeUnsafe(0),
+          attemptId: RunAttemptId.make("connecting-phase"),
+          text: "Hello",
+          attachments: [],
+        }),
+      );
+      // Init lands before the request and must not count as its answer.
+      yield* harness.offerAndWait(wakeTurnInit);
+      yield* harness.offerAndWait(status("00000000-0000-4000-8000-000000000901"));
+      yield* harness.offerAndWait(
+        makeAssistantTextFrame({ uuid: "00000000-0000-4000-8000-000000000902", text: "Hi." }),
+      );
+      // A later request in the same turn is the model working, not startup.
+      yield* harness.offerAndWait(status("00000000-0000-4000-8000-000000000903"));
+      yield* harness.offerAndWait(turnOneResult);
+      yield* Queue.take(harness.terminalReceipts);
+      assert.deepEqual(
+        harness.events.flatMap((event) =>
+          event.type === "provider_session.updated"
+            ? [event.providerSession.startupPhase ?? null]
+            : [],
+        ),
+        ["connecting", null],
+      );
+    }).pipe(
+      Effect.scoped,
+      Effect.provide(
+        Layer.mergeAll(
+          IdAllocator.layer,
+          McpProviderSessions.layer,
+          NodeServices.layer,
+          NodeCrypto.layer,
+        ),
+      ),
+    ),
+  );
+
   it.effect("resumes the session a /clear selected after the Claude process is replaced", () =>
     Effect.gen(function* () {
       const harness = yield* makeWakeHarnessWithOptions({

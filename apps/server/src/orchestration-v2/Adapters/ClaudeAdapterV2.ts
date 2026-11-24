@@ -609,6 +609,8 @@ export interface ClaudeAgentSdkQueryOpenInput {
   readonly options: ClaudeAgentSdkQueryOptions;
   readonly threadId: ThreadId;
   readonly providerSessionId: OrchestrationV2ProviderSession["id"];
+  /** Reports the step the CLI is on before the turn can start, such as `mcp`; `undefined` ends it. */
+  readonly onStartupPhase?: (phase: string | undefined) => Effect.Effect<void>;
 }
 
 export interface ClaudeAgentSdkQuerySession {
@@ -1440,6 +1442,8 @@ export const layerQueryRunner: Layer.Layer<
                 restore(
                   Effect.gen(function* () {
                     if (mcpServers !== undefined) {
+                      const onStartupPhase = input.onStartupPhase ?? (() => Effect.void);
+                      yield* onStartupPhase("mcp");
                       // Errors and mcp_status can echo headers; log only server names.
                       const failed = yield* Effect.tryPromise(() =>
                         queryRuntime.setMcpServers(mcpServers),
@@ -1463,6 +1467,7 @@ export const layerQueryRunner: Layer.Layer<
                               ),
                             ),
                         }),
+                        Effect.ensuring(Effect.suspend(() => onStartupPhase(undefined))),
                       );
                       if (failed.length > 0) {
                         yield* Effect.logWarning(
@@ -5825,6 +5830,26 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
           return Queue.offer(events, event).pipe(Effect.asVoid);
         };
 
+        let reportedStartupPhase: string | undefined;
+        const reportStartupPhase = Effect.fn("ClaudeAdapterV2.reportStartupPhase")(function* (
+          phase: string | undefined,
+        ) {
+          if (phase === reportedStartupPhase) return;
+          reportedStartupPhase = phase;
+          yield* emitProviderEvent({
+            type: "provider_session.updated",
+            driver: CLAUDE_PROVIDER,
+            providerSession: {
+              ...session,
+              ...(phase === undefined ? {} : { startupPhase: phase }),
+              updatedAt: yield* DateTime.now,
+            },
+          });
+        });
+        // Only a turn's first API request is startup; later ones are the model at work.
+        const requestedTurns = new WeakSet<ActiveClaudeTurnContext>();
+        let connectingTurn: ActiveClaudeTurnContext | undefined;
+
         const persistAttachmentBudget = Effect.fnUntraced(function* (nativeThreadId: string) {
           const providerThread = (yield* Ref.get(lastProviderThreadByNativeThread)).get(
             nativeThreadId,
@@ -8547,6 +8572,10 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
           readonly threadDisposition?: "reusable" | "broken";
           readonly result?: SDKResultMessage;
         }) {
+          if (connectingTurn === input.context) {
+            connectingTurn = undefined;
+            yield* reportStartupPhase(undefined);
+          }
           yield* reasoningDeltas.flushTurn(input.context.nativeTurnId);
           if (input.context.compaction?.status === "running") {
             const reason = input.result?.subtype === "success" ? input.result.result.trim() : "";
@@ -9622,6 +9651,26 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
               yield* bufferWakeMessage({ nativeThreadId: liveQuery.nativeThreadId, message });
             }
             return;
+          }
+          if (context === (yield* Ref.get(activeTurn))) {
+            if (
+              message.type === "system" &&
+              message.subtype === "status" &&
+              Reflect.get(message, "status") === "requesting" &&
+              !requestedTurns.has(context)
+            ) {
+              requestedTurns.add(context);
+              connectingTurn = context;
+              yield* reportStartupPhase("connecting");
+            } else if (
+              connectingTurn === context &&
+              (message.type === "assistant" ||
+                message.type === "stream_event" ||
+                message.type === "result")
+            ) {
+              connectingTurn = undefined;
+              yield* reportStartupPhase(undefined);
+            }
           }
           const focusedPlugin = claudeFocusRequestedPanePlugin(message);
           if (focusedPlugin !== null && context === (yield* Ref.get(activeTurn))) {
@@ -11757,12 +11806,14 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
             .open({
               threadId: turnInput.threadId,
               providerSessionId: input.providerSessionId,
+              onStartupPhase: reportStartupPhase,
               options: {
                 ...queryOptions,
                 ...(gatewaySettings === undefined ? {} : { settings: gatewaySettings }),
               },
             })
             .pipe(
+              Effect.ensuring(Effect.suspend(() => reportStartupPhase(undefined))),
               Effect.onError(() =>
                 closedExistingNativeThreadId === nativeThreadId
                   ? Effect.gen(function* () {

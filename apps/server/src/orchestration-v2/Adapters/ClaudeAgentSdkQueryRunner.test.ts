@@ -215,10 +215,21 @@ it.effect("reopens a stalled MCP registration before delivering the resumed prom
       });
       yield* Effect.addFinalizer(() => Effect.sync(() => querySpy.mockRestore()));
       const runner = yield* ClaudeAgentSdkQueryRunner;
-      const opening = yield* runner.open(resumedMcpQueryInput).pipe(Effect.forkChild);
+      const phases: Array<string | undefined> = [];
+      const opening = yield* runner
+        .open({
+          ...resumedMcpQueryInput,
+          onStartupPhase: (phase) =>
+            Effect.sync(() => {
+              phases.push(phase);
+            }),
+        })
+        .pipe(Effect.forkChild);
       yield* Effect.promise(() => registrationStarted.promise);
+      assert.deepEqual(phases, ["mcp"]);
       yield* TestClock.adjust("90 seconds");
       yield* Effect.promise(() => disposalStarted.promise);
+      assert.deepEqual(phases, ["mcp", undefined]);
       assert.equal(querySpy.mock.calls.length, 1);
       finishDisposal.resolve();
       const session = yield* Fiber.join(opening);
@@ -231,6 +242,7 @@ it.effect("reopens a stalled MCP registration before delivering the resumed prom
         assert.equal(call.options?.resume, FORK_SESSION_ID);
         assert.isUndefined(call.options?.mcpServers);
       }
+      assert.deepEqual(phases, ["mcp", undefined, "mcp", undefined]);
       assert.deepEqual(secondRegistration.mock.calls, [[resumedMcpQueryInput.options.mcpServers]]);
       const message = {
         type: "user",
