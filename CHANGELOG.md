@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+## 0.2.36 — 2026-11-24
+
+- Install Codex from a manually configured provider and update the runtime Cox manages.
+- Detect new OMO Native and Cursor CLI versions and update Cox-managed installations in Providers.
+- Enable Codex memories by default. Explicit memory settings and launch flags keep their precedence.
+
 ## Desktop 0.2.41 — 2026-11-24
 
 - ⇧⌘V (Paste as Text) pastes plain text in the composer on macOS again.
