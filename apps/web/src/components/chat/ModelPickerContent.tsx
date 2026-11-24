@@ -517,6 +517,10 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
       return favorites.length > 0 ? "favorites" : props.activeInstanceId;
     },
   );
+  const [sheetProvider, setSheetProvider] = useState<ProviderInstanceId | null>(() =>
+    selectedInstanceId === "favorites" ? null : selectedInstanceId,
+  );
+  const [sheetFavoritesOnly, setSheetFavoritesOnly] = useState(selectedInstanceId === "favorites");
   const favoritesSet = new Set(favorites.map((fav) => providerModelKey(fav.provider, fav.model)));
   const [expandedLegacyInstances, setExpandedLegacyInstances] = useState(
     () =>
@@ -534,6 +538,12 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
 
   const coarsePointer = useMediaQuery({ pointer: "coarse" });
   const sheet = props.layout === "sheet";
+  const favoritesOnly = sheet ? sheetFavoritesOnly : selectedInstanceId === "favorites";
+  const providerFilter = sheet
+    ? sheetProvider
+    : selectedInstanceId === "favorites"
+      ? null
+      : selectedInstanceId;
   const focusSearchInput = () => {
     searchInputRef.current?.focus({ preventScroll: true });
   };
@@ -726,12 +736,17 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
   const instanceOrder = instanceEntries.map((entry) => entry.instanceId);
 
   const filteredModels = (() => {
-    let result = flatModels;
+    const result = flatModels.filter((model) => {
+      if (!matchesLockedProvider(model)) return false;
+      if (isSearching && !sheet) return true;
+      return (
+        (providerFilter === null || model.instanceId === providerFilter) &&
+        (!favoritesOnly || favoritesSet.has(providerModelKey(model.instanceId, model.slug)))
+      );
+    });
 
-    if (searchQuery.trim()) {
-      const candidates =
-        lockedProvider !== null ? result.filter((m) => matchesLockedProvider(m)) : result;
-      return rankModelPickerSearch(candidates, searchQuery, (model) => ({
+    if (isSearching) {
+      return rankModelPickerSearch(result, searchQuery, (model) => ({
         name: model.name,
         ...(model.shortName ? { shortName: model.shortName } : {}),
         ...(model.subProvider ? { subProvider: model.subProvider } : {}),
@@ -741,28 +756,15 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
       }));
     }
 
-    if (lockedProvider !== null) {
-      result = result.filter((m) => matchesLockedProvider(m));
-      if (selectedInstanceId === "favorites") {
-        result = result.filter((m) => favoritesSet.has(providerModelKey(m.instanceId, m.slug)));
-      } else {
-        result = result.filter((m) => m.instanceId === selectedInstanceId);
-      }
-    } else if (selectedInstanceId === "favorites") {
-      result = result.filter((m) => favoritesSet.has(providerModelKey(m.instanceId, m.slug)));
-    } else {
-      result = result.filter((m) => m.instanceId === selectedInstanceId);
-    }
-
     return sortProviderModelItems(result, {
       favoriteModelKeys: favoritesSet,
-      groupFavorites: selectedInstanceId !== "favorites",
-      instanceOrder: selectedInstanceId === "favorites" ? instanceOrder : [],
+      groupFavorites: !favoritesOnly,
+      instanceOrder: providerFilter === null ? instanceOrder : [],
     });
   })();
 
   const legacySection = (() => {
-    if (isSearching || selectedInstanceId === "favorites") {
+    if (isSearching || favoritesOnly || providerFilter === null) {
       return null;
     }
     const currentModels: ModelPickerItem[] = [];
@@ -776,10 +778,10 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
       return null;
     }
     return {
-      key: modelPickerLegacySectionKey(selectedInstanceId),
+      key: modelPickerLegacySectionKey(providerFilter),
       currentModels,
       legacyModels,
-      isExpanded: expandedLegacyInstances.has(selectedInstanceId),
+      isExpanded: expandedLegacyInstances.has(providerFilter),
     };
   })();
 
@@ -793,8 +795,7 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
     ];
   })();
 
-  const selectedEntry =
-    selectedInstanceId === "favorites" ? undefined : entryByInstanceId.get(selectedInstanceId);
+  const selectedEntry = providerFilter === null ? undefined : entryByInstanceId.get(providerFilter);
   const providerSetupEntries =
     !isSearching && canOpenProviderSetup
       ? instanceEntries.filter(
@@ -959,12 +960,11 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
       >
         {showProviderChips ? (
           <ModelPickerProviderChips
-            selectedInstanceId={selectedInstanceId}
-            dimmed={isSearching}
-            onSelectInstance={(instanceId) => {
-              setSearchQuery("");
-              handleSelectInstance(instanceId);
-            }}
+            selectedInstanceId={sheetProvider}
+            onSelectInstance={setSheetProvider}
+            favoritesOnly={sheetFavoritesOnly}
+            onToggleFavorites={() => setSheetFavoritesOnly((enabled) => !enabled)}
+            showAllProviders={!isLocked}
             instanceEntries={sidebarInstanceEntries}
             {...(selectableUnavailableInstanceIds ? { selectableUnavailableInstanceIds } : {})}
             {...(lockedDisabledInstanceIds
@@ -1181,7 +1181,7 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
                         ? selectedModelKeySet.has(modelKey)
                         : modelKey === activeModelKey
                     }
-                    favoriteStarOnHover={selectedInstanceId === "favorites" && !isSearching}
+                    favoriteStarOnHover={favoritesOnly && !isSearching}
                     showInstanceBadge={badgedInstanceIds.has(model.instanceId)}
                     showNewBadge={model.badge === "new"}
                     unavailable={model.isUnavailable === true}
@@ -1197,11 +1197,7 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
               environmentId={props.environmentId}
               setupEntries={providerSetupEntries}
               updateRequiredNotices={updateRequiredNotices}
-              emptyLabel={
-                selectedInstanceId === "favorites" && !isSearching
-                  ? "No favorites yet"
-                  : "No models found"
-              }
+              emptyLabel={favoritesOnly && !isSearching ? "No favorites yet" : "No models found"}
               onRequestClose={onRequestClose}
               onOpenProviderSetup={onOpenProviderSetup}
             />

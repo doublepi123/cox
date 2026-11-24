@@ -29,10 +29,12 @@ function describeUnavailableInstance(entry: ProviderInstanceEntry): string {
 const CHIP =
   "relative flex h-9 shrink-0 cursor-pointer items-center gap-2 rounded-full border px-3 text-sm whitespace-nowrap outline-none transition-[background-color,border-color,color] pointer-coarse:after:absolute pointer-coarse:after:inset-x-0 pointer-coarse:after:-inset-y-1 focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50 aria-pressed:border-primary/45 aria-pressed:bg-primary/12 aria-pressed:text-foreground border-border/70 text-muted-foreground not-aria-pressed:not-disabled:active:bg-foreground/[0.06]";
 
-/** The phone sheet's provider tabs: one scrolling row of labelled chips, Favorites first. */
 export function ModelPickerProviderChips(props: {
-  selectedInstanceId: ProviderInstanceId | "favorites";
-  onSelectInstance: (instanceId: ProviderInstanceId | "favorites") => void;
+  selectedInstanceId: ProviderInstanceId | null;
+  onSelectInstance: (instanceId: ProviderInstanceId | null) => void;
+  favoritesOnly: boolean;
+  onToggleFavorites: () => void;
+  showAllProviders: boolean;
   instanceEntries: ReadonlyArray<ProviderInstanceEntry>;
   disabledInstanceIds?: ReadonlySet<ProviderInstanceId>;
   selectableUnavailableInstanceIds?: ReadonlySet<ProviderInstanceId>;
@@ -45,7 +47,9 @@ export function ModelPickerProviderChips(props: {
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- scrolls the selected chip into the row's view when the selection or the provider list changes
   useLayoutEffect(() => {
     const row = rowRef.current;
-    const chip = row?.querySelector<HTMLElement>('[aria-pressed="true"]');
+    const chip = row?.querySelector<HTMLElement>(
+      '[data-model-picker-provider][aria-pressed="true"]',
+    );
     if (!row || !chip) return;
     const start = chip.offsetLeft - 12;
     const end = chip.offsetLeft + chip.offsetWidth + 12 - row.clientWidth;
@@ -67,14 +71,24 @@ export function ModelPickerProviderChips(props: {
     >
       <Toolbar.Button
         type="button"
-        data-model-picker-provider="favorites"
-        aria-pressed={!props.dimmed && props.selectedInstanceId === "favorites"}
-        onClick={() => props.onSelectInstance("favorites")}
+        aria-pressed={props.favoritesOnly}
+        onClick={props.onToggleFavorites}
         className={CHIP}
       >
         <StarIcon aria-hidden className="size-4 fill-current text-warning" />
-        {t("Favorites")}
+        {t("Favorites only")}
       </Toolbar.Button>
+      {props.showAllProviders ? (
+        <Toolbar.Button
+          type="button"
+          data-model-picker-provider="all"
+          aria-pressed={props.selectedInstanceId === null}
+          onClick={() => props.onSelectInstance(null)}
+          className={CHIP}
+        >
+          {t("All providers")}
+        </Toolbar.Button>
+      ) : null}
       {props.instanceEntries.map((entry) => {
         const isUnavailable = !isProviderInstancePickerReady(entry);
         const isContextDisabled = props.disabledInstanceIds?.has(entry.instanceId) ?? false;

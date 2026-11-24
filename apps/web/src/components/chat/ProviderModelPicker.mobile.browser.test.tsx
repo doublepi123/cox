@@ -241,8 +241,15 @@ it("keeps the soft keyboard closed when a touch screen opens the picker", async 
   await expect.poll(() => picker.sheet.contains(document.activeElement)).toBe(true);
 
   // Provider chips switch tabs without raising the keyboard.
-  await page.getByRole("button", { name: "Favorites" }).click();
+  const favorites = page.getByRole("button", { name: "Favorites only" });
+  await favorites.click();
+  await expect.element(favorites).toHaveAttribute("aria-pressed", "true");
+  await page.getByRole("button", { name: "All providers" }).click();
+  await expect.element(favorites).toHaveAttribute("aria-pressed", "true");
   await expect.element(page.getByText("No favorites yet")).toBeInTheDocument();
+  await favorites.click();
+  await expect.element(favorites).toHaveAttribute("aria-pressed", "false");
+  await expect.element(page.getByText("No favorites yet")).not.toBeInTheDocument();
   await page.getByRole("button", { name: "Codex" }).click();
   await expect.element(search).not.toHaveFocus();
   await expect.element(page.getByRole("option", { name: /Model 1/ })).toBeVisible();
