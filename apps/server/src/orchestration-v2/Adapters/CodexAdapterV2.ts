@@ -1321,6 +1321,7 @@ interface ActiveCodexTurnContext {
   readonly runningWebSearchItems: Map<string, CodexWebSearchItem>;
   // Modern approval requests omit paths; keep the kinds without retaining patch bodies.
   readonly fileChangeKindsByItem: Map<string, CodexFileChangeKinds>;
+  readonly asyncMessageIds: Set<string>;
   readonly itemPositions: Map<
     string,
     { readonly ordinal: number; readonly startedAt: DateTime.Utc }
@@ -2416,6 +2417,7 @@ export const makeCodexAdapterV2 = Effect.fn("makeCodexAdapterV2")(function* (
             subagent: null,
             startedAt: input.startedAt,
             itemPositions: new Map(),
+            asyncMessageIds: new Set(),
             fileChangeKindsByItem: new Map(),
             runningCompactionItemIds: new Set(),
             runningWebSearchItems: new Map(),
@@ -3023,6 +3025,7 @@ export const makeCodexAdapterV2 = Effect.fn("makeCodexAdapterV2")(function* (
               subagent,
               startedAt: turn.startedAt,
               itemPositions: new Map(),
+              asyncMessageIds: new Set(),
               fileChangeKindsByItem: new Map(),
               runningCompactionItemIds: new Set(),
               runningWebSearchItems: new Map(),
@@ -3702,6 +3705,7 @@ export const makeCodexAdapterV2 = Effect.fn("makeCodexAdapterV2")(function* (
             completedAt,
             updatedAt,
             type: "assistant_message",
+            ...(context.asyncMessageIds.has(item.id) ? { delivery: "async" as const } : {}),
             messageId,
             text: item.text,
             streaming: !completed,
@@ -5292,6 +5296,7 @@ export const makeCodexAdapterV2 = Effect.fn("makeCodexAdapterV2")(function* (
             }
 
             if (payload.item.type === "agentMessage") {
+              if (payload.item.delivery === "async") context.asyncMessageIds.add(payload.item.id);
               if (payload.item.phase == null || payload.item.phase === "final_answer") {
                 yield* Ref.update(finalAnswerItemIdsByTurn, (current) => {
                   const updated = new Map(current);
@@ -5641,6 +5646,7 @@ export const makeCodexAdapterV2 = Effect.fn("makeCodexAdapterV2")(function* (
               return;
             }
 
+            if (payload.item.delivery === "async") context.asyncMessageIds.add(payload.item.id);
             if (payload.item.delivery === "async" && payload.item.questions?.length) {
               const artifacts = yield* buildUserInputRequestArtifacts({
                 context,
@@ -7136,6 +7142,7 @@ export const makeCodexAdapterV2 = Effect.fn("makeCodexAdapterV2")(function* (
             subagent: null,
             startedAt: now,
             itemPositions: new Map(),
+            asyncMessageIds: new Set(),
             fileChangeKindsByItem: new Map(),
             runningCompactionItemIds: new Set(),
             runningWebSearchItems: new Map(),

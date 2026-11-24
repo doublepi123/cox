@@ -1614,6 +1614,89 @@ describe("CodexAdapterV2 session initialize", () => {
 });
 
 describe("CodexAdapterV2 post-settle continuation", () => {
+  it.effect("keeps an asynchronous Codex alert distinguishable from the final answer", () =>
+    Effect.gen(function* () {
+      const nativeThreadId = "async-alert-thread";
+      const nativeTurnId = "async-alert-turn";
+      const agentMessage = (id: string, text: string, delivery: "async" | null) => ({
+        type: "emit_inbound" as const,
+        label: id,
+        frame: {
+          method: "item/completed",
+          params: {
+            threadId: nativeThreadId,
+            turnId: nativeTurnId,
+            item: {
+              type: "agentMessage",
+              id,
+              text,
+              phase: "final_answer",
+              delivery,
+              questions: null,
+            },
+          },
+        },
+      });
+      const transcript = makeCodexReplayTranscript({
+        scenario: "async-alert-and-final-answer",
+        entries: [
+          ...codexReplayPreamble({
+            nativeThreadId,
+            nativeTurnId,
+            prompt: "Alert me, then finish.",
+          }),
+          agentMessage("call_alert_1", "I found an important detail.", "async"),
+          agentMessage("msg_final", "Here is the ordinary final answer.", null),
+          {
+            type: "emit_inbound",
+            label: "complete",
+            frame: {
+              method: "turn/completed",
+              params: {
+                threadId: nativeThreadId,
+                turn: makeCodexReplayTurn({ id: nativeTurnId, status: "completed" }),
+              },
+            },
+          },
+        ],
+      });
+      const harness = yield* makeCodexReplayHarness(transcript);
+      yield* harness.runtime.startTurn(
+        makeCodexTestTurnInput({
+          threadId: harness.threadId,
+          providerThread: harness.providerThread,
+          now: yield* DateTime.now,
+          attemptId: RunAttemptId.make("async-alert-attempt"),
+          text: "Alert me, then finish.",
+        }),
+      );
+      yield* harness.firstTerminal;
+      const delivery = (nativeId: string) => {
+        const event = harness.events.findLast(
+          (event) =>
+            event.type === "turn_item.updated" &&
+            event.turnItem.type === "assistant_message" &&
+            event.turnItem.nativeItemRef?.nativeId === nativeId,
+        );
+        if (event?.type !== "turn_item.updated" || event.turnItem.type !== "assistant_message") {
+          throw new Error(`Missing assistant item: ${nativeId}`);
+        }
+        return event.turnItem.delivery;
+      };
+      assert.equal(delivery("call_alert_1"), "async");
+      assert.isUndefined(delivery("msg_final"));
+    }).pipe(
+      Effect.provide(
+        Layer.mergeAll(
+          IdAllocator.layer,
+          McpProviderSessions.layer,
+          NodeServices.layer,
+          NodeCrypto.layer,
+        ),
+      ),
+    ),
+  );
+
   it.effect.each([
     { name: "dangerous command", networkApprovalContext: undefined, asks: false },
     {
