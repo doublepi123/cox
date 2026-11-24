@@ -90,6 +90,7 @@ describe("runMigrations", () => {
         [84, "WorktreePathKeyIndex"],
         [85, "DeferredSlashCommandIndex"],
         [86, "Workflows"],
+        [87, "ProjectionRunStatusIndex"],
       ]);
 
       const tables = yield* sql<{ readonly name: string }>`

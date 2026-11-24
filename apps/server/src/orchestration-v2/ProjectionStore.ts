@@ -3525,6 +3525,7 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
                       AND node.run_id IS NOT NULL
                       AND NOT EXISTS (
                         SELECT 1 FROM orchestration_v2_projection_runs AS run
+                          INDEXED BY orchestration_v2_projection_runs_run_status_idx
                         WHERE run.run_id = node.run_id
                           AND run.status IN ('preparing', 'queued', 'starting', 'running', 'waiting')
                       )
@@ -3572,6 +3573,7 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
                         IN ('acknowledged', 'delivered', 'disposed')
                       AND NOT EXISTS (
                         SELECT 1 FROM orchestration_v2_projection_runs AS run
+                          INDEXED BY orchestration_v2_projection_runs_run_status_idx
                         WHERE run.run_id = subagent.run_id
                           AND run.status IN ('preparing', 'queued', 'starting', 'running', 'waiting')
                       )
@@ -3631,14 +3633,22 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
                 ? sql<PayloadRow>`
             SELECT payload_json
             FROM orchestration_v2_projection_provider_threads
-            WHERE thread_id = ${threadId}
-               OR owner_node_id IN (${nodesOwningProviderThreads(threadId)})
-               OR provider_thread_id IN (
-                 SELECT provider_thread_id
-                 FROM orchestration_v2_projection_subagents
-                 WHERE thread_id = ${threadId}
-                   AND provider_thread_id IS NOT NULL
-               )
+            WHERE rowid IN (
+              SELECT rowid FROM orchestration_v2_projection_provider_threads
+              WHERE thread_id = ${threadId}
+              UNION
+              SELECT rowid FROM orchestration_v2_projection_provider_threads
+                INDEXED BY orchestration_v2_projection_provider_threads_owner_idx
+              WHERE owner_node_id IN (${nodesOwningProviderThreads(threadId)})
+              UNION
+              SELECT rowid FROM orchestration_v2_projection_provider_threads
+              WHERE provider_thread_id IN (
+                SELECT provider_thread_id
+                FROM orchestration_v2_projection_subagents
+                WHERE thread_id = ${threadId}
+                  AND provider_thread_id IS NOT NULL
+              )
+            )
             ORDER BY COALESCE(first_run_ordinal, 0), provider_thread_id ASC
           `
                 : sql<PayloadRow>`

@@ -94,6 +94,7 @@ import Migration0083 from "./Migrations/083_TaskFolders.ts";
 import Migration0084 from "./Migrations/084_WorktreePathKeyIndex.ts";
 import Migration0085 from "./Migrations/085_DeferredSlashCommandIndex.ts";
 import Migration0086 from "./Migrations/086_Workflows.ts";
+import Migration0087 from "./Migrations/087_ProjectionRunStatusIndex.ts";
 
 const migrationEntries = [
   [1, "OrchestrationEvents", Migration0001],
@@ -183,6 +184,7 @@ const migrationEntries = [
   [84, "WorktreePathKeyIndex", Migration0084],
   [85, "DeferredSlashCommandIndex", Migration0085],
   [86, "Workflows", Migration0086],
+  [87, "ProjectionRunStatusIndex", Migration0087],
 ] as const;
 
 export const migrationManifest = migrationEntries.map(([id, name]) => [id, name] as const);

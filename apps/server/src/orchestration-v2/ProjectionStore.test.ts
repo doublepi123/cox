@@ -1362,6 +1362,46 @@ const commandReadsSkipSettledLeafNodes = Effect.gen(function* () {
     ["delivered"],
   );
   assert.strictEqual(yield* store.getSubagentCount(threadId), subagents.length);
+  const sql = yield* SqlClient.SqlClient;
+  yield* sql`ANALYZE orchestration_v2_projection_provider_threads`;
+  yield* sql`DELETE FROM sqlite_stat1 WHERE tbl = 'orchestration_v2_projection_provider_threads'`;
+  for (const [index, stat] of [
+    ["sqlite_autoindex_orchestration_v2_projection_provider_threads_1", "5531 1"],
+    ["orchestration_v2_projection_provider_threads_thread_idx", "5531 1"],
+    ["orchestration_v2_projection_provider_threads_owner_idx", "5531 5531"],
+    ["orchestration_v2_projection_provider_threads_session_idx", "5531 2766"],
+  ]) {
+    yield* sql`INSERT INTO sqlite_stat1 VALUES ('orchestration_v2_projection_provider_threads', ${index}, ${stat})`;
+  }
+  yield* sql`ANALYZE sqlite_schema`;
+  const { statements, tracer } = traceSqlStatements();
+  yield* store
+    .getThreadRecords(threadId, ["nodes", "subagents", "providerThreads"], {
+      omitSettledSubagents: true,
+      omitSettledLeafNodes: true,
+    })
+    .pipe(Effect.withTracer(tracer));
+  for (const [table, lookup] of [
+    [
+      "nodes AS node",
+      "SEARCH run USING COVERING INDEX orchestration_v2_projection_runs_run_status_idx",
+    ],
+    [
+      "subagents AS subagent",
+      "SEARCH run USING COVERING INDEX orchestration_v2_projection_runs_run_status_idx",
+    ],
+    [
+      "provider_threads",
+      "SEARCH orchestration_v2_projection_provider_threads USING INTEGER PRIMARY KEY",
+    ],
+  ] as const) {
+    const statement = statements.find((query) =>
+      query.includes(`FROM orchestration_v2_projection_${table}`),
+    );
+    assert.isDefined(statement);
+    const plan = yield* sql.unsafe<{ readonly detail: string }>(`EXPLAIN QUERY PLAN ${statement}`);
+    assert.include(plan.map((row) => row.detail).join("\n"), lookup);
+  }
 });
 
 const backgroundThreadUpdatesKeepTimestamp = Effect.gen(function* () {
