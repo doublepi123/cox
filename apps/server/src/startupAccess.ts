@@ -14,8 +14,13 @@ export const isWildcardHost = (host: string | undefined): boolean =>
 export const formatHostForUrl = (host: string): string =>
   host.includes(":") && !host.startsWith("[") ? `[${host}]` : host;
 
-export const resolveHeadlessConnectionString = (host: string | undefined, port: number): string =>
-  `http://${formatHostForUrl(!host || isWildcardHost(host) ? "127.0.0.1" : host)}:${port}`;
+export const resolveLocalOrigin = (host: string | undefined, port: number): string => {
+  const address =
+    host === "::" || host === "[::]" ? "::1" : !host || isWildcardHost(host) ? "127.0.0.1" : host;
+  return `http://${formatHostForUrl(address)}:${port}`;
+};
+
+export const resolveHeadlessConnectionString = resolveLocalOrigin;
 
 const resolveListeningPort = (address: unknown, fallbackPort: number): number => {
   if (
