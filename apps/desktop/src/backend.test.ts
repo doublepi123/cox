@@ -327,10 +327,13 @@ describe("desktop backend supervisor", () => {
     expect(await readFile(join(home, "stopped"), "utf8")).toBe("graceful");
   });
 
-  it.runIf(process.platform !== "win32")(
-    "recovers a suspended backend when the launcher dies",
-    async () => {
-      const { home, entry } = await createBackend();
+  it.runIf(process.platform !== "win32").each([
+    { mode: "normal", freeze: true, exit: [0, null] },
+    { mode: "stubborn", freeze: false, exit: [null, "SIGKILL"] },
+  ])(
+    "stops the $mode backend after the launcher dies",
+    async ({ mode, freeze, exit }) => {
+      const { home, entry } = await createBackend(mode);
       const child = spawn(
         process.execPath,
         ["--import", pathToFileURL(preload).href, entry, "--home-dir", home],
@@ -339,6 +342,7 @@ describe("desktop backend supervisor", () => {
             ...process.env,
             COX_DESKTOP_PARENT_PID: String(process.pid),
             COX_DESKTOP_RECOVERY_PIPE: "1",
+            FIXTURE_MODE: mode,
           },
           detached: true,
           stdio: ["ignore", "pipe", "pipe", "ipc", "pipe"],
@@ -354,12 +358,13 @@ describe("desktop backend supervisor", () => {
         if (message === "cox:backend-ready-to-start") child.send("cox:backend-start");
       });
       await once(child.stdout!, "data");
-      child.kill("SIGSTOP");
+      if (freeze) child.kill("SIGSTOP");
       child.disconnect();
       child.stdio[4]?.destroy();
-      expect(await exited).toEqual([0, null]);
-      expect(await readFile(join(home, "stopped"), "utf8")).toBe("graceful");
+      expect(await exited).toEqual(exit);
+      if (freeze) expect(await readFile(join(home, "stopped"), "utf8")).toBe("graceful");
     },
+    10_000,
   );
 
   it("never loads backend code if the desktop disconnected before preload completed", async () => {
