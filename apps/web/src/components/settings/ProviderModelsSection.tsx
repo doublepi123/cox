@@ -337,6 +337,17 @@ export function ProviderModelsSection({
             <Input
               value={filter}
               onChange={(event) => setFilter(event.target.value)}
+              onKeyDown={(event) => {
+                if (
+                  event.key !== "Escape" ||
+                  event.nativeEvent.isComposing ||
+                  event.keyCode === 229
+                )
+                  return;
+                if (!filter && !event.repeat) return;
+                event.stopPropagation();
+                setFilter("");
+              }}
               placeholder={t("Filter models")}
               size="sm"
               spellCheck={false}
