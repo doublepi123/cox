@@ -4803,7 +4803,11 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
         `GitVcsDriver.listRefs: remote name lookup returned code ${remoteNamesResult.exitCode} for ${gitCommonDir}: ${remoteNamesResult.stderr.trim()}. Falling back to an empty remote name list.`,
       );
     }
-    const primaryRemote = remoteNames.includes("origin") ? "origin" : remoteNames[0];
+    const primaryRemote = remoteNames.includes("origin")
+      ? "origin"
+      : remoteNamesResult.exitCode === 0
+        ? parseRemoteNamesInGitOrder(remoteNamesResult.stdout)[0]
+        : undefined;
     const defaultHead = `refs/remotes/${primaryRemote}/HEAD`;
     let defaultBranch: string | null = null;
     for (const record of refsResult.stdout.split("\n")) {
