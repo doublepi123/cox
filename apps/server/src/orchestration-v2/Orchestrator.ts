@@ -80,6 +80,7 @@ import {
 import * as KeyedLock from "@t3tools/shared/KeyedLock";
 import { modelSelectionsEqual } from "@t3tools/shared/model";
 import { modelSwitchSince } from "./modelSwitch.ts";
+import { turnItemsSinceContextBoundary } from "./contextBoundary.ts";
 import { outputRequestProblem } from "./runOutput.ts";
 import { recordThreadOpen } from "@t3tools/shared/paletteSearch";
 import { isSlashCommand } from "@t3tools/shared/composerTrigger";
@@ -8017,15 +8018,20 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
     const mergeBackDeltaItems =
       mergeBackSourceProjection === null || mergeBackSourceRun === null
         ? []
-        : visibleConversationItems(
-            mergeBackSourceProjection,
-            yield* readHandoffItems(
+        : yield* Effect.gen(function* () {
+            const sourceRuns = mergeBackSourceProjection.runs.filter(
+              (run) => run.ordinal <= mergeBackSourceRun.ordinal,
+            );
+            const rawItems = yield* readHandoffItems(
               mergeBackSourceProjection.thread.id,
-              mergeBackSourceProjection.runs
-                .filter((run) => run.ordinal <= mergeBackSourceRun.ordinal)
-                .map((run) => run.id),
-            ),
-          );
+              sourceRuns.map((run) => run.id),
+            );
+            const { turnItems } = turnItemsSinceContextBoundary({
+              runs: sourceRuns,
+              turnItems: rawItems,
+            });
+            return visibleConversationItems(mergeBackSourceProjection, turnItems);
+          });
     const mergeBackHandoff =
       pendingMergeBackTransfer === undefined ||
       mergeBackSourceProjection === null ||
