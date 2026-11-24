@@ -56,6 +56,7 @@ import {
 } from "./WorkflowForge.ts";
 import {
   hookId as hookIdOf,
+  WorkflowHookBusyError,
   WorkflowInputError,
   WorkflowNotRegisteredError,
   WorkflowRunNotFoundError,
@@ -85,6 +86,7 @@ const DELIVERY_HEADERS = [
   "webhook-id",
   "idempotency-key",
 ];
+const HOOK_RUNS_PER_MINUTE = 60;
 const CANCEL_WAITS = Duration.seconds(30);
 const decodeTurnWatch = Schema.decodeUnknownEffect(Schema.toCodecJson(TurnWatch));
 const encodeTurnEnd = Schema.encodeEffect(Schema.toCodecJson(TurnEnd));
@@ -525,6 +527,7 @@ const make = Effect.fn("WorkflowEngine.make")(function* (
       };
     }),
   );
+  const hookStarts = new Map<string, ReadonlyArray<number>>();
   const deliver: Workflows["Service"]["deliver"] = Effect.fn("Workflows.deliver")(
     function* (delivery) {
       const hook = hooks.find((candidate) => candidate.hookId === delivery.hookId);
@@ -545,11 +548,17 @@ const make = Effect.fn("WorkflowEngine.make")(function* (
         (sent === undefined ? undefined : `${sent}:${delivery.request.headers[sent]}`) ??
         delivery.deliveryId ??
         (yield* random.uuidV4());
-      return Option.some(
-        yield* start(hook.workflow, delivery.request, {
-          idempotencyKey: `hook:${hook.hookId}:${key}`,
-        }),
-      );
+      const idempotencyKey = `hook:${hook.hookId}:${key}`;
+      // A retry of a run that exists starts nothing, so it takes none of the minute.
+      if ((yield* store.runByKey(hook.workflow, idempotencyKey)) === undefined) {
+        const now = DateTime.toEpochMillis(yield* DateTime.now);
+        const recent = (hookStarts.get(hook.hookId) ?? []).filter((at) => now - at < 60_000);
+        if (recent.length >= HOOK_RUNS_PER_MINUTE) {
+          return yield* new WorkflowHookBusyError({ hook: hook.name });
+        }
+        hookStarts.set(hook.hookId, [...recent, now]);
+      }
+      return Option.some(yield* start(hook.workflow, delivery.request, { idempotencyKey }));
     },
   );
 

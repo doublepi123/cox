@@ -30,7 +30,12 @@ const hooks = Layer.mock(Workflows.Workflows)({
     Effect.sync(() => {
       workflowDeliveries.push(delivery);
       return delivery.token === "tok" ? Option.some({ runId: "run-1" }) : Option.none();
-    }),
+    }).pipe(
+      Effect.filterOrFail(
+        () => delivery.token !== "busy",
+        () => new Workflows.WorkflowHookBusyError({ hook: "push" }),
+      ),
+    ),
 });
 
 const handlerFor = (
@@ -75,6 +80,9 @@ describe("webhook route", () => {
       expect(accepted.status).toBe(202);
       expect(yield* Effect.promise(() => accepted.json())).toEqual({ runId: "run-1" });
       expect((yield* send("wrong")).status).toBe(404);
+      const busy = yield* send("busy");
+      expect([busy.status, busy.headers.get("retry-after")]).toEqual([429, "60"]);
+      expect(yield* Effect.promise(() => busy.json())).toEqual({ error: "rate_limited" });
       expect(tasks).toBe(0);
       expect(workflowDeliveries[0]).toMatchObject({
         hookId: "wf-inbound.push",

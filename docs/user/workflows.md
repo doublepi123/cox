@@ -65,7 +65,7 @@ For the `cox_workflow` MCP tool, full access in default interaction mode is requ
 ## Triggers
 
 - **Schedules:** `every` runs on an interval, starting one interval after the workflow loads; `daily` runs at a local time of day (a time missed by more than 10 minutes while the server is down is skipped).
-- **Webhooks:** `cox workflow hooks` prints each hook's path; prepend your server's address. The path contains the hook's secret, so share it only with the sender. A sender's retry that repeats its delivery header (such as GitHub's `X-GitHub-Delivery`) starts no second run, and bodies over 1 MiB are refused.
+- **Webhooks:** `cox workflow hooks` prints each hook's path; prepend your server's address. The path contains the hook's secret, so share it only with the sender. A sender's retry that repeats its delivery header (such as GitHub's `X-GitHub-Delivery`) starts no second run. Bodies over 1 MiB are refused, and each hook can start up to 60 new runs per minute. Further deliveries receive HTTP 429 with `Retry-After: 60`.
 - **Pull requests:** workflows can start when a pull request opens and read, comment on, or update it using the project’s Git host credentials. Cox checks roughly once a minute and starts runs for pull requests opened after the workflow first loaded.
 
 ## Follow runs in the app
