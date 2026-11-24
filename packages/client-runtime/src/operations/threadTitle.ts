@@ -1,6 +1,9 @@
 import { composerFileLinksToPlainText } from "@t3tools/shared/composerInlineTokens";
 import type { ChatAttachment } from "@t3tools/contracts";
-import { assistantCitationsToPlainText } from "@t3tools/shared/assistantCitations";
+import {
+  assistantCitationsToPlainText,
+  splitsSurrogatePair,
+} from "@t3tools/shared/assistantCitations";
 import { replaceComposerContextReferences } from "@t3tools/shared/composerContextReferences";
 import { truncate } from "@t3tools/shared/String";
 
@@ -33,7 +36,7 @@ export function threadTitleTextFromPrompt(value: string): string {
 export function deriveThreadTitleSeed(input: ThreadTitleSeedInput): string {
   const text = threadTitleTextFromPrompt(input.text);
   if (text.length > 0) {
-    return truncate(text);
+    return truncate(text, splitsSurrogatePair(text, 50) ? 49 : 50);
   }
 
   const images = input.attachments.filter((attachment) => attachment.type === "image");
