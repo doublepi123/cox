@@ -3590,7 +3590,7 @@ it.layer(layerTest)("ProjectionStoreV2", (it) => {
             activeAttemptId: null,
             status: "cancelled",
             requestedAt: nowIso,
-            startedAt: nowIso,
+            startedAt: null,
             completedAt: nowIso,
             checkpointId: null,
             contextHandoffId: null,
@@ -3718,6 +3718,23 @@ it.layer(layerTest)("ProjectionStoreV2", (it) => {
           (row) => row.sourceItemId === runlessQueuedId,
         ),
       );
+
+      // Recovery cancels a run that had started; its delivered queued message stays.
+      const setCancelledStartedAt = (startedAt: string | null) => sql`
+        UPDATE orchestration_v2_projection_runs
+        SET payload_json = json_set(payload_json, '$.startedAt', ${startedAt})
+        WHERE run_id = ${cancelledRunId}
+      `;
+      yield* setCancelledStartedAt(nowIso);
+      const startedCancelledSnapshot = yield* projectionStore.getThreadSnapshotWindow(threadId, {
+        rowLimit: sqlPageLimit,
+      });
+      assert.isTrue(
+        startedCancelledSnapshot.projection.visibleTurnItems.some((row) =>
+          String(row.sourceItemId).includes(":cancelled:"),
+        ),
+      );
+      yield* setCancelledStartedAt(null);
 
       const interruptRunId = RunId.make("run:bounded-sql-history:interrupt");
       const interruptNodeId = NodeId.make("node:bounded-sql-history:interrupt");

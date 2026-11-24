@@ -2951,7 +2951,8 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
                         AND NOT (
                           item.type = 'user_message'
                           AND json_extract(item.payload_json, '$.inputIntent') = 'queued_turn'
-                          AND run.status IS 'cancelled'
+                          AND (run.status IS 'queued' OR (run.status IS 'cancelled'
+                            AND json_extract(run.payload_json, '$.startedAt') IS NULL))
                         )
                       )
                     )

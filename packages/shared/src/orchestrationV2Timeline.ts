@@ -5,7 +5,8 @@ import type {
   OrchestrationV2UserMessageInputIntent,
 } from "@t3tools/contracts";
 
-type TimelineRun = Pick<OrchestrationV2Run, "id" | "status">;
+type TimelineRun = Pick<OrchestrationV2Run, "id" | "status"> &
+  Partial<Pick<OrchestrationV2Run, "startedAt">>;
 type TimelineRunAttempt = Pick<OrchestrationV2RunAttempt, "runId" | "rootNodeId" | "status">;
 type TimelineTurnItem = Pick<OrchestrationV2TurnItem, "type" | "runId" | "nodeId"> & {
   readonly inputIntent?: OrchestrationV2UserMessageInputIntent;
@@ -43,6 +44,11 @@ export function isOrchestrationV2SupersededInterrupt(input: {
   return !hasMatchingRequest;
 }
 
+// A run that started received its queued input, even if recovery cancelled it later.
+function isHeldRun(run: TimelineRun): boolean {
+  return run.status === "queued" || (run.status === "cancelled" && run.startedAt == null);
+}
+
 export function isOrchestrationV2TurnItemVisible(input: {
   readonly item: TimelineTurnItem;
   readonly runs: ReadonlyArray<TimelineRun>;
@@ -57,12 +63,12 @@ export function isOrchestrationV2TurnItemVisible(input: {
     return false;
   }
 
-  // Cancelled queued input never reached the provider and must stay out of the transcript.
+  // Queued input stays out of the transcript until the run starts.
   if (
     item.type === "user_message" &&
     item.inputIntent === "queued_turn" &&
     item.runId !== null &&
-    input.runs.some((run) => run.id === item.runId && run.status === "cancelled")
+    input.runs.some((run) => run.id === item.runId && isHeldRun(run))
   ) {
     return false;
   }
@@ -79,7 +85,7 @@ export function createOrchestrationV2TurnItemVisibility(input: {
   readonly attempts: ReadonlyArray<TimelineRunAttempt>;
   readonly items: ReadonlyArray<TimelineTurnItem>;
 }): (item: TimelineTurnItem) => boolean {
-  const statuses = new Map(input.runs.map((run) => [run.id, run.status]));
+  const runs = new Map(input.runs.map((run) => [run.id, run]));
   const supersededRoots = new Map<
     TimelineRunAttempt["runId"],
     Set<TimelineRunAttempt["rootNodeId"]>
@@ -94,10 +100,11 @@ export function createOrchestrationV2TurnItemVisibility(input: {
     input.items.filter((item) => item.type === "run_interrupt_request").map((item) => item.runId),
   );
   return (item) => {
-    const status = item.runId === null ? undefined : statuses.get(item.runId);
-    if (status === "rolled_back") return false;
+    const run = item.runId === null ? undefined : runs.get(item.runId);
+    if (run?.status === "rolled_back") return false;
     if (
-      status === "cancelled" &&
+      run !== undefined &&
+      isHeldRun(run) &&
       item.type === "user_message" &&
       item.inputIntent === "queued_turn"
     )

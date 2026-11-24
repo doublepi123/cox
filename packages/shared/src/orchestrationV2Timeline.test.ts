@@ -1,4 +1,5 @@
 import { NodeId, RunId } from "@t3tools/contracts";
+import { DateTime } from "effect";
 import { describe, expect, it } from "vite-plus/test";
 
 import {
@@ -66,16 +67,19 @@ describe.each([
     ).toBe(true);
   });
 
-  it("hides queued user messages once their run is cancelled", () => {
-    expect(
-      isVisible({
-        item: { type: "user_message", inputIntent: "queued_turn", runId, nodeId },
-        runs: [{ id: runId, status: "cancelled" }],
-        attempts: [],
-        items: [{ type: "user_message", inputIntent: "queued_turn", runId, nodeId }],
-      }),
-    ).toBe(false);
-  });
+  it.each([
+    { status: "queued", startedAt: null, visible: false },
+    { status: "cancelled", startedAt: null, visible: false },
+    { status: "cancelled", startedAt: DateTime.makeUnsafe(0), visible: true },
+  ] as const)(
+    "keeps delivered queued input visible for $status runs ($visible)",
+    ({ status, startedAt, visible }) => {
+      const item = { type: "user_message", inputIntent: "queued_turn", runId, nodeId } as const;
+      const input = { runs: [{ id: runId, status, startedAt }], attempts: [], items: [item] };
+      expect(isVisible({ ...input, item })).toBe(visible);
+      expect(createOrchestrationV2TurnItemVisibility(input)(item)).toBe(visible);
+    },
+  );
 
   it("keeps non-queued user messages on cancelled runs", () => {
     expect(

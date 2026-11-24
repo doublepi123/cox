@@ -4,7 +4,10 @@ import {
   MessageId,
   ProjectId,
   ProviderInstanceId,
+  NodeId,
+  RunId,
   ThreadId,
+  TurnItemId,
   type OrchestrationV2DomainEvent,
   type ThreadLinkedPullRequest,
 } from "@t3tools/contracts";
@@ -128,7 +131,7 @@ const message = (
     readonly streaming?: boolean;
     readonly createdBy?: "user" | "agent";
   } = {},
-): OrchestrationV2DomainEvent => ({
+): Extract<OrchestrationV2DomainEvent, { type: "message.updated" }> => ({
   id: EventId.make(`message:${id}`),
   type: "message.updated",
   threadId,
@@ -452,6 +455,156 @@ it.layer(layerTest)("ThreadSearch", (it) => {
 });
 
 it.layer(layerTest)("ThreadSearch filters before it ranks", (it) => {
+  it.effect("leaves out answers in their question card and turns the thread hides", () =>
+    Effect.gen(function* () {
+      const projections = yield* ProjectionStore.ProjectionStoreV2;
+      const search = yield* ThreadSearch.ThreadSearch;
+      const eventMessage = (
+        owner: ThreadId,
+        id: string,
+        role: "user" | "assistant" | "system",
+        text: string,
+        options?: { readonly runId: RunId },
+      ) => {
+        const event = message(owner, id, role, text);
+        return { ...event, payload: { ...event.payload, runId: options?.runId ?? null } };
+      };
+      const project = ProjectId.make("project:cancelled-run-visibility");
+      const asked = ThreadId.make("thread:cancelled-run-answer");
+      const rewound = ThreadId.make("thread:rewound");
+      const queued = ThreadId.make("thread:queued");
+      const stopped = ThreadId.make("thread:stopped");
+      const recovered = ThreadId.make("thread:recovered");
+      const restarted = ThreadId.make("thread:restarted");
+      const run = (owner: ThreadId, status: "rolled_back" | "cancelled", started = true) =>
+        ({
+          id: EventId.make(`run:${owner}`),
+          type: "run.created",
+          threadId: owner,
+          runId: RunId.make(`run:${owner}`),
+          nodeId: NodeId.make(`node:${owner}`),
+          providerInstanceId,
+          occurredAt: at(2),
+          payload: {
+            id: RunId.make(`run:${owner}`),
+            threadId: owner,
+            ordinal: 1,
+            providerInstanceId,
+            modelSelection: { instanceId: providerInstanceId, model: "gpt-5" },
+            providerThreadId: null,
+            userMessageId: MessageId.make(`${owner}:prompt`),
+            rootNodeId: NodeId.make(`node:${owner}`),
+            activeAttemptId: null,
+            status,
+            requestedAt: at(1),
+            startedAt: started ? at(1) : null,
+            completedAt: at(2),
+            checkpointId: null,
+            contextHandoffId: null,
+          },
+        }) satisfies OrchestrationV2DomainEvent;
+      const shown = (owner: ThreadId, id: string, as: "turn_start" | "queued_turn" | "reply") =>
+        ({
+          id: EventId.make(`item:${id}`),
+          type: "turn-item.updated",
+          threadId: owner,
+          occurredAt: at(2),
+          payload: {
+            id: TurnItemId.make(id),
+            threadId: owner,
+            runId: RunId.make(`run:${owner}`),
+            nodeId: null,
+            providerThreadId: null,
+            providerTurnId: null,
+            nativeItemRef: null,
+            parentItemId: null,
+            ordinal: 1,
+            status: "completed",
+            title: null,
+            startedAt: at(1),
+            completedAt: at(1),
+            updatedAt: at(1),
+            messageId: MessageId.make(id),
+            text: "",
+            ...(as === "reply"
+              ? { type: "assistant_message", streaming: false }
+              : {
+                  type: "user_message",
+                  inputIntent: as,
+                  attachments: [],
+                  createdBy: "user",
+                  creationSource: "web",
+                }),
+          },
+        }) satisfies OrchestrationV2DomainEvent;
+      yield* createProject(project);
+      yield* Effect.forEach(
+        [
+          thread(asked, project),
+          eventMessage(
+            asked,
+            "async-answer:request-cancelled-run-visibility",
+            "user",
+            "use the kingfisher drive",
+          ),
+          thread(rewound, project),
+          run(rewound, "rolled_back"),
+          eventMessage(rewound, "rewound-reply", "assistant", "the kingfisher drive is ready", {
+            runId: RunId.make(`run:${rewound}`),
+          }),
+          thread(queued, project),
+          run(queued, "cancelled", false),
+          eventMessage(queued, "queued-prompt", "user", "then mount the kingfisher drive", {
+            runId: RunId.make(`run:${queued}`),
+          }),
+          // A queued prompt usually has no item; an edited one has a queued item.
+          eventMessage(queued, "requeued-prompt", "user", "then eject the kingfisher drive", {
+            runId: RunId.make(`run:${queued}`),
+          }),
+          shown(queued, "requeued-prompt", "queued_turn"),
+          // A stopped turn keeps its prompt and whatever the agent already said.
+          thread(stopped, project),
+          run(stopped, "cancelled"),
+          eventMessage(stopped, "stopped-prompt", "user", "format the kingfisher drive", {
+            runId: RunId.make(`run:${stopped}`),
+          }),
+          shown(stopped, "stopped-prompt", "turn_start"),
+          thread(recovered, project),
+          run(recovered, "cancelled"),
+          eventMessage(
+            recovered,
+            "recovered-reply",
+            "assistant",
+            "the kingfisher drive is formatted",
+            {
+              runId: RunId.make(`run:${recovered}`),
+            },
+          ),
+          shown(recovered, "recovered-reply", "reply"),
+          // A restart cancels a turn that already took its queued prompt.
+          thread(restarted, project),
+          run(restarted, "cancelled"),
+          eventMessage(restarted, "delivered-prompt", "user", "then label the kingfisher drive", {
+            runId: RunId.make(`run:${restarted}`),
+          }),
+          shown(restarted, "delivered-prompt", "queued_turn"),
+        ],
+        projections.apply,
+        { discard: true },
+      );
+      assert.deepEqual(
+        (yield* search.search({ query: "kingfisher" })).matches
+          .map((match) => match.messageId)
+          .sort(),
+        [
+          MessageId.make("delivered-prompt"),
+          MessageId.make("recovered-reply"),
+          MessageId.make("stopped-prompt"),
+        ],
+      );
+    }),
+  );
+
   it.effect("orders message matches by when they were written, not by row order", () =>
     Effect.gen(function* () {
       const projections = yield* ProjectionStore.ProjectionStoreV2;

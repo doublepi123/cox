@@ -279,6 +279,25 @@ export const messageHitsQuery = (
       -- neither find nor a jump can reach them.
       AND messages.message_id NOT LIKE 'async-answer:%'
       AND NOT EXISTS (
+        SELECT 1 FROM orchestration_v2_projection_runs AS runs
+        WHERE runs.run_id = messages.run_id
+          AND (
+            runs.status = 'rolled_back'
+            OR (
+              runs.status = 'cancelled'
+              AND NOT EXISTS (
+                SELECT 1 FROM orchestration_v2_projection_turn_items AS items
+                WHERE items.run_id = runs.run_id
+                  AND json_extract(items.payload_json, '$.messageId') = messages.message_id
+                  AND (
+                    json_extract(items.payload_json, '$.inputIntent') IS NOT 'queued_turn'
+                    OR json_extract(runs.payload_json, '$.startedAt') IS NOT NULL
+                  )
+              )
+            )
+          )
+      )
+      AND NOT EXISTS (
         -- The text read once, not once per check.
         SELECT 1 FROM (SELECT ${indexedMessageText(sql, "messages.payload_json")} AS text) AS message,
           json_each(${substrings}) AS substring
