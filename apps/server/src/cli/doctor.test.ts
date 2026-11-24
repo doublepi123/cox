@@ -2,9 +2,33 @@ import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
+import * as TestConsole from "effect/testing/TestConsole";
 
 import { runDoctor } from "./doctor.ts";
 import { DatabaseMaintenance } from "../persistence/DatabaseMaintenance.ts";
+
+it.effect("reports sizes just under the next unit in that unit", () =>
+  Effect.gen(function* () {
+    yield* runDoctor("/test/statev2.sqlite", { fix: false, dryRun: true }).pipe(
+      Effect.provide(
+        Layer.mergeAll(
+          NodeServices.layer,
+          Layer.mock(DatabaseMaintenance)({
+            inspect: () =>
+              Effect.succeed({
+                databaseBytes: 1024 ** 3 - 4096,
+                reclaimableBytes: 1024 ** 2 - 512,
+                incrementalVacuumEnabled: true,
+                legacyDatabaseBytes: null,
+              }),
+          }),
+        ),
+      ),
+    );
+    const [summary] = yield* TestConsole.logLines;
+    assert.strictEqual(summary, "Database: 1.00 GiB, 1.0 MiB reclaimable.");
+  }).pipe(Effect.provide(TestConsole.layer)),
+);
 
 it.effect("--fix reclaims space and keeps the V1 database, and --dry-run changes nothing", () =>
   Effect.gen(function* () {

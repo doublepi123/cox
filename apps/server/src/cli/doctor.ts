@@ -6,12 +6,15 @@ import { Command, Flag, GlobalFlag, Prompt } from "effect/cli";
 import * as DatabaseMaintenance from "../persistence/DatabaseMaintenance.ts";
 import { projectLocationFlags, resolveCliAuthConfig } from "./config.ts";
 
-const formatBytes = (bytes: number) =>
-  bytes >= 1024 ** 3
+const formatBytes = (bytes: number) => {
+  const mebibytes = (bytes / 1024 ** 2).toFixed(1);
+  const kibibytes = Math.ceil(bytes / 1024);
+  return Number(mebibytes) >= 1024
     ? `${(bytes / 1024 ** 3).toFixed(2)} GiB`
-    : bytes >= 1024 ** 2
-      ? `${(bytes / 1024 ** 2).toFixed(1)} MiB`
-      : `${Math.ceil(bytes / 1024)} KiB`;
+    : kibibytes >= 1024
+      ? `${mebibytes} MiB`
+      : `${kibibytes} KiB`;
+};
 
 export const runDoctor = Effect.fn("runDoctor")(function* (
   databasePath: string,
