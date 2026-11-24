@@ -9,6 +9,7 @@ import {
 import { memo, use, useRef } from "react";
 import { BackgroundThreadContext } from "./backgroundThread";
 import { shortcutLabelForCommand } from "../../keybindings";
+import type { FileManagerAction } from "./OpenInPicker.logic";
 import { OPEN_FAVORITE_EDITOR_ATTRIBUTE } from "./OpenInPickerShortcut";
 import { usePreferredEditor } from "../../editorPreferences";
 import { editorLabelForPlatform } from "../../editorLabels";
@@ -206,7 +207,7 @@ export const OpenInPicker = memo(function OpenInPicker({
   compact = false,
   enableShortcut = true,
   displayMode = "toolbar",
-  revealFileManager = false,
+  fileManagerAction = "open",
 }: {
   environmentId: EnvironmentId;
   keybindings: ResolvedKeybindingsConfig;
@@ -217,7 +218,7 @@ export const OpenInPicker = memo(function OpenInPicker({
   compact?: boolean;
   enableShortcut?: boolean;
   displayMode?: "toolbar" | "panel";
-  revealFileManager?: boolean;
+  fileManagerAction?: FileManagerAction;
 }) {
   const { t } = useTranslation();
   const isPanel = displayMode === "panel";
@@ -229,18 +230,20 @@ export const OpenInPicker = memo(function OpenInPicker({
   const canOpenEditor = !isHostEditorDenied;
   const [menuOpen, setMenuOpen] = useComposerMenuState(isHostEditorDenied);
   const [preferredEditor, setPreferredEditor] = usePreferredEditor(availableEditors);
+  const isEditorUnavailable = (editor: EditorId | null) =>
+    editor === "file-manager" && fileManagerAction === "unavailable";
 
   const openInEditor = async (editorId: EditorId | null): Promise<boolean> => {
     if (!openInCwd) return false;
     const editor = editorId ?? preferredEditor;
-    if (!editor) return false;
+    if (!editor || isEditorUnavailable(editor)) return false;
     if (!readEnvironmentScope(environmentId, AuthOrchestrationOperateScope)) return false;
     const result = openInEditorMutation({
       environmentId,
       input: {
         cwd: openInCwd,
         editor,
-        ...(revealFileManager && editor === "file-manager" ? { reveal: true } : {}),
+        ...(fileManagerAction === "reveal" && editor === "file-manager" ? { reveal: true } : {}),
       },
     });
     setPreferredEditor(editor);
@@ -272,7 +275,11 @@ export const OpenInPicker = memo(function OpenInPicker({
         {options.map(({ label, Icon, value, kind }) => (
           <MenuItem
             density={presentation === "menu" ? "touch" : "default"}
-            disabled={!openInCwd || !canOpenEditor}
+            disabled={
+              !openInCwd ||
+              !canOpenEditor ||
+              (presentation === "menu" && isEditorUnavailable(value))
+            }
             key={value}
             onClick={() => {
               if (presentation === "menu") {
@@ -298,7 +305,7 @@ export const OpenInPicker = memo(function OpenInPicker({
         {primaryOption && (
           <MenuItem
             density={presentation === "menu" ? "touch" : "default"}
-            disabled={!openInCwd || !canOpenEditor}
+            disabled={!openInCwd || !canOpenEditor || isEditorUnavailable(preferredEditor)}
             onClick={() => openInEditor(preferredEditor)}
           >
             <primaryOption.Icon className={cn("size-4", getOpenInIconClass(primaryOption.kind))} />
@@ -333,7 +340,9 @@ export const OpenInPicker = memo(function OpenInPicker({
         variant={isPanel ? "ghost" : "outline"}
         part="primary"
         panel={isPanel}
-        disabled={!preferredEditor || !openInCwd || !canOpenEditor}
+        disabled={
+          !preferredEditor || !openInCwd || !canOpenEditor || isEditorUnavailable(preferredEditor)
+        }
         {...(enableShortcut && !backgroundThread ? { [OPEN_FAVORITE_EDITOR_ATTRIBUTE]: "" } : {})}
         onClick={() => {
           if (!preferredEditor) return;
