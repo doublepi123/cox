@@ -596,7 +596,6 @@ export class GitLabPullRequestCli extends Context.Service<
       readonly body: string;
       readonly expectedHeadSha?: string | undefined;
       readonly comments: ReadonlyArray<PullRequestReviewCommentDraft>;
-      readonly expectedHeadSha?: string | undefined;
     }) => Effect.Effect<void, GitLabPullRequestCliError>;
 
     readonly replyToDiscussion: (input: {
