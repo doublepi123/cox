@@ -756,7 +756,8 @@ const ConversationTimeline = memo(function ConversationTimeline({
       list,
       viewport,
       listIdentityKey,
-      listOpenedOn,
+      listOpenedOn:
+        rememberedPosition?.atEnd !== false && !findOpenAtOpening ? listIdentityKey : listOpenedOn,
       rememberedPosition,
       citationPending: citationRequest !== null,
       releaseForFind: findOpenAtOpening,
@@ -1347,6 +1348,7 @@ const ConversationTimeline = memo(function ConversationTimeline({
             <LegendList<MessagesTimelineRow>
               ref={setTimelineList}
               data={rows}
+              dataKey={listIdentityKey}
               extraData={listExtraData}
               keyExtractor={keyExtractor}
               getItemType={getItemType}
@@ -1373,10 +1375,9 @@ const ConversationTimeline = memo(function ConversationTimeline({
                     ? TIMELINE_MAINTAIN_SCROLL_AT_END_SMOOTH
                     : TIMELINE_MAINTAIN_SCROLL_AT_END
               }
+              // The restore owns scroll position until it lands.
               maintainVisibleContentPosition={
-                findActive ||
-                citationPositioning ||
-                (restoringThreadPosition && rememberedPosition?.atEnd === false)
+                findActive || citationPositioning || restoringThreadPosition
                   ? false
                   : maintainVisibleContentPosition
               }

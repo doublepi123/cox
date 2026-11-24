@@ -289,7 +289,7 @@ patchedDependencies:
   '@effect/platform-node-shared@4.1.5': 06952843c6f431ca83c78762fd18d23cda76883801049ee311feced2438ecf14
   '@effect/vitest@4.1.5': dd0bf2b1ae0f63aff0d620ebc67b82d19759b3fa69a608ef85e2a5b40b4d46c5
   '@ff-labs/fff-node@0.11.0': d95aebb9decfcf967ff214cf1a0cd2aa20f9a7c248255119cc90d811eefc3f16
-  '@legendapp/list@3.3.5': 892caa00d83adda6135574b04ea63752bcedf1d9103f013eef1fe9289a5e02a6
+  '@legendapp/list@3.3.5': 091ec09d2670ba0b96920e9459f21e544350ab41e4a35da8cf958208263c34cf
   '@muse-code/sdk@1.4.6': 7b495b607fc5d76b444c7c4d58821e839726a30e6f3c53564f0d59f2d5b42101
   '@pierre/diffs@1.6.1': 4b12b1083375704002d15b2de0944ece236509580959d257dd52043060bbbba7
   effect@4.1.5: e53a13f2079eefc06c6e31baed952c6121603c215e40c4fed2b3288e8eed883a
@@ -619,7 +619,7 @@ importers:
         version: 5.3.0
       '@legendapp/list':
         specifier: 'catalog:'
-        version: 3.3.5(patch_hash=892caa00d83adda6135574b04ea63752bcedf1d9103f013eef1fe9289a5e02a6)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
+        version: 3.3.5(patch_hash=091ec09d2670ba0b96920e9459f21e544350ab41e4a35da8cf958208263c34cf)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
       '@noble/hashes':
         specifier: 'catalog:'
         version: 1.8.0
@@ -7373,7 +7373,7 @@ snapshots:
       '@jridgewell/resolve-uri': 3.1.2
       '@jridgewell/sourcemap-codec': 1.6.0
 
-  '@legendapp/list@3.3.5(patch_hash=892caa00d83adda6135574b04ea63752bcedf1d9103f013eef1fe9289a5e02a6)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)':
+  '@legendapp/list@3.3.5(patch_hash=091ec09d2670ba0b96920e9459f21e544350ab41e4a35da8cf958208263c34cf)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)':
     dependencies:
       react: 19.3.0
       use-sync-external-store: 1.7.0(react@19.3.0)
