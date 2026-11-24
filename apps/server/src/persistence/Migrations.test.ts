@@ -93,6 +93,7 @@ describe("runMigrations", () => {
         [87, "ProjectionRunStatusIndex"],
         [88, "ProjectionTurnItemMessageIndex"],
         [89, "AgentFeedback"],
+        [90, "SupersededRunAttemptIndex"],
       ]);
 
       const tables = yield* sql<{ readonly name: string }>`
