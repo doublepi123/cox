@@ -690,7 +690,6 @@ export function PullRequestDetailPanel({
         action,
         ...mergeHeadPin(action, shownHeadSha),
         ...(method ? { mergeMethod: method } : {}),
-        ...(action === "merge" && detail?.headSha ? { expectedHeadSha: detail.headSha } : {}),
         ...(updateMethod ? { updateMethod } : {}),
       },
     });
