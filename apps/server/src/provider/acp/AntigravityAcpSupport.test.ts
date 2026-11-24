@@ -62,6 +62,9 @@ describe("Antigravity MCP approvals", () => {
         // Names no server, so another MCP server's tool of the same name looks identical.
         request("Running preview_status"),
         request("Run mcp_github_create_issue"),
+        request("Run mcp_github_create_issue", { ServerName: "cox", ToolName: "delegate_task" }),
+        request("Running create_issue", { ServerName: "cox", ToolName: "delegate_task" }),
+        request("MCP Tool create_issue", { ServerName: "cox", ToolName: "delegate_task" }),
         request("MCP Tool preview_status", { ServerName: "other", ToolName: "preview_status" }),
         request("Run mcp_cox_preview_status", {
           CommandLine: "Run mcp_cox_preview_status",
