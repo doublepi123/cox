@@ -1,14 +1,35 @@
 import { assert, it } from "@effect/vitest";
 import { ProjectId, RunId, ThreadId } from "@t3tools/contracts";
+import * as NodeServices from "@effect/platform-node/NodeServices";
+import * as HostProcess from "@t3tools/shared/HostProcess";
 import * as Effect from "effect/Effect";
+import * as FileSystem from "effect/FileSystem";
+import * as Option from "effect/Option";
+import * as Path from "effect/Path";
 
 import {
   latestRunError,
   listProjectThreads,
   readLatestMessages,
+  readOutputSchema,
   type ThreadTools,
   waitForRun,
 } from "./thread.ts";
+
+it.effect("--output-schema reads a ~/ path from the home directory", () =>
+  Effect.gen(function* () {
+    const fs = yield* FileSystem.FileSystem;
+    const path = yield* Path.Path;
+    const home = yield* fs.makeTempDirectoryScoped({ prefix: "cox-thread-schema-" });
+    yield* fs.writeFileString(path.join(home, "schema.json"), '{"type":"object"}');
+
+    const output = yield* readOutputSchema(Option.some("~/schema.json")).pipe(
+      Effect.provideService(HostProcess.HomeDirectory, home),
+    );
+
+    assert.deepStrictEqual(output, { outputSchema: { type: "object" } });
+  }).pipe(Effect.provide(NodeServices.layer)),
+);
 
 const threadId = ThreadId.make("thread-1");
 const runId = RunId.make("run-1");
