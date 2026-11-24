@@ -39,7 +39,8 @@ const IMAGE_EXTENSION_PATTERN = /\.(?:png|jpe?g|gif|webp|avif|heic|heif|svg)(?:$
 const MARKDOWN_LINK_PATTERN = /^\[[^\]]*\]\((https?:\/\/[^\s)]+)\)$/u;
 const VIDEO_EXTENSION_PATTERN = /\.(?:mp4|webm|mov|m4v|ogv)(?:$|[?#])/iu;
 
-const VIDEO_TAG_SRC_PATTERN = /<(?:video|source)\b[^>]*\bsrc\s*=\s*["']([^"']+)["']/iu;
+// Stops at the next `<`, so matching stays linear in the length of the line.
+const VIDEO_TAG_SRC_PATTERN = /<(?:video|source)\b[^<>]*\bsrc\s*=\s*["']([^"']+)["']/iu;
 
 const STANDALONE_VIDEO_TAG_PATTERN = /^\s*<video\b/iu;
 const VIDEO_TAG_END_PATTERN = /<\/video>\s*$/iu;
@@ -168,7 +169,7 @@ function splitBodyAt(body: string, baseOffset: number): ReadonlyArray<PullReques
       segments.push({
         id: `markdown:${segments.length}`,
         kind: "markdown",
-        text: text.replace(/\s+$/u, ""),
+        text: text.trimEnd(),
         sourceOffset,
       });
     }

@@ -147,6 +147,15 @@ describe("pull request body segmentation", () => {
     ]);
   });
 
+  it.each([
+    ["a whitespace run inside a line", `a${" ".repeat(1_000_000)}b`],
+    ["a run of unclosed video tags", `${"<video ".repeat(150_000)}</video>`],
+  ])("splits %s in one pass", (_case, body) => {
+    expect(splitPullRequestBody(body)).toEqual([
+      { id: "markdown:0", kind: "markdown", text: body, sourceOffset: 0 },
+    ]);
+  });
+
   it("refuses a non-http source rather than making a link out of it", () => {
     const body = '<video src="javascript:alert(1)"></video>';
     expect(splitPullRequestBody(body)).toEqual([

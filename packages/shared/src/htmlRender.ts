@@ -380,8 +380,8 @@ function bootstrapMarkup(markup: string): string {
   const light = htmlRenderTheme(T3_CODE_LIGHT_THEME_COLORS, "light");
   const defaultCss = `${rootRule(dark)}@media (prefers-color-scheme: light){${rootRule(light)}}${BASE_CSS}`;
   return [
-    /<meta\s[^>]*charset/i.test(markup.slice(0, 4096)) ? "" : '<meta charset="utf-8">',
-    /<meta\s[^>]*name\s*=\s*["']?viewport/i.test(markup)
+    /<meta\s[^<>]*charset/i.test(markup.slice(0, 4096)) ? "" : '<meta charset="utf-8">',
+    /<meta\s(?:[^"'<>]|"[^"]*"|'[^']*')*name\s*=\s*["']?viewport/i.test(markup)
       ? ""
       : '<meta name="viewport" content="width=device-width, initial-scale=1">',
     `<style id="t3-theme">${defaultCss}</style>`,
@@ -399,7 +399,7 @@ const blankNonMarkup = (html: string) => {
   let depth = 0;
   let start = 0;
   let at = 0;
-  for (const match of scan.matchAll(/<(\/?)template(?:\s[^>]*)?\/?>/gi)) {
+  for (const match of scan.matchAll(/<(\/?)template(?:\s(?:[^"'<>]|"[^"]*"|'[^']*')*)?\/?>/gi)) {
     if (!match[1]) {
       if (depth++ === 0) start = match.index;
     } else if (depth > 0 && --depth === 0) {
@@ -419,12 +419,12 @@ const blankNonMarkup = (html: string) => {
 export function injectHtmlRenderBootstrap(html: string): string {
   const scan = blankNonMarkup(html);
   const markup = bootstrapMarkup(scan);
-  const headOpen = /<head(?:\s(?:[^"'>]|"[^"]*"|'[^']*')*)?>/i.exec(scan);
+  const headOpen = /<head(?:\s(?:[^"'<>]|"[^"]*"|'[^']*')*)?>/i.exec(scan);
   if (headOpen) {
     const at = headOpen.index + headOpen[0].length;
     return html.slice(0, at) + markup + html.slice(at);
   }
-  const htmlOpen = /<html(?:\s(?:[^"'>]|"[^"]*"|'[^']*')*)?>/i.exec(scan);
+  const htmlOpen = /<html(?:\s(?:[^"'<>]|"[^"]*"|'[^']*')*)?>/i.exec(scan);
   if (htmlOpen) {
     const at = htmlOpen.index + htmlOpen[0].length;
     return `${html.slice(0, at)}<head>${markup}</head>${html.slice(at)}`;

@@ -20,6 +20,7 @@ import * as HttpApi from "effect/http-api/HttpApi";
 import * as HttpApiBuilder from "effect/http-api/HttpApiBuilder";
 import * as Schema from "effect/Schema";
 
+import * as ServerHttp from "../http.ts";
 import * as ServerConfig from "../config.ts";
 import * as ServerEnvironment from "../environment/ServerEnvironment.ts";
 import * as ServerSettings from "../serverSettings.ts";
@@ -65,6 +66,7 @@ const makeLayerRoutes = (
         ),
       ),
       Layer.provide(AuthHttp.layerAuthenticatedAuth),
+      Layer.provide(ServerHttp.layerApiBodyLimit),
     ),
   ).pipe(
     Layer.provideMerge(layerEnvironmentAuth(config)),
@@ -246,6 +248,26 @@ it.live("derives discovery metadata from the origin the client reached", () =>
         revocation_endpoint: `${ORIGIN}/oauth/mcp/revoke`,
         code_challenge_methods_supported: ["S256"],
       });
+    }),
+  ),
+);
+
+it.effect("answers 413 to a body over the API limit", () =>
+  withRoutes((handler) =>
+    Effect.gen(function* () {
+      const body = "x".repeat(ServerHttp.API_MAX_BODY_BYTES + 1);
+      for (const [path, contentType] of [
+        ["/api/auth/browser-session", "application/json"],
+        ["/oauth/mcp/token", "application/x-www-form-urlencoded"],
+        ["/oauth/mcp/register", "application/json"],
+      ]) {
+        const init = { method: "POST", headers: { "content-type": contentType! } };
+        expect((yield* handler(at(path!, { ...init, body }))).status, path).toBe(413);
+        // A chunked body declares no length, so the reader itself has to stop.
+        const chunked = new Blob([body]).stream();
+        const streamed = at(path!, { ...init, body: chunked, duplex: "half" } as RequestInit);
+        expect((yield* handler(streamed)).status, `${path} chunked`).toBe(413);
+      }
     }),
   ),
 );
