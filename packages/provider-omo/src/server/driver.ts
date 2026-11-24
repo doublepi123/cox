@@ -4,8 +4,10 @@ import * as SecureRandom from "effect/crypto/SecureRandom";
 import * as FileSystem from "effect/FileSystem";
 import * as Path from "effect/Path";
 import * as Schema from "effect/Schema";
+import { HttpClient } from "effect/http";
 import * as ChildProcessSpawner from "effect/process/ChildProcessSpawner";
 import * as ProviderHost from "@t3tools/provider-core/server/ProviderHost";
+import * as ProviderLatestVersions from "@t3tools/provider-core/server/ProviderLatestVersions";
 import {
   defaultProviderContinuationIdentity,
   type ProviderDriver,
@@ -19,7 +21,10 @@ import {
   type ProviderSnapshotSettings,
 } from "@t3tools/provider-core/server/snapshotSettings";
 import { mergeProviderInstanceEnvironment } from "@t3tools/provider-core/server/instanceEnvironment";
-import { makeManualOnlyProviderMaintenanceCapabilities } from "@t3tools/provider-core/server/maintenanceResolver";
+import {
+  enrichProviderSnapshotWithVersionAdvisory,
+  makeManualOnlyProviderMaintenanceCapabilities,
+} from "@t3tools/provider-core/server/maintenanceResolver";
 import { makePiInstallation, makePiTextGeneration } from "@t3tools/provider-pi/server";
 import type { ServerProviderDraft } from "@t3tools/provider-core/server/snapshotProbe";
 import { OmoSettings } from "../settings.ts";
@@ -37,6 +42,8 @@ export type OmoDriverEnv =
   | Path.Path
   | FileSystem.FileSystem
   | ChildProcessSpawner.ChildProcessSpawner
+  | HttpClient.HttpClient
+  | ProviderLatestVersions.ProviderLatestVersions
   | ProviderHost.ProviderHost;
 
 export const OmoDriver: ProviderDriver<OmoSettings, OmoDriverEnv, Path.Path> = {
@@ -51,6 +58,8 @@ export const OmoDriver: ProviderDriver<OmoSettings, OmoDriverEnv, Path.Path> = {
       const fs = yield* FileSystem.FileSystem;
       const path = yield* Path.Path;
       const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
+      const http = yield* HttpClient.HttpClient;
+      const latestVersions = yield* ProviderLatestVersions.ProviderLatestVersions;
       const installation = yield* makePiInstallation({
         instanceId: input.instanceId,
         baseDir: host.paths.baseDir,
@@ -95,15 +104,12 @@ export const OmoDriver: ProviderDriver<OmoSettings, OmoDriverEnv, Path.Path> = {
         },
       });
       const snapshotSettings = yield* makeProviderSnapshotSettingsSource(config);
+      const maintenance = makeManualOnlyProviderMaintenanceCapabilities({
+        provider: OMO_DRIVER,
+        packageName: "omo-ai",
+      });
       const snapshot = yield* makeManagedServerProvider<ProviderSnapshotSettings<OmoSettings>>({
-        resolveMaintenance: () =>
-          Effect.succeed(
-            makeManualOnlyProviderMaintenanceCapabilities({
-              provider: OMO_DRIVER,
-              packageName: "omo-ai",
-              installPath: installation.executablePath,
-            }),
-          ),
+        resolveMaintenance: () => Effect.succeed(maintenance),
         getSettings: snapshotSettings.getSettings,
         streamSettings: snapshotSettings.streamSettings,
         haveSettingsChanged: haveProviderSnapshotSettingsChanged,
@@ -113,6 +119,14 @@ export const OmoDriver: ProviderDriver<OmoSettings, OmoDriverEnv, Path.Path> = {
           Effect.map(stamp),
           Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, spawner),
         ),
+        enrichSnapshot: ({ settings, snapshot, publishSnapshot }) =>
+          enrichProviderSnapshotWithVersionAdvisory(snapshot, maintenance, {
+            enableProviderUpdateChecks: settings.enableProviderUpdateChecks,
+          }).pipe(
+            Effect.provideService(HttpClient.HttpClient, http),
+            Effect.provideService(ProviderLatestVersions.ProviderLatestVersions, latestVersions),
+            Effect.flatMap(publishSnapshot),
+          ),
         retryFailedCheck: (snapshot) => snapshot.auth.status === "unknown",
       });
       const adapter = yield* OmoAdapterDriver.create({

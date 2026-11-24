@@ -406,6 +406,7 @@ export const makeCursorCliInstallation = Effect.fn("makeCursorCliInstallation")(
       start,
       cancel,
       changes,
+      latestVersion: latestVersion.pipe(Effect.orElseSucceed(() => null)),
       environment,
       pathKey,
       executablePath,

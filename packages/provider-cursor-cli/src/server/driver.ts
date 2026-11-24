@@ -8,6 +8,7 @@ import * as HttpClient from "effect/http/HttpClient";
 import * as ChildProcessSpawner from "effect/process/ChildProcessSpawner";
 
 import * as ProviderHost from "@t3tools/provider-core/server/ProviderHost";
+import * as ProviderLatestVersions from "@t3tools/provider-core/server/ProviderLatestVersions";
 import { ProviderDriverError } from "@t3tools/provider-core/server/errors";
 import { makeManagedServerProvider } from "@t3tools/provider-core/server/managedProvider";
 import {
@@ -17,7 +18,10 @@ import {
 } from "@t3tools/provider-core/server/driver";
 import { withInstanceIdentity } from "@t3tools/provider-core/server/instanceIdentity";
 import { mergeProviderInstanceEnvironment } from "@t3tools/provider-core/server/instanceEnvironment";
-import { makeManualOnlyProviderMaintenanceCapabilities } from "@t3tools/provider-core/server/maintenanceResolver";
+import {
+  enrichProviderSnapshotWithVersionAdvisory,
+  makeManualOnlyProviderMaintenanceCapabilities,
+} from "@t3tools/provider-core/server/maintenanceResolver";
 import { expandHomePath } from "@t3tools/provider-core/server/pathExpansion";
 import {
   haveProviderSnapshotSettingsChanged,
@@ -50,6 +54,7 @@ export type CursorCliDriverEnv =
   | SecureRandom.SecureRandom
   | FileSystem.FileSystem
   | HttpClient.HttpClient
+  | ProviderLatestVersions.ProviderLatestVersions
   | Path.Path;
 
 export const CursorCliDriver: ProviderDriver<CursorCliSettings, CursorCliDriverEnv> = {
@@ -73,6 +78,8 @@ export const CursorCliDriver: ProviderDriver<CursorCliSettings, CursorCliDriverE
     const fileSystem = yield* FileSystem.FileSystem;
     const path = yield* Path.Path;
     const host = yield* ProviderHost.ProviderHost;
+    const http = yield* HttpClient.HttpClient;
+    const latestVersions = yield* ProviderLatestVersions.ProviderLatestVersions;
     const effectiveConfig = {
       ...config,
       enabled,
@@ -151,14 +158,33 @@ export const CursorCliDriver: ProviderDriver<CursorCliSettings, CursorCliDriverE
       Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, spawner),
     );
     const snapshotSettings = yield* makeProviderSnapshotSettingsSource(effectiveConfig);
+    const maintenance = {
+      ...MAINTENANCE,
+      lookupLatestVersion: installation.latestVersion,
+      latestVersionCacheKey: "cursor-cli-install-script",
+      compareVersions: (current: string, latest: string) => {
+        if (current === latest) return 0;
+        return current.slice(0, 10) > latest.slice(0, 10) ? 1 : -1;
+      },
+    };
     const snapshot = yield* makeManagedServerProvider<ProviderSnapshotSettings<CursorCliSettings>>({
-      resolveMaintenance: () => Effect.succeed(MAINTENANCE),
+      resolveMaintenance: () => Effect.succeed(maintenance),
       getSettings: snapshotSettings.getSettings,
       streamSettings: snapshotSettings.streamSettings,
       haveSettingsChanged: haveProviderSnapshotSettingsChanged,
       initialSnapshot: (settings) =>
         buildInitialCursorCliProviderSnapshot(settings.provider).pipe(Effect.map(stampSnapshot)),
       checkProvider,
+      enrichSnapshot: ({ settings, snapshot, publishSnapshot }) =>
+        snapshot.versionAdvisory?.latestVersion
+          ? Effect.void
+          : enrichProviderSnapshotWithVersionAdvisory(snapshot, maintenance, {
+              enableProviderUpdateChecks: settings.enableProviderUpdateChecks,
+            }).pipe(
+              Effect.provideService(HttpClient.HttpClient, http),
+              Effect.provideService(ProviderLatestVersions.ProviderLatestVersions, latestVersions),
+              Effect.flatMap(publishSnapshot),
+            ),
     }).pipe(
       Effect.mapError(
         (cause) =>
