@@ -1,13 +1,46 @@
 import { EnvironmentId } from "@t3tools/contracts";
-import { describe, expect, it } from "vite-plus/test";
+import { describe, expect, it, vi } from "vite-plus/test";
 
-import { resolveFileContextMenuAbsolutePath } from "./fileContextMenu";
+import { resolveFileContextMenuAbsolutePath, useFileContextMenu } from "./fileContextMenu";
 
 const BASE_TARGET = {
   environmentId: EnvironmentId.make("environment-local"),
   filePath: "src/index.ts",
   workspaceRoot: "/workspace/project",
 };
+
+const menuState = vi.hoisted(() => ({
+  allowed: true,
+  open: vi.fn(async () => ({ _tag: "Success" })),
+}));
+vi.mock("@effect/atom-react", () => ({
+  useAtomValue: () => ({
+    availableEditors: ["cursor", "file-manager"],
+    shellRevealInFileManager: true,
+    shellRevealInFileManagerKind: "xdg-open",
+    environment: { platform: { os: "linux" } },
+  }),
+}));
+vi.mock(import("./state/session"), async (original) => ({
+  ...(await original()),
+  useEnvironmentScope: () => menuState.allowed,
+}));
+vi.mock("./state/use-atom-command", () => ({ useAtomCommand: () => menuState.open }));
+
+it.each([true, false])(
+  "only offers and runs host editor commands with operate access (%s)",
+  async (allowed) => {
+    menuState.allowed = allowed;
+    menuState.open.mockClear();
+    const menu = useFileContextMenu(BASE_TARGET.environmentId);
+    expect(menu.buildItems(BASE_TARGET).map((item) => item.id)).toEqual(
+      allowed ? ["open", "reveal-in-folder", "open-with"] : [],
+    );
+    await menu.activate("open", BASE_TARGET);
+    await menu.activate("editor:cursor", BASE_TARGET);
+    expect(menuState.open).toHaveBeenCalledTimes(allowed ? 2 : 0);
+  },
+);
 
 describe("resolveFileContextMenuAbsolutePath", () => {
   it("strips the repository prefix when the repo root is nested in the workspace", () => {

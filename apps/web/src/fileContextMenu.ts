@@ -1,4 +1,5 @@
 import {
+  AuthOrchestrationOperateScope,
   EDITORS,
   type ContextMenuItem,
   type EditorId,
@@ -15,6 +16,7 @@ import {
 import { readLocalApi } from "./localApi";
 import { serverEnvironment } from "./state/server";
 import { shellEnvironment } from "./state/shell";
+import { useEnvironmentScope } from "./state/session";
 import { useAtomCommand } from "./state/use-atom-command";
 import { resolvePathLinkTarget } from "@t3tools/shared/fileLinks";
 import { toastManager } from "./components/ui/toast";
@@ -92,11 +94,12 @@ export function useFileContextMenu(environmentId: EnvironmentId | null) {
   const openInEditor = useAtomCommand(shellEnvironment.openInEditor, { reportFailure: false });
   const serverConfig = useAtomValue(serverEnvironment.configValueAtom(environmentId));
 
-  const availableEditors = serverConfig?.availableEditors ?? [];
+  const canOperateHost = useEnvironmentScope(environmentId, AuthOrchestrationOperateScope);
+  const availableEditors = canOperateHost ? (serverConfig?.availableEditors ?? []) : [];
   const capabilities: FileContextMenuCapabilities = {
     // WSL can reveal in Windows Explorer despite reporting Linux; use server wording.
     revealLabel:
-      environmentId !== null &&
+      canOperateHost &&
       serverConfig?.shellRevealInFileManager === true &&
       serverConfig.availableEditors.includes("file-manager")
         ? serverConfig.shellRevealInFileManagerKind === undefined
@@ -115,6 +118,8 @@ export function useFileContextMenu(environmentId: EnvironmentId | null) {
     if (absolutePath === null || environmentId === null) return;
 
     const reveal = action === "reveal-in-folder";
+    if (action === "open" && !capabilities.canOpenDefault) return;
+    if (reveal && capabilities.revealLabel === undefined) return;
     const editor =
       action === "open" || reveal
         ? ("file-manager" as const)
