@@ -163,11 +163,23 @@ const timelineTools = (types: ReadonlyArray<string>) => {
   const served: Array<number> = [];
   const call = ((_tool: string, input: unknown) => {
     const args = input as { readonly afterPosition?: number; readonly limit: number };
+    const isMessage = (item: (typeof items)[number]) =>
+      ["user_message", "assistant_message", "proposed_plan"].includes(item.type);
+    if (args.afterPosition === undefined) {
+      const page = items.filter(isMessage).slice(-args.limit);
+      served.push(page.length);
+      return Effect.succeed({
+        thread: { itemCount: items.length },
+        items: page,
+        nextPosition: null,
+        hasMore: false,
+      });
+    }
     // Scanning one match past the page keeps reads of huge fixtures linear.
     const matching: typeof items = [];
-    for (let position = (args.afterPosition ?? -1) + 1; position < items.length; position++) {
+    for (let position = args.afterPosition + 1; position < items.length; position++) {
       const item = items[position]!;
-      if (["user_message", "assistant_message", "proposed_plan"].includes(item.type)) {
+      if (isMessage(item)) {
         matching.push(item);
         if (matching.length > args.limit) break;
       }

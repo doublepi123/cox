@@ -245,13 +245,18 @@ it("readThread keeps an activity page within an MCP client's output limit and pa
           getTimelinePage: (_threadId, options) => {
             const after =
               options.itemId === undefined
-                ? rows.filter((row) => row.position > (options.afterPosition ?? -1))
+                ? rows.filter(
+                    (row) =>
+                      row.position > (options.afterPosition ?? -1) &&
+                      row.position < (options.beforePosition ?? Number.POSITIVE_INFINITY),
+                  )
                 : rows.filter((row) => row.sourceItemId === options.itemId);
+            const page =
+              options.beforePosition === undefined
+                ? after.slice(0, options.limit)
+                : after.slice(-options.limit);
             return Effect.succeed({
-              items: after.slice(
-                0,
-                options.limit,
-              ) as unknown as OrchestrationV2ThreadProjection["visibleTurnItems"],
+              items: page as unknown as OrchestrationV2ThreadProjection["visibleTurnItems"],
               totalItems: rows.length,
               hasMore: after.length > options.limit,
             });
@@ -297,6 +302,26 @@ it("readThread keeps an activity page within an MCP client's output limit and pa
       afterPosition = result.nextPosition ?? undefined;
     }
     expect(positions).toEqual(rows.map((row) => row.position));
+    const outside = {
+      ...makeScope(),
+      thread: undefined,
+      client: { sessionId: "outside", label: "Outside", access: "read-only" as const },
+    };
+    const read = {
+      threadId: parentThreadId,
+      view: "activity" as const,
+      limit: 100,
+      maxCharsPerItem: 1_500,
+    };
+    const latest = yield* service.readThread(outside, read);
+    expect(latest.items.at(-1)?.position).toBe(59);
+    expect(latest.earlierPosition).toBe(latest.items[0]?.position);
+    expect(latest.hasMore).toBe(false);
+    const earlier = yield* service.readThread(outside, {
+      ...read,
+      beforePosition: latest.earlierPosition!,
+    });
+    expect(earlier.items.at(-1)?.position).toBe(latest.earlierPosition! - 1);
 
     const longText = rows[0]!.item.text;
     const pages: Array<string> = [];

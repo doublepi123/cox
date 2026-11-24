@@ -413,6 +413,7 @@ export type ProjectionRecords<K extends ProjectionRecordField> = Pick<
 >;
 
 export interface ProjectionTimelinePageOptions {
+  readonly beforePosition?: number;
   readonly afterPosition?: number;
   readonly itemId?: TurnItemId;
   readonly view?: "messages" | "activity";
@@ -6196,13 +6197,17 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
               .filter((row) =>
                 options.itemId === undefined
                   ? row.position > (options.afterPosition ?? -1) &&
+                    row.position < (options.beforePosition ?? Number.POSITIVE_INFINITY) &&
                     (options.view === "activity" ||
                       ["user_message", "assistant_message", "proposed_plan"].includes(
                         row.item.type,
                       ))
                   : row.sourceItemId === options.itemId,
               );
-            const page = matching.slice(0, options.limit);
+            const page =
+              options.beforePosition === undefined
+                ? matching.slice(0, options.limit)
+                : matching.slice(-options.limit);
             const sources = yield* encodeTimelineSources(
               page
                 .filter((row) => row.synthetic === undefined)

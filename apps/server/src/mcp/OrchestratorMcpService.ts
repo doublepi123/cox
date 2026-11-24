@@ -2995,12 +2995,16 @@ const make = Effect.gen(function* () {
     readThread: Effect.fn("OrchestratorMcpService.readThread")(function* (scope, input) {
       const { parent, target, shell } = yield* loadReadableThread(scope, input.threadId);
       const view = input.view ?? "messages";
-      const afterPosition = input.afterPosition ?? -1;
+      const newestFirst =
+        input.itemId === undefined &&
+        (input.beforePosition !== undefined || input.afterPosition === undefined);
       const limit = input.limit ?? DEFAULT_THREAD_READ_LIMIT;
       const maxChars = input.maxCharsPerItem ?? DEFAULT_THREAD_ITEM_MAX_CHARS;
       const timeline = yield* threadManagement
         .getTimelinePage(input.threadId, {
-          afterPosition,
+          ...(newestFirst
+            ? { beforePosition: input.beforePosition ?? Number.POSITIVE_INFINITY }
+            : { afterPosition: input.afterPosition ?? -1 }),
           limit,
           view,
           ...(input.itemId === undefined ? {} : { itemId: input.itemId }),
@@ -3048,7 +3052,7 @@ const make = Effect.gen(function* () {
       );
       const items: Array<OrchestratorMcpThreadTimelineItem> = [];
       let itemBytes = 0;
-      for (const row of page) {
+      for (const row of newestFirst ? page.toReversed() : page) {
         const itemInput = {
           row,
           maxChars,
@@ -3063,6 +3067,7 @@ const make = Effect.gen(function* () {
         }
         items.push(item);
       }
+      if (newestFirst) items.reverse();
       const returnedRunIds = new Set(
         items.filter((item) => item.sourceThreadId === target.thread.id).map((item) => item.runId),
       );
@@ -3121,7 +3126,15 @@ const make = Effect.gen(function* () {
         recentRuns,
         items,
         nextPosition: items.at(-1)?.position ?? null,
-        hasMore: timeline.hasMore || items.length < page.length,
+        hasMore: !newestFirst && (timeline.hasMore || items.length < page.length),
+        ...(newestFirst
+          ? {
+              earlierPosition:
+                timeline.hasMore || items.length < page.length
+                  ? (items[0]?.position ?? null)
+                  : null,
+            }
+          : {}),
       } satisfies OrchestratorMcpThreadReadResult;
     }),
     sendToThread: Effect.fn("OrchestratorMcpService.sendToThread")(function* (scope, input) {
