@@ -59,6 +59,10 @@ it.each([
         }}
         canMerge
         canRebase
+        canAutoMerge={false}
+        preferAutoMerge={false}
+        autoMergeArmed={false}
+        canCancelAutoMerge={false}
         stale={false}
         mergeMethod="squash"
         onActed={() => {}}

@@ -231,6 +231,7 @@ export const EnablePullRequestAutoMergeInput = Schema.Struct({
   commitHeadline: Schema.optional(Schema.NullOr(Schema.String)),
   /** The expected head OID of the pull request. */
   expectedHeadOid: Schema.optional(Schema.NullOr(GitObjectID)),
+  includeStack: Schema.optional(Schema.NullOr(Schema.Boolean)),
   /**
    * The merge method to use. If omitted, defaults to `MERGE`. NOTE: when merging
    * with a merge queue any input value for merge method is ignored.

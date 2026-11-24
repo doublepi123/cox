@@ -39,6 +39,10 @@ export function PullRequestStackMenu({
   stale,
   canMerge,
   canRebase,
+  canAutoMerge,
+  preferAutoMerge,
+  autoMergeArmed,
+  canCancelAutoMerge,
   mergeMethod,
   onSelect,
   onActed,
@@ -55,13 +59,19 @@ export function PullRequestStackMenu({
   stale: boolean;
   canMerge: boolean;
   canRebase: boolean;
+  canAutoMerge: boolean;
+  preferAutoMerge: boolean;
+  autoMergeArmed: boolean;
+  canCancelAutoMerge: boolean;
   mergeMethod: PullRequestMergeMethod;
   onSelect?: ((reference: PullRequestRef) => void) | undefined;
   onActed: () => void;
 }) {
   const { t } = useTranslation();
   const [open, setOpen] = useState(false);
-  const [confirmation, setConfirmation] = useState<"merge" | "update-branch" | null>(null);
+  const [confirmation, setConfirmation] = useState<
+    "merge" | "enable-auto-merge" | "update-branch" | null
+  >(null);
   const [pending, setPending] = useState(false);
   const runAction = useAtomCommand(pullRequestEnvironment.runAction, { reportFailure: false });
   const top = stack.layers.at(-1);
@@ -88,20 +98,28 @@ export function PullRequestStackMenu({
     if (
       pending ||
       !confirmation ||
-      (confirmation === "merge" ? !canMerge || mergeDisabled : !canRebase || rebaseDisabled)
+      (confirmation === "update-branch"
+        ? !canRebase || rebaseDisabled
+        : mergeDisabled || (confirmation === "merge" ? !canMerge : !canAutoMerge || autoMergeArmed))
     )
       return;
     const action = confirmation;
-    const target = action === "merge" ? selectedLayer : top;
+    const merging = action !== "update-branch";
+    const target = merging ? selectedLayer : top;
     if (!target?.headSha) return;
-    const actionHeads = (action === "merge" ? mergeLayers : unmerged).flatMap((layer) =>
+    const actionHeads = (merging ? mergeLayers : unmerged).flatMap((layer) =>
       layer.headSha ? [{ number: layer.number, headSha: layer.headSha }] : [],
     );
     setPending(true);
     setConfirmation(null);
     const toastId = toastManager.add({
       type: "loading",
-      title: action === "merge" ? "Merging stack..." : "Rebasing stack...",
+      title:
+        action === "enable-auto-merge"
+          ? "Enabling stack auto-merge..."
+          : merging
+            ? "Merging stack..."
+            : "Rebasing stack...",
     });
     const result = await runAction({
       environmentId,
@@ -111,7 +129,7 @@ export function PullRequestStackMenu({
         stackNumber: stack.number,
         expectedStackHeads: actionHeads,
         action,
-        ...(action === "merge" ? { mergeMethod } : { updateMethod: "rebase" }),
+        ...(merging ? { mergeMethod } : { updateMethod: "rebase" }),
       },
     });
     setPending(false);
@@ -119,10 +137,15 @@ export function PullRequestStackMenu({
     if (result._tag === "Failure") {
       toastManager.update(toastId, {
         type: "error",
-        title: action === "merge" ? "Could not merge the stack" : "Could not rebase the stack",
+        title:
+          action === "enable-auto-merge"
+            ? "Could not enable stack auto-merge"
+            : merging
+              ? "Could not merge the stack"
+              : "Could not rebase the stack",
         description: readableFailure(
           squashAtomCommandFailure(result),
-          action === "merge"
+          merging
             ? "The host refused the merge. Check that you have write access, that the checks it requires have passed, and that the branch is not conflicting."
             : "The host refused the rebase. A rebase stops at the first commit that does not apply cleanly.",
         ),
@@ -130,7 +153,12 @@ export function PullRequestStackMenu({
     } else {
       toastManager.update(toastId, {
         type: "success",
-        title: action === "merge" ? "Stack merge request completed" : "Stack rebased",
+        title:
+          action === "enable-auto-merge"
+            ? "Stack auto-merge enabled"
+            : merging
+              ? "Stack merge request completed"
+              : "Stack rebased",
         description:
           action === "merge"
             ? `${hostLabel} merged the stack or added it to its merge queue.`
@@ -138,7 +166,20 @@ export function PullRequestStackMenu({
       });
     }
   };
-  const confirmationLayers = confirmation === "merge" ? mergeLayers : unmerged;
+  const cancelAutoMerge = async () => {
+    if (pending || !canCancelAutoMerge) return;
+    setPending(true);
+    const result = await runAction({
+      environmentId,
+      input: { ...reference, stackNumber: stack.number, action: "disable-auto-merge" },
+    });
+    setPending(false);
+    onActed();
+    if (result._tag === "Failure")
+      toastManager.add({ type: "error", title: "Could not cancel stack auto-merge" });
+  };
+  const leadsWithAutoMerge = canAutoMerge && (preferAutoMerge || !canMerge);
+  const confirmationLayers = confirmation === "update-branch" ? unmerged : mergeLayers;
   return (
     <>
       <Menu open={open} onOpenChange={setOpen}>
@@ -183,13 +224,26 @@ export function PullRequestStackMenu({
               }
             />
           </MenuGroup>
-          {canMerge || canRebase ? (
+          {canMerge || canRebase || canAutoMerge || canCancelAutoMerge ? (
             <>
               <MenuSeparator />
-              {canMerge ? (
+              {canMerge && !autoMergeArmed ? (
                 <MenuItem disabled={mergeDisabled} onClick={() => setConfirmation("merge")}>
                   <PullRequestGlyph.merged aria-hidden />
                   Merge stack ({mergeLayers.length})
+                </MenuItem>
+              ) : null}
+              {canAutoMerge && !autoMergeArmed ? (
+                <MenuItem
+                  disabled={mergeDisabled}
+                  onClick={() => setConfirmation("enable-auto-merge")}
+                >
+                  Auto-merge stack ({mergeLayers.length})
+                </MenuItem>
+              ) : null}
+              {autoMergeArmed && canCancelAutoMerge ? (
+                <MenuItem disabled={pending} onClick={() => void cancelAutoMerge()}>
+                  Cancel stack auto-merge
                 </MenuItem>
               ) : null}
               {canRebase ? (
@@ -210,7 +264,7 @@ export function PullRequestStackMenu({
           ) : null}
         </MenuPopup>
       </Menu>
-      {canMerge && selectedLayer?.state === "open" ? (
+      {(leadsWithAutoMerge || canMerge) && !autoMergeArmed && selectedLayer?.state === "open" ? (
         <Tooltip>
           <TooltipTrigger
             render={
@@ -221,10 +275,14 @@ export function PullRequestStackMenu({
                   disabled={mergeDisabled && !stale}
                   aria-disabled={mergeDisabled || undefined}
                   aria-description={stale ? (notice ?? undefined) : undefined}
-                  onClick={mergeDisabled ? undefined : () => setConfirmation("merge")}
+                  onClick={
+                    mergeDisabled
+                      ? undefined
+                      : () => setConfirmation(leadsWithAutoMerge ? "enable-auto-merge" : "merge")
+                  }
                 >
                   <PullRequestGlyph.merged aria-hidden className="size-3.5" />
-                  Merge stack
+                  {leadsWithAutoMerge ? "Auto-merge stack" : "Merge stack"}
                 </Button>
               </span>
             }
@@ -247,12 +305,16 @@ export function PullRequestStackMenu({
             <DialogTitle>
               {confirmation === "merge"
                 ? `Merge ${mergeLayers.length} ${mergeLayers.length === 1 ? terminology.singular : terminology.plural}?`
-                : `Rebase ${unmerged.length} ${unmerged.length === 1 ? terminology.singular : terminology.plural}?`}
+                : confirmation === "enable-auto-merge"
+                  ? `Auto-merge ${mergeLayers.length} ${mergeLayers.length === 1 ? terminology.singular : terminology.plural}?`
+                  : `Rebase ${unmerged.length} ${unmerged.length === 1 ? terminology.singular : terminology.plural}?`}
             </DialogTitle>
             <DialogDescription>
               {confirmation === "merge"
                 ? `Merge #${reference.number} and its unmerged layers below into ${stack.base} using ${mergeMethod}. ${hostLabel} checks their rules before merging or queueing them and rebases the remaining stack after merging.`
-                : `Rebase the remote branches from bottom to top onto ${stack.base}. This rewrites branch history and may restart checks. If a layer fails, earlier updates remain.`}
+                : confirmation === "enable-auto-merge"
+                  ? `Merge through #${reference.number} once the requirements on ${hostLabel} are met.`
+                  : `Rebase the remote branches from bottom to top onto ${stack.base}. This rewrites branch history and may restart checks. If a layer fails, earlier updates remain.`}
             </DialogDescription>
           </DialogHeader>
           <DialogPanel>
@@ -272,7 +334,11 @@ export function PullRequestStackMenu({
               {t("Cancel")}
             </Button>
             <Button onClick={() => void run()}>
-              {confirmation === "merge" ? "Merge stack" : "Rebase stack"}
+              {confirmation === "merge"
+                ? "Merge stack"
+                : confirmation === "enable-auto-merge"
+                  ? "Enable auto-merge"
+                  : "Rebase stack"}
             </Button>
           </DialogFooter>
         </DialogPopup>

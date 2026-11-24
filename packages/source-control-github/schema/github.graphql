@@ -12788,6 +12788,8 @@ input DisablePullRequestAutoMergeInput {
   ID of the pull request to disable auto merge on.
   """
   pullRequestId: ID! @possibleTypes(concreteTypes: ["PullRequest"])
+
+  includeStack: Boolean = false
 }
 
 """
@@ -14248,6 +14250,8 @@ input EnablePullRequestAutoMergeInput {
   The expected head OID of the pull request.
   """
   expectedHeadOid: GitObjectID
+
+  includeStack: Boolean = false
 
   """
   The merge method to use. If omitted, defaults to `MERGE`. NOTE: when merging

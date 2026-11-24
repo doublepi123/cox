@@ -291,6 +291,7 @@ export const PullRequestCapabilities = Schema.Struct({
   edit: Schema.optional(PullRequestEditCapabilities),
   stacks: Schema.optional(Schema.Boolean),
   stackActions: Schema.optional(Schema.Boolean),
+  stackAutoMerge: Schema.optional(Schema.Boolean),
   labels: Schema.optional(Schema.Boolean),
 
   mentions: Schema.optional(Schema.Boolean),
