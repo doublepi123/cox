@@ -362,11 +362,17 @@ export const OpenCodeDriver: ProviderDriver<
       ).pipe(Effect.provideService(OpenCode2Server.OpenCode2Server, openCode2Server)),
     });
     const catalogWatch = yield* makeOpenCode2CatalogWatch();
+    const followCatalog = ({ client, events, url }: OpenCode2Server.OpenCode2Connection) =>
+      catalogWatch.follow(url, events, loadOpenCode2Catalog(client, host.paths.cwd));
+    yield* Stream.runForEach(openCode2Server.connections, followCatalog).pipe(
+      Effect.forkScoped({ startImmediately: true }),
+    );
     const loadOpenCode2Models = yield* makeOpenCode2ModelLoader(
-      openCode2Server.withConnection(({ client, events, url }) => {
-        const read = loadOpenCode2Catalog(client, host.paths.cwd);
-        return catalogWatch.follow(url, events, read).pipe(Effect.andThen(read));
-      }),
+      openCode2Server.withConnection((connection) =>
+        followCatalog(connection).pipe(
+          Effect.andThen(loadOpenCode2Catalog(connection.client, host.paths.cwd)),
+        ),
+      ),
     );
     const listOpenCode2Agents = (cwd: string) =>
       openCode2Server

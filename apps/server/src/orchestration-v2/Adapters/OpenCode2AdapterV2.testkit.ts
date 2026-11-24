@@ -8,6 +8,7 @@ import {
   type ProviderReplayTranscript,
 } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
+import * as Stream from "effect/Stream";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 import * as Schema from "effect/Schema";
@@ -234,6 +235,7 @@ export const replayServer = (
     };
     const borrowers = options?.borrowers;
     return OpenCode2Server.OpenCode2Server.of({
+      connections: Stream.empty,
       withConnection: (use) =>
         borrowers === undefined
           ? use(connection)

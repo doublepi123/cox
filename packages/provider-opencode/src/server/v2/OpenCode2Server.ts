@@ -6,6 +6,8 @@ import * as Effect from "effect/Effect";
 import * as Base64Url from "effect/encoding/Base64Url";
 import * as P from "effect/Predicate";
 import * as Redacted from "effect/Redacted";
+import * as PubSub from "effect/PubSub";
+import * as Stream from "effect/Stream";
 import * as HttpClientError from "effect/http/HttpClientError";
 
 import * as OpenCodeRuntime from "../OpenCodeRuntime.ts";
@@ -23,6 +25,7 @@ export interface OpenCode2Connection extends OpenCode2Client.OpenCode2Api {
 export class OpenCode2Server extends Context.Service<
   OpenCode2Server,
   {
+    readonly connections: Stream.Stream<OpenCode2Connection>;
     readonly withConnection: <A, E, R>(
       use: (connection: OpenCode2Connection) => Effect.Effect<A, E, R>,
     ) => Effect.Effect<A, E | OpenCodeRuntime.OpenCodeRuntimeError, R>;
@@ -127,11 +130,15 @@ export const make = Effect.fn("OpenCode2Server.make")(function* (input: {
     return { ...api, url, version, external } satisfies OpenCode2Connection;
   });
   let latest: OpenCode2Connection | undefined;
+  const verified = yield* Effect.acquireRelease(
+    PubSub.unbounded<OpenCode2Connection>(),
+    PubSub.shutdown,
+  );
+  const connections = Stream.fromPubSub(verified);
   const remember = (connection: OpenCode2Connection) =>
     Effect.sync(() => {
       latest = connection;
-      return connection.version;
-    });
+    }).pipe(Effect.andThen(PubSub.publish(verified, connection)), Effect.as(connection.version));
 
   const serverUrl = input.serverUrl.trim();
   if (serverUrl.length > 0) {
@@ -139,6 +146,7 @@ export const make = Effect.fn("OpenCode2Server.make")(function* (input: {
       Effect.tap(remember),
     );
     return OpenCode2Server.of({
+      connections,
       withConnection: Effect.fn("OpenCode2Server.withConnection")(function (use) {
         return Effect.suspend(() => (latest === undefined ? connect : Effect.succeed(latest))).pipe(
           Effect.flatMap(use),
@@ -155,6 +163,7 @@ export const make = Effect.fn("OpenCode2Server.make")(function* (input: {
     verify: (url) => connectTo(url, password, false).pipe(Effect.flatMap(remember)),
   });
   return OpenCode2Server.of({
+    connections,
     withConnection: Effect.fn("OpenCode2Server.withConnection")(function (use) {
       return owner.withServer((server) =>
         latest?.url === server.url

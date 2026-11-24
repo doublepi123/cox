@@ -662,7 +662,22 @@ export const makeOpenCode2CatalogWatch = Effect.fn(
             { concurrency: 4, discard: true },
           ),
         );
+        const settleMachine = Effect.suspend(() => {
+          const machine = watching.machine;
+          return machine === undefined
+            ? Effect.void
+            : makeOpenCode2ModelLoader(machine.read).pipe(
+                Effect.flatMap((load) => load),
+                Effect.flatMap((catalog) => {
+                  if (catalog.length === 0) return Effect.void;
+                  machine.previous = catalogFingerprint(catalog);
+                  return SubscriptionRef.set(latest, catalog);
+                }),
+                Effect.ignore,
+              );
+        });
         const watch = subscribe.pipe(
+          Effect.tap(() => settleMachine),
           Effect.flatMap((events) =>
             events.pipe(
               Stream.filter((event) => event.type === "model.updated"),
