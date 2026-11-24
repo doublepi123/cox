@@ -339,16 +339,46 @@ export const make = Effect.gen(function* () {
     return yield* updateCachedLocalStatus(cwd, local);
   });
 
+  const loadCurrentLocalStatus = Effect.fn("VcsStatusBroadcaster.loadCurrentLocalStatus")(
+    function* (cwd: string) {
+      const cached = yield* getCachedStatus(cwd);
+      if (cached?.local) {
+        const branch = yield* workflow.currentBranch(cwd);
+        if (branch === cached.local.value.refName) return cached.local.value;
+        return yield* refreshLocalStatusCore(cwd);
+      }
+      return yield* loadLocalStatus(cwd);
+    },
+  );
+
+  const localReads = new Map<
+    string,
+    Deferred.Deferred<VcsStatusLocalResult, GitManagerServiceError>
+  >();
   const getOrLoadLocalStatus = Effect.fn("VcsStatusBroadcaster.getOrLoadLocalStatus")(function* (
     cwd: string,
   ) {
-    const cached = yield* getCachedStatus(cwd);
-    if (cached?.local) {
-      const branch = yield* workflow.currentBranch(cwd);
-      if (branch === cached.local.value.refName) return cached.local.value;
-      return yield* refreshLocalStatusCore(cwd);
-    }
-    return yield* loadLocalStatus(cwd);
+    const pending = yield* Effect.uninterruptible(
+      Effect.gen(function* () {
+        const existing = localReads.get(cwd);
+        if (existing !== undefined) return existing;
+        const requested = yield* Deferred.make<VcsStatusLocalResult, GitManagerServiceError>();
+        localReads.set(cwd, requested);
+        yield* Deferred.into(
+          loadCurrentLocalStatus(cwd).pipe(Effect.interruptible),
+          requested,
+        ).pipe(
+          Effect.ensuring(
+            Effect.sync(() => {
+              localReads.delete(cwd);
+            }),
+          ),
+          Effect.forkIn(broadcasterScope),
+        );
+        return requested;
+      }),
+    );
+    return yield* Deferred.await(pending);
   });
 
   const getStatusParts = Effect.fn("VcsStatusBroadcaster.getStatusParts")(function* (cwd: string) {

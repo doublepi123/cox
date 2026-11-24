@@ -72,6 +72,45 @@ import * as BackgroundPolicy from "../background/BackgroundPolicy.ts";
 import * as GitWorkflowService from "../git/GitWorkflowService.ts";
 import { symlinksSupported } from "@t3tools/shared/testing/symlinks";
 
+it.effect("shares a branch check across overlapping subscriptions", () =>
+  Effect.gen(function* () {
+    const checked = yield* Deferred.make<void>();
+    const release = yield* Deferred.make<void>();
+    let checks = 0;
+    const state = {
+      currentLocalStatus: baseLocalStatus,
+      currentRemoteStatus: null,
+      localStatusCalls: 0,
+      remoteStatusCalls: 0,
+      localInvalidationCalls: 0,
+      remoteInvalidationCalls: 0,
+      readBranch: () =>
+        Effect.gen(function* () {
+          checks++;
+          yield* Deferred.succeed(checked, undefined);
+          yield* Deferred.await(release);
+          return baseLocalStatus.refName;
+        }),
+    };
+    yield* Effect.gen(function* () {
+      const service = yield* VcsStatusBroadcaster.VcsStatusBroadcaster;
+      const snapshot = () =>
+        Stream.runHead(service.streamStatus({ cwd: "/repo", includeRemote: false }));
+      yield* snapshot();
+      const joined = yield* Effect.all(Array.from({ length: 8 }, snapshot), {
+        concurrency: "unbounded",
+      }).pipe(Effect.forkChild);
+      yield* Deferred.await(checked);
+      yield* Effect.yieldNow;
+      yield* Deferred.succeed(release, undefined);
+      yield* Fiber.join(joined);
+      assert.equal(checks, 1);
+      yield* snapshot();
+      assert.equal(checks, 2);
+    }).pipe(Effect.provide(layerTestFor(state)));
+  }),
+);
+
 const TEST_EPOCH = DateTime.makeUnsafe("1970-01-01T00:00:00.000Z");
 
 const baseLocalStatus: VcsStatusLocalResult = {
@@ -123,6 +162,7 @@ function layerTestFor(state: {
   automaticFetchInterval?: Effect.Effect<Duration.Duration>;
   beforeRemoteStatus?: Effect.Effect<void>;
   beforeLocalStatus?: Effect.Effect<void>;
+  readBranch?: () => Effect.Effect<string | null>;
   fileSystem?: FileSystem.FileSystem;
   pullCurrentBranch?: GitWorkflowService.GitWorkflowService["Service"]["pullCurrentBranch"];
 }) {
@@ -155,7 +195,8 @@ function layerTestFor(state: {
               Effect.as(state.currentLocalStatus),
             );
           }),
-        currentBranch: () => Effect.sync(() => state.currentLocalStatus.refName),
+        currentBranch:
+          state.readBranch ?? (() => Effect.sync(() => state.currentLocalStatus.refName)),
         upstreamDivergence: () =>
           Effect.sync(() => {
             const refName = state.currentLocalStatus.refName;
