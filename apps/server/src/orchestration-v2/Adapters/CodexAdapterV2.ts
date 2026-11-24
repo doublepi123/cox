@@ -127,7 +127,10 @@ import {
   shouldPersistProviderEvent,
 } from "../../provider/EventNdjsonLogger.ts";
 import * as ProviderEventLoggers from "@t3tools/provider-core/server/ProviderEventLoggers";
-import { codexAppServerArgs, resolveCodexLaunchArgs } from "../../provider/codexLaunchArgs.ts";
+import {
+  codexSessionAppServerArgs,
+  resolveCodexLaunchArgs,
+} from "../../provider/codexLaunchArgs.ts";
 import { codexGatewayRuntime } from "../../provider/gatewayConfiguration.ts";
 import {
   mergeProviderInstanceEnvironment,
@@ -1758,12 +1761,16 @@ export const layerAppServerClientFactory: Layer.Layer<
   CodexAppServerClientFactory,
   never,
   | ChildProcessSpawner.ChildProcessSpawner
+  | FileSystem.FileSystem
+  | Path.Path
   | PortScanner.PortDiscovery
   | ProviderEventLoggers.ProviderEventLoggers
 > = Layer.effect(
   CodexAppServerClientFactory,
   Effect.gen(function* () {
     const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
+    const fileSystem = yield* FileSystem.FileSystem;
+    const path = yield* Path.Path;
     const { native: nativeEventLogger } = yield* ProviderEventLoggers.ProviderEventLoggers;
     const agentScope = yield* AgentScope;
     const portDiscovery = yield* PortScanner.PortDiscovery;
@@ -1777,8 +1784,12 @@ export const layerAppServerClientFactory: Layer.Layer<
         };
         const command = yield* makeCodexAppServerSpawnCommand({
           command: input.settings.binaryPath || "codex",
-          args: codexAppServerArgs(
+          args: yield* codexSessionAppServerArgs(
             resolveCodexLaunchArgs(input.settings.launchArgs, input.environment),
+            environment,
+          ).pipe(
+            Effect.provideService(FileSystem.FileSystem, fileSystem),
+            Effect.provideService(Path.Path, path),
           ),
           env: environment,
           threadId: input.threadId,
@@ -1830,7 +1841,10 @@ export type CodexAdapterV2DriverEnv =
 
 export const createCodexAdapterV2 = Effect.fn("CodexAdapterV2.createCodexAdapterV2")(function* (
   { instanceId, environment, enabled, config }: ProviderAdapterDriverCreateInput<CodexSettings>,
-  hooks: Pick<CodexAdapterV2Options, "onUsageLimits" | "resolveRuntime" | "compatibility"> = {},
+  hooks: Pick<
+    CodexAdapterV2Options,
+    "onUsageLimits" | "resolveRuntime" | "resolveBinaryPath" | "compatibility"
+  > = {},
 ) {
   const clientFactory = yield* CodexAppServerClientFactory;
   const continuationRequests = yield* ProviderContinuationRequests.ProviderContinuationRequests;
@@ -1892,6 +1906,7 @@ export interface CodexAdapterV2Options {
   readonly clientFactory: CodexAppServerClientFactoryShape;
   readonly onUsageLimits?: ManagedServerProvider["applyUsageLimits"];
   readonly resolveRuntime?: Effect.Effect<CodexEffectiveRuntime, ProviderSetupError, Scope.Scope>;
+  readonly resolveBinaryPath?: Effect.Effect<string>;
   readonly compatibility?: (
     version: string,
   ) => Effect.Effect<ServerProviderCompatibilityAdvisory | undefined>;
@@ -1957,7 +1972,12 @@ export const makeCodexAdapterV2 = Effect.fn("makeCodexAdapterV2")(function* (
           threadId: input.threadId,
           providerSessionId: input.providerSessionId,
           runtimePolicy: input.runtimePolicy,
-          settings: resolvedRuntime?.config ?? adapterOptions.settings,
+          settings: resolvedRuntime?.config ?? {
+            ...adapterOptions.settings,
+            binaryPath: yield* (
+              adapterOptions.resolveBinaryPath ?? Effect.succeed(adapterOptions.settings.binaryPath)
+            ),
+          },
           environment: scopeModelServiceEnvironment(
             resolvedRuntime?.environment ?? adapterOptions.environment,
             input.providerSessionId,

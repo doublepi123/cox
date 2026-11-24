@@ -106,13 +106,6 @@ const make = Effect.fn("makeProviderInstallation")(function* () {
       : yield* decodeAntigravitySettings(entries[instanceId]?.config ?? {}).pipe(
           Effect.mapError(invalidConfig),
         );
-    if (isCodex && (!("setupMode" in config) || config.setupMode !== "managed")) {
-      return yield* new ProviderSetupError({
-        instanceId,
-        operation,
-        detail: "Choose managed setup to install Codex in Cox.",
-      });
-    }
     if (managedOnly && config.binaryPath && (!isCodex || config.binaryPath !== "codex")) {
       return yield* new ProviderSetupError({
         instanceId,
@@ -139,7 +132,6 @@ const make = Effect.fn("makeProviderInstallation")(function* () {
     const { installation, driver } = yield* requireInstance(input.instanceId, "install", true);
     const started = yield* installation.start.pipe(Effect.mapError(failure(input.instanceId)));
     if (
-      driver === ANTIGRAVITY &&
       started.operationId !== null &&
       accountCheckOperations.get(input.instanceId) !== started.operationId
     ) {
@@ -161,6 +153,17 @@ const make = Effect.fn("makeProviderInstallation")(function* () {
               result.value.phase !== "succeeded"
             )
               return;
+            if (driver !== ANTIGRAVITY) {
+              const allInstances = yield* instances.listInstances;
+              yield* Effect.forEach(
+                allInstances.filter(
+                  (instance) => instance.driverKind === driver && instance.enabled,
+                ),
+                (instance) => providers.refreshInstance(instance.instanceId),
+                { discard: true },
+              );
+              return;
+            }
             const installed = yield* instances.getInstance(input.instanceId);
             if (
               installed?.driverKind !== ANTIGRAVITY ||

@@ -421,6 +421,14 @@ it.effect("requires an update before running an older activated managed installa
       `${first.installation.managedDirectory}/active.json`,
       '{"version":"0.155.1"}',
     );
+    const failed = yield* makeHarness({ baseDir: first.baseDir, downloadStatus: 404 });
+    yield* failed.installation.start;
+    expect(yield* terminalState(failed.installation)).toMatchObject({
+      phase: "failed",
+      source: "managed",
+      installedVersion: "0.155.1",
+      executablePath: `${oldDirectory}/bin/codex`,
+    });
     const restarted = yield* makeHarness({ baseDir: first.baseDir });
     expect((yield* Effect.flip(restarted.installation.resolve())).detail).toContain(
       "outside the supported range",

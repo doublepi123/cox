@@ -3850,6 +3850,7 @@ export const en = {
   "Cox downloads and manages the local Codex CLI.":
     "Cox downloads and manages the local Codex CLI.",
   "Install Codex": "Install Codex",
+  "Update Codex": "Update Codex",
   "Installing…": "Installing…",
   "Custom API endpoint": "Custom API endpoint",
   "Checked {time}": "Checked {time}",

@@ -61,6 +61,7 @@ export const makeCodexTextGeneration = Effect.fn("makeCodexTextGeneration")(func
     import("@t3tools/contracts").ProviderSetupError,
     Scope.Scope
   >,
+  resolveBinaryPath?: Effect.Effect<string>,
 ) {
   const fileSystem = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
@@ -272,7 +273,9 @@ export const makeCodexTextGeneration = Effect.fn("makeCodexTextGeneration")(func
         DEFAULT_TEXT_GENERATION_REASONING_EFFORT;
       const serviceTier =
         resolved || fellBack ? undefined : getCodexServiceTierOptionValue(modelSelection);
-      const binary = effectiveConfig.binaryPath || "codex";
+      const binary = resolved
+        ? resolved.config.binaryPath || "codex"
+        : yield* resolveBinaryPath ?? Effect.succeed(codexConfig.binaryPath || "codex");
       const env = {
         ...effectiveEnvironment,
         ...(effectiveConfig.homePath

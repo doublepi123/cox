@@ -3638,6 +3638,7 @@ export const zh = {
   "Codex is installed on this computer.": "此计算机已安装 Codex。",
   "Cox downloads and manages the local Codex CLI.": "由 Cox 下载并管理本地 Codex CLI。",
   "Install Codex": "安装 Codex",
+  "Update Codex": "更新 Codex",
   "Installing…": "正在安装…",
   "Custom API endpoint": "自定义 API 端点",
   "Checked {time}": "检查于{time}",

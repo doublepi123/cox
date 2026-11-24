@@ -58,6 +58,7 @@ import * as CodexManagedTokenBroker from "../CodexManagedTokenBroker.ts";
 import * as ServerSecretStore from "../../auth/ServerSecretStore.ts";
 import * as ServerEnvironment from "../../environment/ServerEnvironment.ts";
 import * as HostProcess from "@t3tools/shared/HostProcess";
+import { resolveCommandPath } from "@t3tools/shared/shell";
 import { codexGatewayRuntime, hasGatewayConfiguration } from "../gatewayConfiguration.ts";
 import { makeGatewayModels } from "../GatewayModels.ts";
 import {
@@ -159,10 +160,6 @@ export const CodexDriver: ProviderDriver<
     const httpClient = yield* HttpClient.HttpClient;
     const latestVersions = yield* ProviderLatestVersions.ProviderLatestVersions;
     const installation = yield* CodexInstallation.CodexInstallation;
-    const managedExecutable =
-      config.setupMode === "managed"
-        ? yield* installation.resolve().pipe(Effect.orElseSucceed(() => undefined))
-        : undefined;
     const modelCatalog = yield* ModelCatalog.ModelCatalog;
     const currentCatalog = modelCatalog.current(DRIVER_KIND);
     const baseEnvironment = yield* mergeProviderInstanceEnvironment(environment);
@@ -212,12 +209,19 @@ export const CodexDriver: ProviderDriver<
           capabilities: withCodexUltraCapabilities(model.capabilities),
         }))
       : undefined;
+    const canInstall = !config.binaryPath || config.binaryPath === "codex";
     const stampSnapshot = (draft: Parameters<typeof stampIdentity>[0]): ServerProvider =>
-      stampIdentity(
-        boundModels === undefined
-          ? draft
-          : { ...draft, modelCatalogSource: "model-service", models: boundModels },
-      );
+      stampIdentity({
+        ...draft,
+        setup: {
+          ...draft.setup,
+          canInstall,
+          canAuthenticate: draft.setup?.canAuthenticate ?? false,
+        },
+        ...(boundModels === undefined
+          ? {}
+          : { modelCatalogSource: "model-service", models: boundModels }),
+      });
     yield* materializeCodexShadowHome(homeLayout).pipe(
       Effect.mapError(
         (cause) =>
@@ -233,11 +237,30 @@ export const CodexDriver: ProviderDriver<
       ...gatewayRuntime.settings,
       launchArgs: processEnv.T3CODE_CODEX_LAUNCH_ARGS ?? config.launchArgs,
       enabled,
-      binaryPath:
-        managedExecutable?.executablePath ??
-        expandHomePath(config.binaryPath, yield* HostProcess.HomeDirectory),
+      binaryPath: expandHomePath(config.binaryPath, yield* HostProcess.HomeDirectory),
       homePath: homeLayout.effectiveHomePath ?? "",
     } satisfies CodexSettings;
+    const resolveBinaryPath = Effect.gen(function* () {
+      if (!canInstall) return effectiveConfig.binaryPath;
+      const command = effectiveConfig.binaryPath || "codex";
+      if (config.setupMode !== "managed") {
+        const external = yield* resolveCommandPath(command, { env: processEnv });
+        if (external !== null) return command;
+        return yield* installation.resolve().pipe(
+          Effect.map((executable) =>
+            executable.source === "managed" ? executable.executablePath : command,
+          ),
+          Effect.orElseSucceed(() => command),
+        );
+      }
+      return yield* installation.resolve().pipe(
+        Effect.map((executable) => executable.executablePath),
+        Effect.orElseSucceed(() => command),
+      );
+    }).pipe(
+      Effect.provideService(FileSystem.FileSystem, fileSystem),
+      Effect.provideService(Path.Path, pathService),
+    );
     const resolveMaintenance = yield* makeCachedProviderMaintenanceResolution(
       resolveProviderMaintenanceCapabilitiesEffect(
         makeCodexMaintenanceResolver(homeLayout.sharedHomePath),
@@ -259,10 +282,11 @@ export const CodexDriver: ProviderDriver<
         accentColor,
         environment,
         enabled,
-        config: { ...config, binaryPath: effectiveConfig.binaryPath },
+        config,
       },
       {
         onUsageLimits: (update) => snapshot.applyUsageLimits(update),
+        resolveBinaryPath,
         compatibility: installation.compatibility,
       },
     ).pipe(
@@ -282,7 +306,11 @@ export const CodexDriver: ProviderDriver<
     const checkProvider = modelCatalog.refreshInBackground.pipe(
       Effect.andThen(
         Effect.zipWith(
-          checkCodexProviderStatus(effectiveConfig, undefined, processEnv),
+          resolveBinaryPath.pipe(
+            Effect.flatMap((binaryPath) =>
+              checkCodexProviderStatus({ ...effectiveConfig, binaryPath }, undefined, processEnv),
+            ),
+          ),
           currentCatalog,
           (draft, catalog) => stampSnapshot(applyCodexModelCatalog(draft, catalog)),
           { concurrent: true },
@@ -331,19 +359,24 @@ export const CodexDriver: ProviderDriver<
       effectiveConfig,
       processEnv,
       snapshot.getSnapshot.pipe(Effect.map((value) => value.models)),
+      undefined,
+      resolveBinaryPath,
     );
     const snapshotForCwd = (cwd: string) =>
       !effectiveConfig.enabled
         ? snapshot.getSnapshot
         : Effect.all([
             snapshot.getSnapshot,
-            probeCodexSkillsForCwd({
-              binaryPath: effectiveConfig.binaryPath,
-              homePath: effectiveConfig.homePath,
-              launchArgs: resolveCodexLaunchArgs(effectiveConfig.launchArgs, processEnv),
-              cwd,
-              environment: processEnv,
-            }).pipe(
+            resolveBinaryPath.pipe(
+              Effect.flatMap((binaryPath) =>
+                probeCodexSkillsForCwd({
+                  binaryPath,
+                  homePath: effectiveConfig.homePath,
+                  launchArgs: resolveCodexLaunchArgs(effectiveConfig.launchArgs, processEnv),
+                  cwd,
+                  environment: processEnv,
+                }),
+              ),
               Effect.scoped,
               Effect.timeout("20 seconds"),
               Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, spawner),
@@ -370,7 +403,7 @@ export const CodexDriver: ProviderDriver<
         .redeem(accountKey, (idempotencyKey) =>
           Effect.gen(function* () {
             const { client } = yield* withCodexAppServerClient({
-              binaryPath: effectiveConfig.binaryPath,
+              binaryPath: yield* resolveBinaryPath,
               homePath: effectiveConfig.homePath,
               launchArgs: resolveCodexLaunchArgs(effectiveConfig.launchArgs, processEnv),
               cwd: process.cwd(),

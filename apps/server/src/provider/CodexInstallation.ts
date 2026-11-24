@@ -706,14 +706,12 @@ export const makeCodexInstallation = Effect.fn("makeCodexInstallation")(function
         }
         const operationId = yield* random.uuidV4();
         const next: ProviderInstallState = {
-          driver: DRIVER,
+          ...current,
           operationId,
           phase: "downloading",
           downloadedBytes: 0,
           totalBytes: asset.archiveBytes,
           version: asset.version,
-          installedVersion: current.installedVersion,
-          canRemove: current.canRemove,
           message: "Downloading Codex.",
         };
         yield* SubscriptionRef.set(state, next);

@@ -1,6 +1,7 @@
 import { translateCurrent, useTranslation } from "../../i18n";
 import { ProviderAuthenticationSection } from "./ProviderAuthenticationSection";
 import { AuthProvidersManageScope } from "@t3tools/contracts";
+import { compareSemverVersions } from "@t3tools/shared/semver";
 import { useEnvironmentScope } from "../../state/session";
 
 import type { EnvironmentId, ProviderInstanceId, ServerProvider } from "@t3tools/contracts";
@@ -107,7 +108,11 @@ export function CodexSetupSection(props: CodexSetupSectionProps) {
           ) : null
         }
       />
-    ) : props.mode === "existing" ? null : !props.provider?.setup?.canAuthenticate ? (
+    ) : props.mode === "existing" ? (
+      props.provider?.setup?.canInstall && !props.readOnly ? (
+        <ManagedCodexSetup {...props} allowExistingCli={false} />
+      ) : null
+    ) : !props.provider?.setup?.canAuthenticate ? (
       props.presentation === "onboarding" ? (
         <CodexWelcomeCard
           title={props.displayName || props.provider?.displayName || "Codex"}
@@ -182,13 +187,10 @@ function ManagedCodexSetup({
   instanceId,
   provider,
   readOnly,
+  mode,
   onModeChange,
   allowExistingCli = true,
-}: CodexSetupSectionProps & {
-  readonly autoStart: boolean;
-  readonly onAutoStartConsumed: () => void;
-  readonly allowExistingCli?: boolean;
-}) {
+}: CodexSetupSectionProps & { readonly allowExistingCli?: boolean }) {
   const { t } = useTranslation();
   const target = { environmentId, input: { instanceId } };
   const installation = useEnvironmentQuery(serverEnvironment.providerInstallState(target));
@@ -202,7 +204,19 @@ function ManagedCodexSetup({
   const state = installation.data;
   const installing =
     state?.phase === "downloading" || state?.phase === "extracting" || state?.phase === "verifying";
-  const installed = state?.installedVersion != null || provider?.installed === true;
+  const managedRuntime =
+    state?.source === "managed" &&
+    (mode === "managed" || !provider?.installed || provider.version === state.installedVersion);
+  const installed =
+    ((mode === "managed" || managedRuntime) && state?.installedVersion != null) ||
+    provider?.installed === true;
+  const canUpdate =
+    managedRuntime &&
+    state?.installedVersion != null &&
+    state.version != null &&
+    compareSemverVersions(state.installedVersion, state.version) < 0;
+  const operationId = state?.operationId;
+  if (mode === "existing" && installed && !managedRuntime && !installing) return null;
   const install = async () => {
     setPending(true);
     const result = await startInstall(target);
@@ -221,16 +235,16 @@ function ManagedCodexSetup({
         )}
         control={
           <div className="flex flex-wrap gap-2">
-            {!installed && (
+            {(!installed || canUpdate) && !installing && (
               <Button
                 size="sm"
                 disabled={readOnly || pending || installing || !provider?.setup?.canInstall}
                 onClick={() => void install()}
               >
-                {t(installing || pending ? "Installing…" : "Install Codex")}
+                {t(pending ? "Installing…" : canUpdate ? "Update Codex" : "Install Codex")}
               </Button>
             )}
-            {installing && state?.operationId && (
+            {installing && operationId && (
               <Button
                 size="sm"
                 variant="outline"
@@ -238,7 +252,7 @@ function ManagedCodexSetup({
                 onClick={() =>
                   void cancelInstall({
                     environmentId,
-                    input: { instanceId, operationId: state.operationId! },
+                    input: { instanceId, operationId },
                   })
                 }
               >
@@ -258,7 +272,7 @@ function ManagedCodexSetup({
           </div>
         }
       />
-      {installed && provider && (
+      {mode === "managed" && installed && provider && (
         <ProviderAuthenticationSection
           environmentId={environmentId}
           environmentLabel={t("this computer")}

@@ -147,6 +147,31 @@ const makeHarness = Effect.fn("providerInstallation.test.makeHarness")(function*
 
 describe("provider installation routing", () => {
   it.effect.each([
+    { binaryPath: "codex", succeeds: true },
+    { binaryPath: "/external/codex", succeeds: false },
+  ])("respects manual Codex ownership for $binaryPath", ({ binaryPath, succeeds }) =>
+    Effect.gen(function* () {
+      const id = ProviderInstanceId.make("codex-manual");
+      const kind = ProviderDriverKind.make("codex");
+      const harness = yield* makeHarness({
+        instance: instance(kind, id),
+        settings: {
+          providerInstances: {
+            [id]: { driver: kind, config: { setupMode: "existing", binaryPath } },
+          },
+        },
+      });
+      if (succeeds) {
+        assert.strictEqual((yield* harness.router.start({ instanceId: id })).driver, kind);
+      } else {
+        assert.include(
+          (yield* Effect.flip(harness.router.start({ instanceId: id }))).detail,
+          "custom executable",
+        );
+      }
+    }).pipe(Effect.scoped),
+  );
+  it.effect.each([
     { phase: "succeeded", enabled: true, checkFails: false, expectedChecks: 1 },
     { phase: "succeeded", enabled: true, checkFails: true, expectedChecks: 1 },
     { phase: "succeeded", enabled: false, checkFails: false, expectedChecks: 0 },
