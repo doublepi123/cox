@@ -3,7 +3,7 @@
   "workspaces": {
     ".": { "entry": ["scripts/dev-runner.ts", "vite.config.ts"], "project": ["scripts/**/*.ts"] },
     "apps/server": {
-      "entry": ["src/bin.ts", "src/claude-history-worker.ts"],
+      "entry": ["src/bin.ts", "src/claude-history-worker.ts", "src/process-launcher.ts"],
       "project": ["src/**/*.ts"],
     },
     "apps/web": { "entry": ["src/main.tsx"], "project": ["src/**/*.{ts,tsx}"] },

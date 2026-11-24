@@ -141,6 +141,7 @@ patchedDependencies:
   micromark@4.0.2: patches/micromark@4.0.2.patch
   mdast-util-to-hast@13.2.1: patches/mdast-util-to-hast@13.2.1.patch
   "@effect/vitest@4.1.5": patches/@effect__vitest@4.1.5.patch
+  "@effect/platform-node-shared@4.1.5": patches/@effect__platform-node-shared@4.1.5.patch
   "@ff-labs/fff-node@0.11.0": patches/@ff-labs__fff-node@0.11.0.patch
   "@pierre/diffs@1.6.1": patches/@pierre%2Fdiffs@1.6.1.patch
   node-pty@1.2.0-beta.15: patches/node-pty@1.2.0-beta.15.patch

@@ -31,6 +31,7 @@ export default mergeConfig(
       entry: [
         "src/bin.ts",
         "src/claude-history-worker.ts",
+        "src/process-launcher.ts",
         "src/persistence/databaseMigrationHead.ts",
         "src/localServiceUpdate/activation.ts",
       ],
