@@ -174,55 +174,70 @@ function setup(services: UnifiedSettings["modelServices"] = {}) {
       notify();
       return { _tag: "Success", value: undefined };
     });
-  state.discover
-    .mockReset()
-    .mockImplementation(
-      async ({ input }: { input: { serviceId: ModelServiceId; preview?: boolean } }) => {
-        const service = state.settings.modelServices[input.serviceId]!;
-        const discoveredAt = "2026-11-09T00:00:00Z";
-        const discovered = [
-          {
-            id: "New/Model",
-            name: "Discovered model",
-            capabilities: null,
-            source: "discovered" as const,
-          },
-          {
-            id: "Other/Model",
-            name: "Other discovered model",
-            capabilities: null,
-            source: "discovered" as const,
-          },
-        ];
-        if (input.preview)
-          return {
-            _tag: "Success",
-            value: {
-              models: discovered,
-              discoveredAt,
-              revision: service.revision,
-              fingerprint: "preview-fingerprint",
-            },
-          };
-        state.settings = {
-          ...state.settings,
-          modelServices: {
-            ...state.settings.modelServices,
-            [input.serviceId]: { ...service, models: discovered.slice(0, 1), discoveredAt },
-          },
-        };
-        notify();
+  state.discover.mockReset().mockImplementation(
+    async ({
+      input,
+    }: {
+      input: {
+        serviceId: ModelServiceId;
+        preview?: boolean;
+        metadataOnly?: boolean;
+        metadataModelIds?: readonly string[];
+      };
+    }) => {
+      const service = state.settings.modelServices[input.serviceId]!;
+      const discoveredAt = "2026-11-09T00:00:00Z";
+      const discovered = [
+        {
+          id: "New/Model",
+          name: "Discovered model",
+          capabilities: null,
+          source: "discovered" as const,
+        },
+        {
+          id: "Other/Model",
+          name: "Other discovered model",
+          capabilities: null,
+          source: "discovered" as const,
+        },
+      ];
+      if (input.preview)
         return {
           _tag: "Success",
           value: {
-            models: discovered.slice(0, 1),
+            models: discovered,
             discoveredAt,
             revision: service.revision,
             fingerprint: "preview-fingerprint",
           },
         };
-      },
-    );
+      const models = input.metadataOnly
+        ? service.models.map((model) =>
+            model.id === "New/Model" &&
+            (!input.metadataModelIds || input.metadataModelIds.includes(model.id))
+              ? { ...model, capabilities: { contextWindow: 128000 } }
+              : model,
+          )
+        : discovered.slice(0, 1);
+      state.settings = {
+        ...state.settings,
+        modelServices: {
+          ...state.settings.modelServices,
+          [input.serviceId]: { ...service, models, discoveredAt },
+        },
+      };
+      notify();
+      return {
+        _tag: "Success",
+        value: {
+          models,
+          discoveredAt,
+          revision: service.revision,
+          fingerprint: "preview-fingerprint",
+        },
+      };
+    },
+  );
 }
 
 async function openModelActions(
@@ -437,7 +452,7 @@ describe("model services settings", () => {
       models: [...configured.models, manualModel],
     });
     expect(state.settings.modelServices[other]).toEqual(configured);
-    expect(state.discover).toHaveBeenCalledOnce();
+    expect(state.discover).toHaveBeenCalledTimes(2);
     expect(state.testModel).not.toHaveBeenCalled();
     await expect
       .element(screen.getByRole("status"))
@@ -1566,10 +1581,52 @@ describe("model services settings", () => {
       .getByRole("checkbox", { name: "Import model Discovered model", exact: true })
       .click();
     await dialog.getByRole("button", { name: "Import selected models (1)", exact: true }).click();
+    await expect.element(screen.getByText(/Context: 128[,.]?000/)).toBeVisible();
+    expect(state.discover).toHaveBeenCalledTimes(2);
+    expect(state.discover).toHaveBeenLastCalledWith({
+      environmentId,
+      input: { serviceId: id, metadataOnly: true, metadataModelIds: ["New/Model"] },
+    });
     const models = state.settings.modelServices[id]?.models;
     expect(models?.map((model) => model.id)).toEqual(["Vendor/Exact", "New/Model"]);
     expect(models?.[0]).toEqual({ ...configured.models[0], modelsDevPrice: originalPrice });
   });
+
+  it.each(["import", "metadata"] as const)(
+    "keeps the selection recoverable when %s fails",
+    async (failure) => {
+      setup({ [id]: configured });
+      if (failure === "import") state.save.mockRejectedValueOnce(new Error("Import failed"));
+      await using screen = await render(<EnvironmentModelServices environmentId={environmentId} />);
+      await screen.getByRole("button", { name: "Refresh models", exact: true }).click();
+      const dialog = page.getByRole("alertdialog", { name: "Import models", exact: true });
+      await dialog
+        .getByRole("checkbox", { name: "Import model Discovered model", exact: true })
+        .click();
+      if (failure === "metadata")
+        state.discover.mockRejectedValueOnce(new Error("Catalog unavailable"));
+      await dialog.getByRole("button", { name: "Import selected models (1)", exact: true }).click();
+      if (failure === "import") {
+        await expect
+          .element(dialog.getByRole("alert"))
+          .toHaveTextContent("The model service operation failed.");
+        expect(state.settings.modelServices[id]?.models).toEqual(configured.models);
+        expect(state.discover).toHaveBeenCalledOnce();
+      } else {
+        await expect.element(dialog).not.toBeInTheDocument();
+        await expect.element(screen.getByRole("alert")).toBeVisible();
+        await expect.element(screen.getByText("Discovered model", { exact: true })).toBeVisible();
+        await expect
+          .element(
+            screen.getByRole("button", {
+              name: "Sync prices and metadata from models.dev",
+              exact: true,
+            }),
+          )
+          .toBeEnabled();
+      }
+    },
+  );
 
   it("adds model metadata without guessing unknown capabilities or losing a stored secret", async () => {
     setup({ [id]: { ...configured, models: [] } });
@@ -1843,6 +1900,7 @@ describe("model services settings", () => {
     expect(state.save).toHaveBeenCalledOnce();
     expect(state.settings.modelServices[id]?.models[0]?.available).toBe(false);
     expect(state.settings.modelServices[id]?.models[1]).toEqual(manualModel);
+    expect(state.discover).toHaveBeenCalledOnce();
   });
 
   it("requires unbinding before removal and enforces read-only provider access", async () => {

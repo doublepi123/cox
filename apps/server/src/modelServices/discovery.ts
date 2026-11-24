@@ -1,8 +1,8 @@
 import {
   ModelServiceError,
   type ModelServiceConfig,
+  type ModelServiceDiscoveryInput,
   type ModelServiceDiscoveryResult,
-  type ModelServiceId,
   type ModelServiceModel,
   type ModelServiceProtocol,
   ProviderDriverKind,
@@ -299,11 +299,7 @@ export const fetchModelServiceModels = Effect.fn("fetchModelServiceModels")(
 );
 
 export const discoverModelService = Effect.fn("discoverModelService")(
-  function* (input: {
-    readonly serviceId: ModelServiceId;
-    readonly metadataOnly?: boolean;
-    readonly preview?: boolean;
-  }) {
+  function* (input: ModelServiceDiscoveryInput) {
     const settings = yield* Settings.ServerSettingsService;
     const service = (yield* settings.getSettings).modelServices[input.serviceId];
     if (!service?.enabled)
@@ -338,9 +334,12 @@ export const discoverModelService = Effect.fn("discoverModelService")(
       return yield* new ModelServiceError({
         detail: "The model service changed during discovery. Retry with its current settings.",
       });
+    const metadataIds = input.metadataModelIds && new Set(input.metadataModelIds);
     const result: ModelServiceDiscoveryResult = {
       models: [...models.values()].map((model) =>
-        catalog ? enrichModelFromModelsDev(model, catalog, service.baseUrl) : model,
+        catalog && (!metadataIds || metadataIds.has(model.id))
+          ? enrichModelFromModelsDev(model, catalog, service.baseUrl)
+          : model,
       ),
       discoveredAt: DateTime.formatIso(yield* DateTime.now),
       revision: service.revision,

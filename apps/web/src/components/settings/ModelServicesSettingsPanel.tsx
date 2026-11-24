@@ -617,8 +617,24 @@ function ModelServiceEditor({
           },
         }),
       );
-      if (!problem) setImportPreview(null);
-      return problem;
+      if (problem) return problem;
+      setImportPreview(null);
+      const [firstModelId, ...remainingModelIds] = imported.keys();
+      if (firstModelId === undefined) return null;
+      try {
+        const result = await discover({
+          environmentId,
+          input: {
+            serviceId: id,
+            metadataOnly: true,
+            metadataModelIds: [firstModelId, ...remainingModelIds],
+          },
+        });
+        if (result._tag === "Success") return null;
+      } catch {
+        return "Models were imported, but models.dev metadata could not be synced. You can retry using metadata sync.";
+      }
+      return "Models were imported, but models.dev metadata could not be synced. You can retry using metadata sync.";
     });
   }
   async function save(fetchModels: boolean) {
@@ -1120,7 +1136,7 @@ function ModelServiceEditor({
         )}
         <p className="text-xs leading-relaxed text-muted-foreground">
           {t(
-            "After importing, use metadata sync to fill models.dev prices when the model can be matched by ID. Manual prices take priority.",
+            "Importing automatically fills matching model information and prices from models.dev. Manual prices take priority.",
           )}
         </p>
         {modelEditor === "new" && service && !readOnly ? (

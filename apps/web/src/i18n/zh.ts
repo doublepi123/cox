@@ -492,8 +492,10 @@ export const zh = {
     "当前没有此模型的 models.dev 价格。",
   "Input modalities": "输入模态",
   "Output modalities": "输出模态",
-  "After importing, use metadata sync to fill models.dev prices when the model can be matched by ID. Manual prices take priority.":
-    "导入后可通过元数据同步按模型 ID 补充 models.dev 价格，手动价格优先。",
+  "Importing automatically fills matching model information and prices from models.dev. Manual prices take priority.":
+    "导入时会自动从 models.dev 补充匹配的模型信息和价格，手动价格优先。",
+  "Models were imported, but models.dev metadata could not be synced. You can retry using metadata sync.":
+    "模型已导入，但未能从 models.dev 同步信息。可点击同步价格和参数重试。",
   "Could not fetch model metadata from models.dev. Try again later.":
     "无法从 models.dev 获取模型参数，请稍后重试。",
   "Model services": "模型服务中心",

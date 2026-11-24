@@ -115,8 +115,14 @@ export type ModelServiceConfig = typeof ModelServiceConfig.Type;
 export const ModelServiceDiscoveryInput = Schema.Struct({
   serviceId: ModelServiceId,
   metadataOnly: Schema.optionalKey(Schema.Boolean),
+  metadataModelIds: Schema.optionalKey(Schema.NonEmptyArray(TrimmedNonEmptyString)),
   preview: Schema.optionalKey(Schema.Boolean),
-}).check(Schema.makeFilter((input) => !(input.preview === true && input.metadataOnly === true)));
+}).check(
+  Schema.makeFilter((input) =>
+    input.metadataOnly === true ? input.preview !== true : input.metadataModelIds === undefined,
+  ),
+);
+export type ModelServiceDiscoveryInput = typeof ModelServiceDiscoveryInput.Type;
 export const ModelServiceDiscoveryResult = Schema.Struct({
   models: Schema.Array(ModelServiceModel),
   discoveredAt: Schema.String,

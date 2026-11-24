@@ -598,8 +598,10 @@ export const en = {
     "No models.dev price is currently available for this model.",
   "Input modalities": "Input modalities",
   "Output modalities": "Output modalities",
-  "After importing, use metadata sync to fill models.dev prices when the model can be matched by ID. Manual prices take priority.":
-    "After importing, use metadata sync to fill models.dev prices when the model can be matched by ID. Manual prices take priority.",
+  "Importing automatically fills matching model information and prices from models.dev. Manual prices take priority.":
+    "Importing automatically fills matching model information and prices from models.dev. Manual prices take priority.",
+  "Models were imported, but models.dev metadata could not be synced. You can retry using metadata sync.":
+    "Models were imported, but models.dev metadata could not be synced. You can retry using metadata sync.",
   "Could not fetch model metadata from models.dev. Try again later.":
     "Could not fetch model metadata from models.dev. Try again later.",
   "Model services": "Model services",

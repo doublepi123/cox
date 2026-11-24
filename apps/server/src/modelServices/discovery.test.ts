@@ -329,6 +329,68 @@ describe("model service discovery", () => {
       ),
     ),
   );
+  it.effect("persists catalog metadata only for the selected models", () =>
+    Effect.gen(function* () {
+      const settings = yield* ServerSettingsService;
+      const before = (yield* settings.getSettings).modelServices[id]!;
+      const http = HttpClient.make((request) =>
+        Effect.sync(() => {
+          expect(request.url).toBe("https://models.dev/api.json");
+          return HttpClientResponse.fromWeb(
+            request,
+            Response.json({
+              openai: {
+                models: {
+                  "gpt-picked": {
+                    id: "gpt-picked",
+                    name: "Picked",
+                    limit: { context: 128000 },
+                    cost: { input: 2, output: 8 },
+                  },
+                  "gpt-existing": {
+                    id: "gpt-existing",
+                    name: "Changed",
+                    limit: { context: 64000 },
+                  },
+                },
+              },
+            }),
+          );
+        }),
+      );
+      yield* discoverModelService({
+        serviceId: id,
+        metadataOnly: true,
+        metadataModelIds: ["gpt-picked"],
+      }).pipe(Effect.provideService(HttpClient.HttpClient, http));
+      const after = (yield* settings.getSettings).modelServices[id]!;
+      expect(after.models[0]).toMatchObject({
+        id: "gpt-picked",
+        capabilities: { contextWindow: 128000 },
+        price: { inputCostPerMillionTokens: 1, outputCostPerMillionTokens: 4 },
+        modelsDevPrice: { inputCostPerMillionTokens: 2, outputCostPerMillionTokens: 8 },
+      });
+      expect(after.models[1]).toEqual(before.models[1]);
+    }).pipe(
+      Effect.provide(
+        ServerSettingsService.layerTest({
+          modelServices: {
+            [id]: config({
+              models: [
+                {
+                  id: "gpt-picked",
+                  capabilities: null,
+                  price: { inputCostPerMillionTokens: 1, outputCostPerMillionTokens: 4 },
+                },
+                { id: "gpt-existing", name: "Original", capabilities: null },
+              ],
+            }),
+          },
+        }),
+      ),
+    ),
+  );
+
   it.effect("keeps upstream discovery usable when models.dev is unavailable", () =>
     Effect.gen(function* () {
       const http = HttpClient.make((request) =>
