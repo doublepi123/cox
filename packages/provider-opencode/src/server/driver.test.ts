@@ -91,7 +91,9 @@ it.layer(layer)("OpenCodeDriver runtime selection", (it) => {
     "isolates model service sessions while preserving shared servers for other instances",
     () =>
       Effect.gen(function* () {
-        const shared = yield* create({}, noHttp);
+        const shared = yield* create({}, noHttp, [
+          { name: "COX_MODEL_SERVICE_KEY", value: "", sensitive: true },
+        ]);
         const bound = yield* create({}, noHttp, [
           { name: "COX_MODEL_SERVICE_KEY", value: "local-key", sensitive: true },
         ]);
