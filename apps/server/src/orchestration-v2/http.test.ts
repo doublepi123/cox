@@ -9,7 +9,6 @@ import {
   ORCHESTRATION_PROTOCOL_HEADER,
   ORCHESTRATION_PROTOCOL_VERSION_TEXT,
   OrchestrationV2AppThread,
-  OrchestrationV2Run,
   OrchestrationV2TurnItem,
   OrchestrationV2ThreadDetailSnapshot,
   OrchestrationV2ThreadTranscript,
