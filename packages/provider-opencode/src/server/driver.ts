@@ -30,6 +30,7 @@ import { loadOpenCode2Agents, withOpenCode2Agents } from "./openCode2Agents.ts";
 import { makeOpenCodeInstallation } from "./installation.ts";
 import {
   checkOpenCodeProviderStatus,
+  followOpenCode2Scans,
   loadOpenCode2Workspace,
   makeOpenCode2ModelLoader,
   makeOpenCode2CatalogWatch,
@@ -364,9 +365,30 @@ export const OpenCodeDriver: ProviderDriver<
     const catalogWatch = yield* makeOpenCode2CatalogWatch();
     const followCatalog = ({ client, events, url }: OpenCode2Server.OpenCode2Connection) =>
       catalogWatch.follow(url, events, loadOpenCode2Catalog(client, host.paths.cwd));
-    yield* Stream.runForEach(openCode2Server.connections, followCatalog).pipe(
-      Effect.forkScoped({ startImmediately: true }),
-    );
+    const scannedByConnection = new WeakMap<OpenCode2Server.OpenCode2Connection, Set<string>>();
+    const scannedDirectories = (connection: OpenCode2Server.OpenCode2Connection) => {
+      const existing = scannedByConnection.get(connection);
+      if (existing !== undefined) return existing;
+      const scanned = new Set<string>();
+      scannedByConnection.set(connection, scanned);
+      return scanned;
+    };
+    yield* Stream.runForEach(openCode2Server.connections, (connection) => {
+      const scanned = scannedDirectories(connection);
+      return connection.events.pipe(
+        Effect.flatMap((events) =>
+          followOpenCode2Scans(events, (directory) =>
+            Effect.sync(() => {
+              scanned.add(directory);
+            }),
+          ),
+        ),
+        Effect.scoped,
+        Effect.ignore,
+        Effect.forkScoped({ startImmediately: true }),
+        Effect.andThen(followCatalog(connection)),
+      );
+    }).pipe(Effect.forkScoped({ startImmediately: true }));
     const loadOpenCode2Models = yield* makeOpenCode2ModelLoader(
       openCode2Server.withConnection((connection) =>
         followCatalog(connection).pipe(
@@ -386,27 +408,22 @@ export const OpenCodeDriver: ProviderDriver<
           ),
         );
     const listOpenCode2Workspace = (cwd: string) =>
-      openCode2Server.withConnection(({ client, events }) =>
+      openCode2Server.withConnection((connection) =>
         Effect.gen(function* () {
-          const location = { directory: cwd };
+          const { client, events } = connection;
+          const directory = pathService.resolve(cwd);
+          const location = { directory };
+          const seen = scannedDirectories(connection);
           const scanned = yield* Deferred.make<void>();
-          const pending = new Set(["command.updated", "skill.updated"]);
           const stream = yield* events.pipe(Effect.option);
           if (stream._tag === "Some") {
-            yield* stream.value.pipe(
-              Stream.runForEach((event) =>
-                "location" in event &&
-                event.location?.directory === cwd &&
-                pending.delete(event.type) &&
-                pending.size === 0
-                  ? Deferred.succeed(scanned, undefined)
-                  : Effect.void,
-              ),
-              Effect.ignore,
-              Effect.forkScoped,
-            );
+            yield* followOpenCode2Scans(stream.value, (completed) =>
+              completed === directory
+                ? Deferred.succeed(scanned, undefined).pipe(Effect.asVoid)
+                : Effect.void,
+            ).pipe(Effect.forkScoped({ startImmediately: true }));
           }
-          return yield* loadOpenCode2Workspace(
+          const workspace = yield* loadOpenCode2Workspace(
             Effect.all(
               {
                 skills: client.skill.list({ location }).pipe(Effect.map((list) => list.data)),
@@ -414,8 +431,11 @@ export const OpenCodeDriver: ProviderDriver<
               },
               { concurrency: "unbounded" },
             ),
-            Deferred.await(scanned),
+            Effect.suspend(() => (seen.has(directory) ? Effect.void : Deferred.await(scanned))),
+            stream._tag === "None" || seen.has(directory),
           );
+          seen.add(directory);
+          return workspace;
         }).pipe(Effect.scoped),
       );
     const serverOwner = yield* OpenCodeServerOwner.make({

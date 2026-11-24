@@ -762,16 +762,43 @@ export interface OpenCode2Workspace {
   }>;
 }
 
-/**
- * A server scans a directory it has not served yet in the background: its first read lists
- * no commands at all (not even the built-ins), and `command.updated` plus `skill.updated`
- * for the directory end the scan. `scanned` must be listening before `read` runs, since
- * the read is what starts the scan.
- */
+export const followOpenCode2Scans = <E>(
+  events: Stream.Stream<
+    {
+      readonly type: string;
+      readonly location?: { readonly directory?: string | undefined } | undefined;
+    },
+    E
+  >,
+  onScanned: (directory: string) => Effect.Effect<void>,
+) => {
+  const pending = new Map<string, Set<string>>();
+  return events.pipe(
+    Stream.runForEach((event) => {
+      const directory = event.location?.directory;
+      if (
+        directory === undefined ||
+        (event.type !== "command.updated" && event.type !== "skill.updated")
+      )
+        return Effect.void;
+      const seen = pending.get(directory) ?? new Set<string>();
+      pending.set(directory, seen.add(event.type));
+      if (seen.size < 2) return Effect.void;
+      pending.delete(directory);
+      return onScanned(directory);
+    }),
+    Effect.ignore,
+  );
+};
+
 export const loadOpenCode2Workspace = Effect.fn("OpencodeProviderStatus.loadOpenCode2Workspace")(
-  function* <E>(read: Effect.Effect<OpenCode2Workspace, E>, scanned: Effect.Effect<void>) {
+  function* <E>(
+    read: Effect.Effect<OpenCode2Workspace, E>,
+    scanned: Effect.Effect<void>,
+    sawScan: boolean,
+  ) {
     const first = yield* read;
-    if (first.commands.length > 0) return first;
+    if (sawScan) return first;
     yield* scanned.pipe(Effect.timeoutOption("10 seconds"));
     return yield* read;
   },

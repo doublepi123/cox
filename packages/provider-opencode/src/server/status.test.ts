@@ -1414,17 +1414,36 @@ const scanned: OpenCode2Workspace = {
   ],
 };
 
-it.effect("reads a fresh OpenCode 2 directory again once its scan has ended", () =>
+it.effect("reads a built-ins-only OpenCode 2 directory again once its scan has ended", () =>
   Effect.gen(function* () {
-    const reads: Array<OpenCode2Workspace> = [{ commands: [], skills: [] }, scanned];
+    const reads: Array<OpenCode2Workspace> = [
+      { commands: builtinCommands, skills: builtinSkills },
+      scanned,
+    ];
     const scanEnded = yield* Deferred.make<void>();
     const load = yield* loadOpenCode2Workspace(
       Effect.sync(() => reads.shift()!),
       Deferred.await(scanEnded),
+      false,
     ).pipe(Effect.forkChild);
     yield* Effect.yieldNow;
     NodeAssert.equal(reads.length, 1);
     yield* Deferred.succeed(scanEnded, undefined);
     NodeAssert.deepEqual(yield* Fiber.join(load), scanned);
+  }),
+);
+
+it.effect("reads a workspace whose OpenCode 2 scan already ended without waiting", () =>
+  Effect.gen(function* () {
+    const calls: string[] = [];
+    const workspace = yield* loadOpenCode2Workspace(
+      Effect.sync(() => (calls.push("read"), scanned)),
+      Effect.sync(() => {
+        calls.push("scanned");
+      }),
+      true,
+    );
+    NodeAssert.deepEqual(workspace, scanned);
+    NodeAssert.deepEqual(calls, ["read"]);
   }),
 );
