@@ -394,6 +394,7 @@ function* notebook(source: string): Generator<string, void> {
 
 // Per-byte decoding only supports the single-byte \fcharset values.
 const FONT_CODE_PAGES = new Map([
+  [0, "windows-1252"],
   [77, "macintosh"],
   [161, "windows-1253"],
   [162, "windows-1254"],
@@ -406,6 +407,18 @@ const FONT_CODE_PAGES = new Map([
   [238, "windows-1250"],
 ]);
 
+// Per-byte decoding only supports single-byte code pages.
+const singleByteCodePage = (value: number) =>
+  value === 0
+    ? "windows-1252"
+    : value === 866
+      ? "ibm866"
+      : value === 10000
+        ? "macintosh"
+        : value === 874 || (value >= 1250 && value <= 1258)
+          ? `windows-${value}`
+          : undefined;
+
 function* rtf(source: string): Generator<string, void> {
   if (!source.startsWith("{\\rtf")) throw new Error("Invalid RTF document");
   let state = {
@@ -414,6 +427,7 @@ function* rtf(source: string): Generator<string, void> {
     uc: 1,
     font: 0,
     fontTable: false,
+    fontFile: false,
     decoder: new TextDecoder("windows-1252"),
   };
   const stack: Array<typeof state> = [];
@@ -481,6 +495,7 @@ function* rtf(source: string): Generator<string, void> {
         )
           state.skip = true;
         if (control === "fonttbl") state.fontTable = true;
+        else if (control === "fontfile") state.fontFile = true;
         else if (control === "deff") state.font = defaultFont = value;
         else if (control === "f") {
           state.font = value;
@@ -488,22 +503,17 @@ function* rtf(source: string): Generator<string, void> {
         } else if (control === "fcharset" && state.fontTable) {
           const codePage = FONT_CODE_PAGES.get(value);
           if (codePage) fonts.set(state.font, new TextDecoder(codePage));
+        } else if (control === "cpg" && state.fontTable && !state.fontFile) {
+          const codePage = singleByteCodePage(value);
+          if (codePage) fonts.set(state.font, new TextDecoder(codePage));
         }
         if (control === "v") state.hiddenText = value !== 0;
         else if (control === "plain") {
           state.hiddenText = false;
           state.font = defaultFont;
         }
-        if (control === "ansicpg") {
-          // Per-byte decoding only supports single-byte code pages.
-          const label =
-            value === 0
-              ? "windows-1252"
-              : value === 866
-                ? "ibm866"
-                : value === 874 || (value >= 1250 && value <= 1258)
-                  ? `windows-${value}`
-                  : undefined;
+        if (control === "mac" || control === "ansicpg") {
+          const label = singleByteCodePage(control === "mac" ? 10000 : value);
           if (!label) throw new Error("Unsupported RTF code page");
           state.decoder = new TextDecoder(label, { fatal: true });
         } else if (control === "uc") {
