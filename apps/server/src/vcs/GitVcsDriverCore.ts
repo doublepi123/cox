@@ -5972,6 +5972,17 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
         remoteBranch && !(yield* branchExists(input.cwd, remoteBranch.branchName))
           ? remoteBranch.branchName
           : null;
+      if (remoteBranch !== null && newTrackingBranch === null) {
+        return yield* new GitCommandError({
+          ...gitCommandContext({
+            operation: "GitVcsDriver.switchRef.createTrackingBranch",
+            cwd: input.cwd,
+            args: ["branch", "--track", remoteBranch.branchName, remoteRef],
+          }),
+          reason: "branch_already_exists",
+          detail: `A local branch named ${remoteBranch.branchName} already exists.`,
+        });
+      }
       const target = localTrackingBranch ?? newTrackingBranch ?? input.refName;
       yield* refuseOptionLikeRefName("GitVcsDriver.switchRef", input.cwd, target);
       if (newTrackingBranch !== null) {
