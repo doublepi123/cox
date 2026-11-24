@@ -1,3 +1,4 @@
+import { splitsSurrogatePair } from "@t3tools/shared/assistantCitations";
 import { useTranslation } from "../../i18n";
 import { RefreshIcon } from "~/components/ui/refresh-icon";
 import { PlusIcon, SearchIcon } from "lucide-react";
@@ -70,6 +71,8 @@ export function PullRequestListEmptyState({
   onRefresh: () => void;
 }) {
   const { t } = useTranslation();
+  const shownQuery =
+    query.length > 48 ? `${query.slice(0, splitsSurrogatePair(query, 48) ? 47 : 48)}…` : query;
   if (!hasProjects) {
     return (
       <Empty>
@@ -91,12 +94,7 @@ export function PullRequestListEmptyState({
   }
 
   if (searching) {
-    return (
-      <PullRequestListGhost
-        rows={5}
-        caption={`Searching every host for “${query.length > 48 ? `${query.slice(0, 48)}…` : query}”`}
-      />
-    );
+    return <PullRequestListGhost rows={5} caption={`Searching every host for “${shownQuery}”`} />;
   }
 
   if (query.length > 0) {
@@ -104,9 +102,7 @@ export function PullRequestListEmptyState({
       <Empty>
         <BranchMark joined={false} />
         <EmptyHeader>
-          <EmptyTitle>
-            Nothing matches “{query.length > 48 ? `${query.slice(0, 48)}…` : query}”
-          </EmptyTitle>
+          <EmptyTitle>Nothing matches “{shownQuery}”</EmptyTitle>
           <EmptyDescription>
             The hosts were searched for it. Try fewer words, or search by number, author or branch.
           </EmptyDescription>
