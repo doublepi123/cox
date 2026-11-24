@@ -26,6 +26,7 @@ import {
   type AntigravityAcpRuntimeInput,
 } from "../../provider/acp/AntigravityAcpSupport.ts";
 import { readAntigravityClientTextFile } from "../../provider/acp/AntigravityClientFiles.ts";
+import { watchAntigravityPromptOutcome } from "../../provider/acp/AntigravityTurnOutcome.ts";
 import {
   antigravityApprovalOptions,
   antigravitySubagentOutput,
@@ -63,6 +64,7 @@ const AntigravityProviderCapabilitiesV2 = {
 } satisfies OrchestrationV2ProviderCapabilities;
 
 export interface AntigravityAdapterV2Options {
+  readonly profileDirectory?: string;
   readonly instanceId: ProviderInstanceId;
   readonly selfInvocation: SelfInvocation;
   readonly makeRuntime: (
@@ -244,6 +246,12 @@ export function makeAntigravityAcpAdapterFlavor(
     supportsCompaction: false,
     requiresSignIn: isAntigravitySignInRequiredError,
     promptInactivityTimeout: "15 minutes",
+    ...(options.profileDirectory === undefined
+      ? {}
+      : {
+          watchPromptOutcome: (sessionId: string) =>
+            watchAntigravityPromptOutcome(options.profileDirectory!, sessionId),
+        }),
   };
 }
 

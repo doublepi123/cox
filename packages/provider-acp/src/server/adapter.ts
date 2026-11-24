@@ -319,6 +319,7 @@ export function acpPerTurnPromptUsage(
 }
 
 export interface AcpAdapterV2Flavor {
+  readonly watchPromptOutcome?: (sessionId: string) => Effect.Effect<PromptOutcomeCheck>;
   readonly buildPrompt?: (input: {
     readonly text: string;
     readonly attachments: ReadonlyArray<ChatAttachment>;
@@ -1272,6 +1273,19 @@ interface AcpNativeBuildConfiguration {
   readonly modeId?: string;
   readonly configOptions: ReadonlyArray<{ readonly id: string; readonly value: string }>;
 }
+
+type PromptOutcomeCheck = (
+  result: EffectAcpSchema.PromptResponse,
+  options?: { readonly retired?: boolean },
+) => Effect.Effect<
+  | {
+      readonly failure: OrchestrationV2ProviderFailure;
+      readonly threadDisposition: "reusable" | "broken";
+    }
+  | undefined
+>;
+
+const PROMPT_OUTCOME_CHECK_TIMEOUT = Duration.seconds(5);
 
 interface ActiveAcpTurn {
   readonly input: ProviderAdapter.ProviderAdapterV2TurnInput;
@@ -7591,7 +7605,10 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
           context: ActiveAcpTurn,
           status: "completed" | "interrupted" | "failed" | "cancelled",
           failure?: OrchestrationV2ProviderFailure,
-          options?: { readonly childTurnsContinue?: boolean },
+          options?: {
+            readonly childTurnsContinue?: boolean;
+            readonly threadDisposition?: "reusable" | "broken";
+          },
         ): Effect.fn.Return<void> {
           if (context.finalized) return;
           const settledStatus = context.interrupted ? "interrupted" : status;
@@ -7724,7 +7741,7 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
                         retry: context.providerRetry.retry,
                         retryStartedAt: context.providerRetry.startedAt,
                       }),
-                  threadDisposition: "reusable",
+                  threadDisposition: options?.threadDisposition ?? "reusable",
                 }
               : {
                   type: "turn.terminal",
@@ -7813,10 +7830,28 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
           return false;
         });
 
+        const checkRecordedOutcome = Effect.fnUntraced(function* (
+          check: PromptOutcomeCheck | undefined,
+          result: EffectAcpSchema.PromptResponse,
+          retired = false,
+        ) {
+          if (check === undefined) return undefined;
+          return yield* check(result, { retired }).pipe(
+            Effect.timeout(PROMPT_OUTCOME_CHECK_TIMEOUT),
+            Effect.catchCause((cause) =>
+              Effect.logWarning("Failed to check an ACP prompt outcome", {
+                driver,
+                cause,
+              }).pipe(Effect.as(undefined)),
+            ),
+          );
+        });
+
         const retireInactivePrompt = Effect.fn("AcpAdapterV2.retireInactivePrompt")(function* (
           context: ActiveAcpTurn,
           generation: number,
           timeoutMillis: number,
+          checkPromptOutcome: PromptOutcomeCheck | undefined,
         ) {
           const retired = yield* runRuntimeCallbackAtGeneration(
             generation,
@@ -7837,14 +7872,23 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
               yield* Ref.set(runtimeRestartRequired, true);
               yield* cancelPendingRuntimeRequests();
               yield* terminalizeOpenForegroundTools(context, "failed");
+              const recorded = yield* checkRecordedOutcome(
+                checkPromptOutcome,
+                { stopReason: "end_turn" },
+                true,
+              );
               const minutes = Math.max(1, Math.round(timeoutMillis / 60_000));
               yield* finalizeTurn(
                 context,
                 "failed",
-                makeProviderFailure({
-                  class: "provider_error",
-                  message: `${flavor.runtimeHarness ?? driver} sent nothing for ${minutes} ${minutes === 1 ? "minute" : "minutes"}, so Cox stopped the turn and restarted the agent. Send a message to continue.`,
-                }),
+                recorded?.failure ??
+                  makeProviderFailure({
+                    class: "provider_error",
+                    message: `${flavor.runtimeHarness ?? driver} sent nothing for ${minutes} ${minutes === 1 ? "minute" : "minutes"}, so Cox stopped the turn and restarted the agent. Send a message to continue.`,
+                  }),
+                recorded === undefined
+                  ? undefined
+                  : { threadDisposition: recorded.threadDisposition },
               );
               return "retired" as const;
             }),
@@ -7868,6 +7912,7 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
           context: ActiveAcpTurn,
           generation: number,
           timeoutMillis: number,
+          checkPromptOutcome: PromptOutcomeCheck | undefined,
         ) {
           yield* Deferred.await(context.promptDispatched);
           context.lastProgressAt = yield* Clock.currentTimeMillis;
@@ -7879,7 +7924,7 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
               continue;
             }
             const outcome = yield* runtimeTransitionPermit.withPermit(
-              retireInactivePrompt(context, generation, timeoutMillis),
+              retireInactivePrompt(context, generation, timeoutMillis, checkPromptOutcome),
             );
             if (outcome !== "rearm") return;
           }
@@ -8313,11 +8358,16 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
               return;
             }
             const promptGeneration = yield* Ref.get(runtimeCallbackGeneration);
+            const checkPromptOutcome =
+              flavor.watchPromptOutcome === undefined
+                ? undefined
+                : yield* flavor.watchPromptOutcome(requestedSessionId);
             if (promptInactivityTimeoutMillis !== undefined) {
               context.inactivityWatchdog = yield* watchPromptInactivity(
                 context,
                 promptGeneration,
                 promptInactivityTimeoutMillis,
+                checkPromptOutcome,
               ).pipe(Effect.forkIn(sessionScope));
             }
             const promptOptions = {
@@ -8369,6 +8419,18 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
                   promptGeneration,
                   Effect.gen(function* () {
                     if (context.finalized || followsAgentWorkState) return;
+                    const recorded =
+                      context.interrupted || result.stopReason === "cancelled" || result.error
+                        ? undefined
+                        : yield* checkRecordedOutcome(checkPromptOutcome, result);
+                    if (recorded !== undefined) {
+                      yield* Ref.set(runtimeRestartRequired, true);
+                      yield* terminalizeOpenForegroundTools(context, "failed");
+                      yield* finalizeTurn(context, "failed", recorded.failure, {
+                        threadDisposition: recorded.threadDisposition,
+                      });
+                      return;
+                    }
                     const failure = context.interrupted
                       ? undefined
                       : stopReasonFailure(result.stopReason, result.error);
