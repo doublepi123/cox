@@ -97,6 +97,15 @@ export class PullRequestUrlUnavailableError extends Schema.TaggedError<PullReque
   }
 }
 
+export class PullRequestRepositoryInvalidError extends Schema.TaggedError<PullRequestRepositoryInvalidError>()(
+  "PullRequestRepositoryInvalidError",
+  {},
+) {
+  override get message(): string {
+    return "Pass repository as owner/repo, without the host.";
+  }
+}
+
 export class PullRequestThreadRequiredError extends Schema.TaggedError<PullRequestThreadRequiredError>()(
   "PullRequestThreadRequiredError",
   {},
@@ -176,6 +185,7 @@ export const PullRequestToolError = Schema.Union([
   PullRequestTargetIncompleteError,
   PullRequestHostRequiredError,
   PullRequestUrlUnavailableError,
+  PullRequestRepositoryInvalidError,
   PullRequestThreadRequiredError,
   PullRequestLinkFailedError,
   PullRequestUnlinkFailedError,

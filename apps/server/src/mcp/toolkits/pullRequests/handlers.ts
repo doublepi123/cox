@@ -39,6 +39,7 @@ import {
   PullRequestTargetIncompleteError,
   PullRequestHostRequiredError,
   PullRequestUrlUnavailableError,
+  PullRequestRepositoryInvalidError,
   PullRequestUnlinkFailedError,
   PullRequestListFailedError,
   type PullRequestTargetInput,
@@ -101,17 +102,18 @@ const resolveTarget = Effect.fn("PullRequestsToolkit.resolveTarget")(function* (
   const kind =
     sourceControlDefinitions.findByPublicHost(host)?.kind ??
     (recognizedKind === "gitcafe" ? recognizedKind : projectHost.kind);
+  const definition = kind === null ? null : sourceControlDefinitions.get(kind);
   const url =
-    kind === null
-      ? null
-      : sourceControlDefinitions.get(kind).changeRequestUrl({
-          host,
-          repository,
-          number: input.number,
-          remoteUrl: project?.repositoryIdentity?.locator.remoteUrl,
-        });
+    definition?.changeRequestUrl({
+      host,
+      repository,
+      number: input.number,
+      remoteUrl: project?.repositoryIdentity?.locator.remoteUrl,
+    }) ?? null;
   if (url === null) {
-    return yield* new PullRequestUrlUnavailableError({});
+    return yield* definition === null || definition.kind === "unknown"
+      ? new PullRequestUrlUnavailableError({})
+      : new PullRequestRepositoryInvalidError({});
   }
   return {
     ...normalizeThreadPullRequestKey({ host, repository, number: input.number, url }),
