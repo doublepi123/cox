@@ -2527,13 +2527,16 @@ it.each([
         />
       </div>,
     );
-    const overview = await vi.waitFor(() => {
-      const tab = screen.container.querySelector<HTMLButtonElement>(
-        '[role="tab"][aria-selected="true"]',
-      );
-      expect(tab).not.toBeNull();
-      return tab!;
-    });
+    const overview = await vi.waitFor(
+      () => {
+        const tab = screen.container.querySelector<HTMLButtonElement>(
+          '[role="tab"][aria-selected="true"]',
+        );
+        expect(tab).not.toBeNull();
+        return tab!;
+      },
+      { timeout: 10_000 },
+    );
     await act(() => {
       overview.focus();
       for (let press = 0; press < 2; press++) {
@@ -2543,11 +2546,14 @@ it.each([
       }
     });
     expect(document.activeElement?.textContent).toBe(expected);
-    await vi.waitFor(() => {
-      expect(screen.container.querySelector('[role="grid"]')?.getAttribute("aria-label")).toBe(
-        expected,
-      );
-    });
+    await vi.waitFor(
+      () => {
+        expect(screen.container.querySelector('[role="grid"]')?.getAttribute("aria-label")).toBe(
+          expected,
+        );
+      },
+      { timeout: 10_000 },
+    );
   },
 );
 

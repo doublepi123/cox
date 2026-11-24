@@ -364,18 +364,25 @@ export default function PdfViewer(props: {
     };
     setZoom(value);
   };
+  const resizeView = useEffectEvent((node: HTMLDivElement, top: number | undefined) => {
+    if (top !== undefined) node.scrollTo({ top });
+    setScrolled({ top: node.scrollTop, width, pdf });
+    saveView(node);
+  });
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- Restore the DOM scroll anchor after a zoom or resize has committed the new page width.
   useLayoutEffect(() => {
     const anchor = zoomAnchor.current;
     zoomAnchor.current = null;
     const node = scroll.current;
     if (!node || (!anchor && !resized)) return;
-    if (anchor && anchor.width !== width) {
-      node.scrollTo({
-        top: offsets[anchor.page]! - 16 + (anchor.offset * width) / anchor.width,
-      });
-    } else if (resized) node.scrollTo({ top: scrollTop });
-    saveView(node);
+    resizeView(
+      node,
+      anchor && anchor.width !== width
+        ? offsets[anchor.page]! - 16 + (anchor.offset * width) / anchor.width
+        : resized
+          ? scrollTop
+          : undefined,
+    );
   });
   const firstMatch = matches[0];
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- Scroll to the first asynchronous search result after its measured page offsets have committed.
