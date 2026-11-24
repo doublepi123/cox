@@ -29,6 +29,7 @@
     "test": "vp test run --project root scripts/dev-runner.test.ts scripts/local-only.test.ts scripts/package-release.test.ts scripts/package-npm.test.ts scripts/cursor-sdk-smoke.test.ts scripts/lib/third-party-licenses.test.ts packages/provider-core/src/server/orchestrationInstructions.test.ts apps/desktop && pnpm --filter @cox/mobile test",
     "lint": "vp lint",
     "fmt": "vp fmt",
+    "bench": "vp run -r bench",
     "fmt:check": "vp fmt --check",
     "build:resource-monitor": "cargo build --locked --release --manifest-path native/resource-monitor/Cargo.toml"
   },
