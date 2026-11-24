@@ -25,7 +25,7 @@ import * as Path from "effect/Path";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Stream from "effect/Stream";
-import { ChildProcessSpawner } from "effect/process";
+import { ChildProcess, ChildProcessSpawner } from "effect/process";
 import * as TestClock from "effect/testing/TestClock";
 
 import * as DocumentText from "../../../provider/DocumentText.ts";
@@ -480,7 +480,17 @@ it.effect("a launch binds only an existing checkout that is one of the project's
       });
     }
     // The thread keeps the registered worktree path when launched through a link to it.
-    yield* fileSystem.symlink(worktree, alias);
+    const status = yield* ChildProcessSpawner.ChildProcessSpawner.use((spawner) =>
+      spawner.exitCode(
+        ChildProcess.make(process.execPath, [
+          "-e",
+          `require('node:fs').symlinkSync(process.argv[1], process.argv[2], 'junction')`,
+          worktree,
+          alias,
+        ]),
+      ),
+    );
+    expect(Number(status)).toBe(0);
     expect((yield* launchInto(alias)).at(-1)?.result).toMatchObject({ projectId });
     expect(launched.map((launch) => launch.workspaceStrategy)).toEqual([
       { type: "existing_worktree", worktreePath: worktree },
