@@ -8,6 +8,7 @@ import * as Option from "effect/Option";
 import * as FileSystem from "effect/FileSystem";
 import * as Path from "effect/Path";
 import * as Schema from "effect/Schema";
+import * as Semaphore from "effect/Semaphore";
 import * as Stream from "effect/Stream";
 import * as HttpClient from "effect/http/HttpClient";
 import * as ChildProcessSpawner from "effect/process/ChildProcessSpawner";
@@ -31,6 +32,9 @@ import {
   checkOpenCodeProviderStatus,
   loadOpenCode2Workspace,
   makeOpenCode2ModelLoader,
+  makeOpenCode2CatalogWatch,
+  withOpenCode2Catalog,
+  type OpenCode2Model,
   makePendingOpenCodeProvider,
   openCode2CommandsToServerProviderSlashCommands,
   openCode2SkillsToServerProviderSkills,
@@ -357,8 +361,12 @@ export const OpenCodeDriver: ProviderDriver<
           : undefined,
       ).pipe(Effect.provideService(OpenCode2Server.OpenCode2Server, openCode2Server)),
     });
+    const catalogWatch = yield* makeOpenCode2CatalogWatch();
     const loadOpenCode2Models = yield* makeOpenCode2ModelLoader(
-      openCode2Server.withConnection(({ client }) => loadOpenCode2Catalog(client, host.paths.cwd)),
+      openCode2Server.withConnection(({ client, events, url }) => {
+        const read = loadOpenCode2Catalog(client, host.paths.cwd);
+        return catalogWatch.follow(url, events, read).pipe(Effect.andThen(read));
+      }),
     );
     const listOpenCode2Agents = (cwd: string) =>
       openCode2Server
@@ -540,17 +548,43 @@ export const OpenCodeDriver: ProviderDriver<
         makePendingOpenCodeProvider(settings.provider).pipe(Effect.map(stampSnapshot)),
       checkProvider,
       checkUsageLimits,
-      enrichSnapshot: ({ settings, snapshot, publishSnapshot }) =>
-        resolveMaintenance().pipe(
-          Effect.flatMap((maintenanceCapabilities) =>
-            enrichProviderSnapshotWithVersionAdvisory(snapshot, maintenanceCapabilities, {
-              enableProviderUpdateChecks: settings.enableProviderUpdateChecks,
-            }),
+      enrichSnapshot: ({ settings, snapshot, publishSnapshot }) => {
+        let enriched = snapshot;
+        let catalog: ReadonlyArray<OpenCode2Model> | undefined;
+        // Each publication replaces the whole snapshot, so both sources publish their combination.
+        const publishing = Semaphore.makeUnsafe(1);
+        const publish = publishing.withPermit(
+          Effect.suspend(() =>
+            publishSnapshot(
+              catalog === undefined
+                ? enriched
+                : withOpenCode2Catalog(enriched, effectiveConfig, catalog),
+            ),
           ),
-          Effect.provideService(HttpClient.HttpClient, httpClient),
-          Effect.provideService(ProviderLatestVersions.ProviderLatestVersions, latestVersions),
-          Effect.flatMap((enrichedSnapshot) => publishSnapshot(enrichedSnapshot)),
-        ),
+        );
+        return Effect.all(
+          [
+            resolveMaintenance().pipe(
+              Effect.flatMap((maintenanceCapabilities) =>
+                enrichProviderSnapshotWithVersionAdvisory(snapshot, maintenanceCapabilities, {
+                  enableProviderUpdateChecks: settings.enableProviderUpdateChecks,
+                }),
+              ),
+              Effect.provideService(HttpClient.HttpClient, httpClient),
+              Effect.provideService(ProviderLatestVersions.ProviderLatestVersions, latestVersions),
+              Effect.flatMap((enrichedSnapshot) => {
+                enriched = enrichedSnapshot;
+                return publish;
+              }),
+            ),
+            Stream.runForEach(catalogWatch.changes, (listed) => {
+              catalog = listed;
+              return publish;
+            }),
+          ],
+          { concurrency: "unbounded", discard: true },
+        );
+      },
     }).pipe(
       Effect.mapError(
         (cause) =>
