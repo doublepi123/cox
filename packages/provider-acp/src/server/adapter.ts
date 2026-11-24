@@ -9210,8 +9210,6 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
                       status: "idle" as const,
                       updatedAt: now,
                     },
-                    // Imports read only the transcript; turns reach orchestration as events.
-                    providerTurns: [],
                     messages,
                     runtimeRequests: [],
                     providerPayload: { protocol: ACP_PROTOCOL, sessionId },
@@ -9269,7 +9267,6 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
                       status: "idle" as const,
                       updatedAt: now,
                     },
-                    providerTurns: [],
                     messages: [],
                     runtimeRequests: [],
                   };
