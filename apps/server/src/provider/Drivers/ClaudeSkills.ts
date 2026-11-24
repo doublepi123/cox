@@ -548,6 +548,25 @@ export const readClaudeSettingsEnv = Effect.fn("readClaudeSettingsEnv")(function
   return settingsEnv;
 });
 
+const decodeSettingsRecord = Schema.decodeUnknownEffect(
+  fromLenientJson(Schema.Record(Schema.String, Schema.Unknown)),
+);
+
+/** Claude's user settings file as written; undefined when it is missing or not a JSON object. */
+export const readClaudeUserSettings = Effect.fn("readClaudeUserSettings")(function* (
+  config: Pick<ClaudeSettings, "homePath">,
+  cwd: string | undefined,
+  environment: NodeJS.ProcessEnv,
+): Effect.fn.Return<Record<string, unknown> | undefined, never, FileSystem.FileSystem | Path.Path> {
+  const fileSystem = yield* FileSystem.FileSystem;
+  const path = yield* Path.Path;
+  const configDirPath = yield* resolveClaudeConfigDirPath(config, environment, cwd);
+  return yield* fileSystem.readFileString(path.join(configDirPath, "settings.json")).pipe(
+    Effect.flatMap(decodeSettingsRecord),
+    Effect.orElseSucceed(() => undefined),
+  );
+});
+
 /** ANTHROPIC_BASE_URL from Claude's settings `env`, which Claude Code applies over the process env. */
 export const readClaudeSettingsBaseUrl = Effect.fn("readClaudeSettingsBaseUrl")(function* (
   config: Pick<ClaudeSettings, "homePath">,

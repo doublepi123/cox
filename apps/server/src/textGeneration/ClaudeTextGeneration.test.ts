@@ -71,6 +71,8 @@ function withFakeClaudeEnv<A, E, R>(
     stdinMustContain?: string;
     configDirMustBe?: string;
     cwdMustNotBe?: string;
+    settingsLog?: string;
+    expectedTools?: string;
     claudeConfig?: Partial<ClaudeSettings>;
     modelCatalog?: ClaudeModelCatalog;
   },
@@ -92,6 +94,8 @@ function withFakeClaudeEnv<A, E, R>(
     const previousStdinMustContain = process.env.T3_FAKE_CLAUDE_STDIN_MUST_CONTAIN;
     const previousConfigDirMustBe = process.env.T3_FAKE_CLAUDE_CONFIG_DIR_MUST_BE;
     const previousCwdMustNotBe = process.env.T3_FAKE_CLAUDE_CWD_MUST_NOT_BE;
+    const previousSettingsLog = process.env.COX_FAKE_CLAUDE_SETTINGS_LOG;
+    const previousExpectedTools = process.env.COX_FAKE_CLAUDE_EXPECTED_TOOLS;
 
     yield* Effect.acquireRelease(
       Effect.sync(() => {
@@ -139,6 +143,11 @@ function withFakeClaudeEnv<A, E, R>(
         } else {
           delete process.env.T3_FAKE_CLAUDE_CWD_MUST_NOT_BE;
         }
+
+        if (input.settingsLog === undefined) delete process.env.COX_FAKE_CLAUDE_SETTINGS_LOG;
+        else process.env.COX_FAKE_CLAUDE_SETTINGS_LOG = input.settingsLog;
+        if (input.expectedTools === undefined) delete process.env.COX_FAKE_CLAUDE_EXPECTED_TOOLS;
+        else process.env.COX_FAKE_CLAUDE_EXPECTED_TOOLS = input.expectedTools;
 
         if (input.configDirMustBe !== undefined) {
           process.env.T3_FAKE_CLAUDE_CONFIG_DIR_MUST_BE = input.configDirMustBe;
@@ -199,6 +208,12 @@ function withFakeClaudeEnv<A, E, R>(
             process.env.T3_FAKE_CLAUDE_CWD_MUST_NOT_BE = previousCwdMustNotBe;
           }
 
+          if (previousSettingsLog === undefined) delete process.env.COX_FAKE_CLAUDE_SETTINGS_LOG;
+          else process.env.COX_FAKE_CLAUDE_SETTINGS_LOG = previousSettingsLog;
+          if (previousExpectedTools === undefined)
+            delete process.env.COX_FAKE_CLAUDE_EXPECTED_TOOLS;
+          else process.env.COX_FAKE_CLAUDE_EXPECTED_TOOLS = previousExpectedTools;
+
           if (previousConfigDirMustBe === undefined) {
             delete process.env.T3_FAKE_CLAUDE_CONFIG_DIR_MUST_BE;
           } else {
@@ -217,7 +232,103 @@ function withFakeClaudeEnv<A, E, R>(
   }).pipe(Effect.scoped);
 }
 
+const reviewGuideInput = {
+  number: 12,
+  title: "Review a change",
+  description: "",
+  baseBranch: "main",
+  baseCommit: "base",
+  settledReview: "",
+  modelSelection: createModelSelection(
+    ProviderInstanceId.make("claudeAgent"),
+    SYNTHETIC_CLAUDE_CAPABLE_MODEL,
+  ),
+};
+
 it.layer(layerClaudeTextGenerationTest)("ClaudeTextGeneration", (it) => {
+  it.effect("reads a relative settings path for a review guide from the project folder", () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem;
+      const path = yield* Path.Path;
+      const root = yield* fs.makeTempDirectoryScoped({ prefix: "cox-claude-guide-" });
+      const project = path.join(root, "project");
+      const checkout = path.join(root, "checkout");
+      for (const [directory, origin] of [
+        [project, "project"],
+        [checkout, "checkout"],
+      ] as const) {
+        yield* fs.makeDirectory(directory);
+        yield* fs.writeFileString(
+          path.join(directory, "claude.json"),
+          JSON.stringify({ env: { ORIGIN: origin } }),
+        );
+      }
+      const settingsLog = path.join(root, "settings.json");
+      yield* withFakeClaudeEnv(
+        {
+          output: JSON.stringify({ structured_output: { stops: [] } }),
+          expectedTools: "Read,Grep,Glob,Bash",
+          settingsLog,
+          claudeConfig: { homePath: path.join(root, "home"), launchArgs: "--settings claude.json" },
+        },
+        (textGeneration) =>
+          textGeneration.generateReviewGuide({
+            ...reviewGuideInput,
+            cwd: checkout,
+            projectCwd: project,
+          }),
+      );
+      expect(JSON.parse(yield* fs.readFileString(settingsLog))).toEqual({
+        env: { ORIGIN: "project" },
+        disableAllHooks: true,
+      });
+    }),
+  );
+
+  it.effect("gives a review guide the user's settings without their pre-approved tools", () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem;
+      const path = yield* Path.Path;
+      const root = yield* fs.makeTempDirectoryScoped({ prefix: "cox-claude-guide-" });
+      const home = path.join(root, "home");
+      yield* fs.makeDirectory(home);
+      yield* fs.writeFileString(
+        path.join(home, "settings.json"),
+        JSON.stringify({
+          env: { ENDPOINT: "user", SHARED: "user" },
+          permissions: { allow: ["Bash(touch:*)"], deny: ["Read(./private/**)"] },
+        }),
+      );
+      const settingsLog = path.join(root, "settings.json");
+      const launchSettings = JSON.stringify({
+        env: { SHARED: "launch" },
+        permissions: { allow: ["Bash(npm test:*)"], deny: ["Read(./keys/**)"] },
+      });
+      yield* withFakeClaudeEnv(
+        {
+          output: JSON.stringify({ structured_output: { stops: [] } }),
+          // The CLI loads no settings file of its own.
+          argsMustContain: "--setting-sources  --disable-slash-commands",
+          argsMustNotContain: "ENDPOINT",
+          expectedTools: "Read,Grep,Glob,Bash",
+          settingsLog,
+          claudeConfig: { homePath: home, launchArgs: `--settings '${launchSettings}'` },
+        },
+        (textGeneration) =>
+          textGeneration.generateReviewGuide({
+            ...reviewGuideInput,
+            cwd: process.cwd(),
+            projectCwd: process.cwd(),
+          }),
+      );
+      expect(JSON.parse(yield* fs.readFileString(settingsLog))).toEqual({
+        env: { ENDPOINT: "user", SHARED: "launch" },
+        permissions: { deny: ["Read(./private/**)", "Read(./keys/**)"] },
+        disableAllHooks: true,
+      });
+    }),
+  );
+
   it.effect("enables native Claude Ultracode workflows instead of aliasing Ultra to max", () =>
     withFakeClaudeEnv(
       {

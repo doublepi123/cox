@@ -3,12 +3,14 @@ import { materializeClaudeGatewaySettings } from "../provider/ClaudeGatewaySetti
 import * as FileSystem from "effect/FileSystem";
 import * as Option from "effect/Option";
 import * as Path from "effect/Path";
+import * as Predicate from "effect/Predicate";
 import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
 import { ChildProcess, ChildProcessSpawner } from "effect/process";
 
 import { type ClaudeSettings, TextGenerationError } from "@t3tools/contracts";
 import { resolveSpawnCommand } from "@t3tools/shared/shell";
+import { deepMerge } from "@t3tools/shared/Struct";
 
 import * as TextGenerationOperations from "@t3tools/provider-core/server/textGenerationOperations";
 import {
@@ -35,12 +37,13 @@ import {
   hasClaudeManagedMcpConfig,
   makeClaudeEnvironment,
 } from "../provider/Drivers/ClaudeHome.ts";
+import { readClaudeUserSettings } from "../provider/Drivers/ClaudeSkills.ts";
 import { readClaudeLaunchArgSettings } from "../orchestration-v2/Adapters/ClaudeAdapterV2.ts";
 
 const CLAUDE_TIMEOUT_MS = 180_000;
 /** `--tools` takes bare names; patterns go in the allow list. */
 const CLAUDE_INVESTIGATION_TOOLS = "Read,Grep,Glob,Bash";
-/** In dontAsk mode every call outside this list, Bash included, is refused. */
+/** In dontAsk mode every call outside this list, Bash included, is refused; investigationSettings keeps settings from adding to it. */
 const CLAUDE_INVESTIGATION_ALLOWED = [
   "Read",
   "Grep",
@@ -51,6 +54,26 @@ const CLAUDE_INVESTIGATION_ALLOWED = [
 ].join(",");
 // Denies override allows; block git --output/-o because allowed trailing args can otherwise write anywhere.
 const CLAUDE_INVESTIGATION_DENIED = ["Bash(git * --output*)", "Bash(git * -o *)"].join(",");
+
+/**
+ * Settings for an investigation, which runs with `--setting-sources ""`: the user's settings file
+ * and the launch argument's settings as Claude Code would merge them, keeping from `permissions`
+ * only the deny rules. Allow rules, extra directories and a default mode would approve calls
+ * beyond the investigation's own list.
+ */
+function investigationSettings(
+  userSettings: Record<string, unknown> | undefined,
+  launchArgSettings: Record<string, unknown> | undefined,
+): Record<string, unknown> {
+  const { permissions: _, ...settings } = deepMerge(userSettings ?? {}, launchArgSettings ?? {});
+  const deny = [userSettings, launchArgSettings].flatMap((source) => {
+    const permissions = source?.permissions;
+    return Predicate.isObject(permissions) && Array.isArray(permissions.deny)
+      ? permissions.deny
+      : [];
+  });
+  return deny.length > 0 ? { ...settings, permissions: { deny: [...new Set(deny)] } } : settings;
+}
 
 const NO_SESSION_PERSISTENCE = "--no-session-persistence";
 // Claude Code before 2.0.63 exits with this on stderr; those runs retry without the flag.
@@ -185,7 +208,8 @@ export const makeClaudeTextGeneration = Effect.fn("makeClaudeTextGeneration")(fu
       fastModeDescriptor?.type === "boolean" ? fastModeDescriptor.currentValue : undefined;
     const launchArgSettings = yield* readClaudeLaunchArgSettings({
       settings: claudeSettings,
-      cwd,
+      // The investigated checkout holds the change under review, not the user's files.
+      cwd: investigate?.projectCwd ?? cwd,
       fileSystem,
       path,
     }).pipe(
@@ -193,8 +217,21 @@ export const makeClaudeTextGeneration = Effect.fn("makeClaudeTextGeneration")(fu
         (cause) => new TextGenerationError({ operation, detail: cause.message, cause }),
       ),
     );
+    const launchSettings = investigate
+      ? investigationSettings(
+          yield* readClaudeUserSettings(
+            claudeSettings,
+            investigate.projectCwd,
+            claudeEnvironment,
+          ).pipe(
+            Effect.provideService(FileSystem.FileSystem, fileSystem),
+            Effect.provideService(Path.Path, path),
+          ),
+          launchArgSettings,
+        )
+      : launchArgSettings;
     const settings = {
-      ...launchArgSettings,
+      ...launchSettings,
       disableAllHooks: true,
       ...(typeof thinking === "boolean" ? { alwaysThinkingEnabled: thinking } : {}),
       ...(fastMode ? { fastMode: true } : {}),
@@ -206,13 +243,37 @@ export const makeClaudeTextGeneration = Effect.fn("makeClaudeTextGeneration")(fu
         : {}),
       ...(requestEnvironment === undefined
         ? {}
-        : { env: { ...launchArgSettings?.env, ...requestEnvironment } }),
+        : {
+            env: {
+              ...Object.fromEntries(
+                Object.entries(
+                  Predicate.isObject(launchSettings?.env) ? launchSettings.env : {},
+                ).filter((entry): entry is [string, string] => typeof entry[1] === "string"),
+              ),
+              ...requestEnvironment,
+            },
+          }),
     };
     const settingsJson = yield* encodeJsonForOperation(
       operation,
       settings,
       "Failed to encode Claude CLI settings.",
     );
+    // The user's settings can hold credentials; a file keeps them out of the process list.
+    const settingsArgument = investigate
+      ? yield* fileSystem
+          .makeTempFileScoped({ prefix: "cox-claude-settings-", suffix: ".json" })
+          .pipe(
+            Effect.tap((filePath) =>
+              fileSystem
+                .chmod(filePath, 0o600)
+                .pipe(Effect.andThen(fileSystem.writeFileString(filePath, settingsJson))),
+            ),
+            Effect.mapError((cause) =>
+              normalizeCliError("claude", operation, cause, "Failed to write Claude CLI settings"),
+            ),
+          )
+      : settingsJson;
 
     const runClaudeCommand = Effect.fn("runClaudeJson.runClaudeCommand")(function* (
       noSessionPersistence: boolean,
@@ -230,7 +291,7 @@ export const makeClaudeTextGeneration = Effect.fn("makeClaudeTextGeneration")(fu
       const managedMcpConfig = yield* hasClaudeManagedMcpConfig();
       const gatewaySettings = yield* materializeClaudeGatewaySettings(
         claudeSettings,
-        settings,
+        investigate ? settingsArgument : settings,
       ).pipe(
         Effect.mapError((cause) =>
           normalizeCliError("claude", operation, cause, "Failed to prepare gateway settings"),
@@ -248,7 +309,7 @@ export const makeClaudeTextGeneration = Effect.fn("makeClaudeTextGeneration")(fu
           resolveClaudeCatalogApiModelId(catalog, resolvedModelSelection),
           ...(cliEffort ? ["--effort", cliEffort] : []),
           "--settings",
-          typeof gatewaySettings === "string" ? gatewaySettings : settingsJson,
+          typeof gatewaySettings === "string" ? gatewaySettings : settingsArgument,
           ...(investigate
             ? [
                 "--tools",
@@ -259,6 +320,7 @@ export const makeClaudeTextGeneration = Effect.fn("makeClaudeTextGeneration")(fu
                 CLAUDE_INVESTIGATION_DENIED,
               ]
             : ["--tools", ""]),
+          ...(investigate ? ["--setting-sources", ""] : []),
           "--disable-slash-commands",
           ...(noSessionPersistence ? [NO_SESSION_PERSISTENCE] : []),
           // managed-mcp.json already isolates servers and makes Claude reject this flag.
