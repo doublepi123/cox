@@ -113,6 +113,49 @@ describe("chat file links into another project", () => {
       pickProjectLinkMatch("rules/categories.ts", [appB, { ...appB, root: "/home/user/app-c" }]),
     ).toBeNull();
   });
+
+  it.each([false, true])(
+    "counts a case-ambiguous root even when it has no pick (thread root: %s)",
+    (ownFirst) => {
+      const other = {
+        root: "/reports",
+        entries: [{ path: "notes/HANDOFF.txt", kind: "file" as const }],
+      };
+      const ambiguous = {
+        root: "/support",
+        entries: [
+          { path: "current/Handoff.txt", kind: "file" as const },
+          { path: "archive/HANDOFF.txt", kind: "file" as const },
+        ],
+      };
+      expect(
+        pickProjectLinkMatch("handoff.txt", ownFirst ? [ambiguous, other] : [other, ambiguous]),
+      ).toBeNull();
+    },
+  );
+
+  it("counts multiple suffix matches in one root and deduplicates overlapping roots", () => {
+    const project = {
+      root: "/workspace",
+      entries: [{ path: "nested/docs/handoff.txt", kind: "file" as const }],
+    };
+    const nested = {
+      root: "/workspace/nested",
+      entries: [{ path: "docs/handoff.txt", kind: "file" as const }],
+    };
+    expect(pickProjectLinkMatch("docs/handoff.txt", [project, nested])).toBe(
+      "/workspace/nested/docs/handoff.txt",
+    );
+    expect(
+      pickProjectLinkMatch("docs/handoff.txt", [
+        {
+          ...project,
+          entries: [...project.entries, { path: "archive/docs/handoff.txt", kind: "file" }],
+        },
+        nested,
+      ]),
+    ).toBeNull();
+  });
 });
 
 // regression: #35337 a path the agent cited inside a checkout no project is rooted at

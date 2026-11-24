@@ -87,18 +87,25 @@ export function pickWorkspaceLinkMatch(
 ): string | null {
   const trimmed = relativePath.trim();
   if (needsWorkspaceBasenameLookup(trimmed)) return pickWorkspaceBasenameMatch(trimmed, entries);
-  const stripped = stripRepeatedWorkspacePrefix(trimmed, cwd);
+  const matches = workspaceQualifiedPathMatches(trimmed, cwd, entries);
+  return matches.length === 1 ? (matches[0] ?? null) : null;
+}
+
+function workspaceQualifiedPathMatches(
+  relativePath: string,
+  cwd: string,
+  entries: ReadonlyArray<WorkspaceEntryCandidate>,
+): ReadonlyArray<string> {
+  const stripped = stripRepeatedWorkspacePrefix(relativePath, cwd);
   const strippedMatch =
     stripped === null ? null : pickStrippedWorkspaceMatch(stripped, cwd, entries);
-  if (strippedMatch !== null) return strippedMatch;
-  const suffix = trimmed.replaceAll("\\", "/");
-  const matches = entries.filter(
-    (entry) =>
-      entry.kind === "file" &&
-      (entry.path.replaceAll("\\", "/") === suffix ||
-        entry.path.replaceAll("\\", "/").endsWith(`/${suffix}`)),
-  );
-  return matches.length === 1 ? (matches[0]?.path ?? null) : null;
+  if (strippedMatch !== null) return [strippedMatch];
+  const suffix = relativePath.replaceAll("\\", "/");
+  return entries.flatMap((entry) => {
+    if (entry.kind !== "file") return [];
+    const path = entry.path.replaceAll("\\", "/");
+    return path === suffix || path.endsWith("/" + suffix) ? [entry.path] : [];
+  });
 }
 
 function pickStrippedWorkspaceMatch(
@@ -116,8 +123,8 @@ function pickStrippedWorkspaceMatch(
 }
 
 /**
- * The absolute path of the one file a chat link names across other project roots, or null when
- * no root or more than one has it. Agents cite paths relative to whichever repo they worked in.
+ * The absolute path of the one file a chat link names across project roots, or null when
+ * no root has it or roots name different files. Overlapping roots can name the same file.
  */
 export function pickProjectLinkMatch(
   relativePath: string,
@@ -126,11 +133,29 @@ export function pickProjectLinkMatch(
     readonly entries: ReadonlyArray<WorkspaceEntryCandidate>;
   }>,
 ): string | null {
-  const matches = searches.flatMap(({ root, entries }) => {
-    const match = pickWorkspaceLinkMatch(relativePath, root, entries);
-    return match === null ? [] : [resolveWorkspaceFilePath(match, root)];
-  });
-  return matches.length === 1 ? (matches[0] ?? null) : null;
+  const target = relativePath.trim();
+  const isBasename = needsWorkspaceBasenameLookup(target);
+  const folded = target.toLowerCase();
+  const isFoldedMatch = (entry: WorkspaceEntryCandidate) =>
+    entry.kind === "file" && basenameOfPath(entry.path).toLowerCase() === folded;
+  const roots = isBasename
+    ? searches.filter(({ entries }) => entries.some(isFoldedMatch))
+    : searches;
+  const matches = new Map<string, string>();
+  for (const { root, entries } of roots) {
+    const paths = !isBasename
+      ? workspaceQualifiedPathMatches(target, root, entries)
+      : roots.length > 1
+        ? entries.filter(isFoldedMatch).map(({ path }) => path)
+        : [pickWorkspaceBasenameMatch(target, entries)];
+    for (const path of paths) {
+      if (path === null) continue;
+      const absolute = resolveWorkspaceFilePath(path, root);
+      const key = isWindowsAbsolutePath(absolute) ? absolute.replaceAll("/", "\\") : absolute;
+      if (!matches.has(key)) matches.set(key, absolute);
+    }
+  }
+  return matches.size === 1 ? (matches.values().next().value ?? null) : null;
 }
 
 const AGENT_DIRECTORY_SEARCH_LIMIT = 4;
