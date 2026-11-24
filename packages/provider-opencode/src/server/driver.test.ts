@@ -145,6 +145,22 @@ it.layer(layer)("OpenCodeDriver runtime selection", (it) => {
 
   it.effect("discovers directory-specific agents for model-service custom models", () =>
     Effect.gen(function* () {
+      const workspaces = [
+        ["/project-a", "orchestrator"],
+        ["/project-b", "reviewer"],
+      ] as const;
+      const scanEvents = workspaces
+        .flatMap(([directory]) =>
+          ["command.updated", "skill.updated"].map((type) => ({
+            id: `evt_${directory.slice(1)}-${type}`,
+            created: 0,
+            type,
+            location: { directory },
+            data: {},
+          })),
+        )
+        .map((event) => `data: ${JSON.stringify(event)}\n\n`)
+        .join("");
       const http = HttpClient.make((request, url) => {
         const directory = url.searchParams.get("location[directory]") ?? "/work";
         const agentId = directory === "/project-a" ? "orchestrator" : "reviewer";
@@ -194,7 +210,7 @@ it.layer(layer)("OpenCodeDriver runtime selection", (it) => {
           HttpClientResponse.fromWeb(
             request,
             url.pathname === "/api/event"
-              ? new Response(": heartbeat\n\n", {
+              ? new Response(scanEvents, {
                   headers: { "content-type": "text/event-stream" },
                 })
               : Response.json(body),
@@ -205,15 +221,9 @@ it.layer(layer)("OpenCodeDriver runtime selection", (it) => {
         { serverUrl: "http://127.0.0.1:4096", customModels: ["cox/test"] },
         http,
       );
-      yield* TestClock.adjust("5 seconds");
-      assert.strictEqual((yield* instance.snapshot.getSnapshot).status, "ready");
-      for (const [cwd, expected] of [
-        ["/project-a", "orchestrator"],
-        ["/project-b", "reviewer"],
-      ] as const) {
-        const loading = yield* instance.snapshotForCwd!(cwd).pipe(Effect.forkChild);
-        yield* TestClock.adjust("10 seconds");
-        const snapshot = yield* Fiber.join(loading);
+      assert.strictEqual((yield* instance.snapshot.refresh).status, "ready");
+      for (const [cwd, expected] of workspaces) {
+        const snapshot = yield* instance.snapshotForCwd!(cwd);
         assert.strictEqual(snapshot.status, "ready");
         assert.isNotEmpty(snapshot.models);
         assert.deepEqual(snapshot.optionDescriptors?.[0], {
@@ -237,7 +247,7 @@ it.layer(layer)("OpenCodeDriver runtime selection", (it) => {
           assert.strictEqual(model.slug, "cox/test");
         }
       }
-    }).pipe(Effect.scoped, Effect.provide(TestClock.layer())),
+    }).pipe(Effect.scoped, Effect.provideService(Clock.Clock, Clock.Clock.defaultValue())),
   );
 
   it.effect.each([
