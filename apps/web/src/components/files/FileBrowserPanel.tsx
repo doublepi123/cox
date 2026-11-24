@@ -110,7 +110,12 @@ function FileSearchField(props: {
           onKeyDown={(event) => {
             if (event.key !== "Escape" || event.nativeEvent.isComposing || event.keyCode === 229)
               return;
-            if (props.value) event.stopPropagation();
+            if (props.value || event.repeat) {
+              event.preventDefault();
+              event.stopPropagation();
+              if (props.value) props.onClose();
+              return;
+            }
             props.onClose();
             event.currentTarget.blur();
           }}
