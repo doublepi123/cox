@@ -2,6 +2,23 @@
 
 ## Unreleased
 
+## 0.2.37 — 2026-11-25
+
+- Port the November 25 T3 batch: 86 of 122 upstream commits ported and 4
+  already covered by Cox; see `docs/upstream-audit-2026-11-25`.
+- Starting providers show their real startup step and logo, and multi-select
+  questions can be answered with nothing checked.
+- GitLab reviews pin approvals to the reviewed head and post no line comments
+  once the head has moved; pull request review drafts and unfinished inline
+  comments survive a reload.
+- Workflow changes require the broadest caller mode, and a workflow hook starts
+  at most 60 runs a minute.
+- Fixes for delegated tasks, `/clear` in handoffs, Claude, Antigravity,
+  OpenCode and Pi sessions, Escape and IME handling in Settings, pull requests,
+  diffs and the command palette, and attachments and previews.
+- Close waits for stale desktop backup cleanup, and Codex driver tests no longer
+  need the Codex CLI on PATH.
+
 ## 0.2.36 — 2026-11-24
 
 - Install Codex from a manually configured provider and update the runtime Cox manages.
