@@ -1,6 +1,16 @@
 import * as Schema from "effect/Schema";
 
-import { IsoDateTime, ProjectId, ThreadId, TrimmedNonEmptyString } from "./baseSchemas.ts";
+import {
+  GuestMessageId,
+  GuestShareId,
+  IsoDateTime,
+  ProjectId,
+  RunId,
+  RuntimeRequestId,
+  ThreadId,
+  TrimmedNonEmptyString,
+} from "./baseSchemas.ts";
+import { ThreadPullRequestKey } from "./threadPullRequest.ts";
 
 /**
  * Milestones are the coarse state changes worth telling someone about: a turn ended, an agent
@@ -41,6 +51,9 @@ const WorkflowRunFields = {
   /** The run that invoked this one, when one did. */
   parentWorkflowRunId: Schema.NullOr(TrimmedNonEmptyString),
 };
+/** `approval` covers command, file and permission prompts; `user_input` covers questions. */
+export const MilestoneInputKind = Schema.Literals(["user_input", "approval"]);
+export type MilestoneInputKind = typeof MilestoneInputKind.Type;
 
 export const MilestoneEvent = Schema.Union([
   Schema.Struct({
@@ -82,6 +95,48 @@ export const MilestoneEvent = Schema.Union([
     outcome: Schema.Literals(["completed", "stopped", "skipped", "cancelled"]),
     detail: Schema.NullOr(Schema.String),
   }),
+  Schema.Struct({
+    ...MilestoneEnvelope.fields,
+    type: Schema.Literal("thread.run_settled"),
+    runId: RunId,
+    outcome: Schema.Literals(["completed", "failed", "interrupted", "cancelled"]),
+  }),
+  Schema.Struct({
+    ...MilestoneEnvelope.fields,
+    type: Schema.Literal("thread.needs_input"),
+    requestId: RuntimeRequestId,
+    kind: MilestoneInputKind,
+  }),
+  Schema.Struct({
+    ...MilestoneEnvelope.fields,
+    type: Schema.Literal("thread.input_resolved"),
+    requestId: RuntimeRequestId,
+    kind: MilestoneInputKind,
+    resolution: Schema.Literals(["resolved", "expired", "cancelled"]),
+  }),
+  Schema.Struct({
+    ...MilestoneEnvelope.fields,
+    type: Schema.Literal("thread.guest_request"),
+    shareId: GuestShareId,
+    guestMessageId: GuestMessageId,
+  }),
+  Schema.Struct({
+    ...MilestoneEnvelope.fields,
+    type: Schema.Literal("thread.guest_request_resolved"),
+    shareId: GuestShareId,
+    guestMessageId: GuestMessageId,
+    /** `closed` when the link was closed or replaced with the request still waiting. */
+    resolution: Schema.Literals(["sent", "dismissed", "closed"]),
+  }),
+  Schema.Struct({
+    ...MilestoneEnvelope.fields,
+    type: Schema.Literal("pr.watch_wake"),
+    pullRequests: Schema.Array(ThreadPullRequestKey),
+    outcome: Schema.Literals(["completed", "failed", "cancelled", "updated", "unknown"]),
+    summary: Schema.String,
+    /** The watch ended with this wake, as a merge, a close or a read failure ends it. */
+    watchEnded: Schema.Boolean,
+  }),
 ]);
 export type MilestoneEvent = typeof MilestoneEvent.Type;
 
@@ -92,6 +147,12 @@ export const MilestoneEventType = Schema.Literals([
   "workflow.run_paused",
   "workflow.run_resumed",
   "workflow.run_ended",
+  "thread.run_settled",
+  "thread.needs_input",
+  "thread.input_resolved",
+  "thread.guest_request",
+  "thread.guest_request_resolved",
+  "pr.watch_wake",
 ]);
 export type MilestoneEventType = typeof MilestoneEventType.Type;
 

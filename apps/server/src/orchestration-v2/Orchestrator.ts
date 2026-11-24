@@ -3354,7 +3354,18 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
           threadId: command.threadId,
           messageId: command.wake.messageId,
           text: command.wake.text,
-          notification: command.wake.notification,
+          notification: {
+            ...command.wake.notification,
+            source: {
+              kind: "monitor",
+              pullRequest: {
+                ...key,
+                watchStartedAt: command.startedAt,
+                headSha: command.watch?.headSha ?? command.endedWatch?.headSha ?? null,
+                ...(command.watch === null ? { watchEnded: true } : {}),
+              },
+            },
+          },
           attachments: [],
           dispatchMode: { type: "queue_after_active" },
           createdBy: "agent",

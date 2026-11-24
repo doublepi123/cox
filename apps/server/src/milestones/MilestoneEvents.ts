@@ -3,6 +3,8 @@ import {
   MilestoneEvent,
   type MilestoneFilter,
   TrimmedNonEmptyString,
+  ProjectId,
+  ThreadId,
 } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
@@ -30,6 +32,14 @@ const WorkflowParameters = Schema.Struct({
   includeSubagentChildren,
 });
 
+const Parameters = Schema.Struct({
+  projectIds: Schema.optional(Schema.Array(ProjectId)),
+  threadIds: Schema.optional(Schema.Array(ThreadId)),
+  includeSubagentChildren: Schema.optional(
+    Schema.Boolean.annotate({ description: "Also subagent threads." }),
+  ),
+});
+
 const DESCRIPTIONS: Record<MilestoneEventValue["type"], string> = {
   "workflow.run_started": "A workflow run started.",
   "workflow.needs_input": "A workflow run asks a person a question.",
@@ -38,6 +48,12 @@ const DESCRIPTIONS: Record<MilestoneEventValue["type"], string> = {
   "workflow.run_paused": "A workflow run paused: a step failed, or someone paused it.",
   "workflow.run_resumed": "A paused workflow run went on again.",
   "workflow.run_ended": "A workflow run ended: completed, stopped, skipped or cancelled.",
+  "thread.run_settled": "A thread's turn ended: completed, failed, interrupted or cancelled.",
+  "thread.needs_input": "An agent waits on a person to answer a question or approve an action.",
+  "thread.input_resolved": "A question or approval an agent waited on was answered, or lapsed.",
+  "thread.guest_request": "A guest on a shared thread asked for something.",
+  "thread.guest_request_resolved": "A guest's request was sent, dismissed, or its link closed.",
+  "pr.watch_wake": "A watched pull request changed and woke its thread.",
 };
 
 const occurrence = ({ event }: MilestoneHub.PositionedMilestone) => ({
@@ -51,12 +67,21 @@ const occurrence = ({ event }: MilestoneHub.PositionedMilestone) => ({
  * Cursors are the hub's, so a client that was away catches up on what the hub still keeps.
  * Workflow runs have no project or thread, so their types are narrowed by workflow and run.
  */
-export const make = Effect.gen(function* () {
+export const makeWorkflowEvents = Effect.gen(function* () {
   const hub = yield* MilestoneHub.MilestoneHub;
-  return MilestoneEvent.members.map((payload) => eventOf(hub, payload, WorkflowParameters));
+  return MilestoneEvent.members
+    .filter((payload) => payload.fields.type.literal.startsWith("workflow."))
+    .map((payload) => eventOf(hub, payload, WorkflowParameters));
 });
 
-const eventOf = <P extends typeof WorkflowParameters>(
+export const make = Effect.gen(function* () {
+  const hub = yield* MilestoneHub.MilestoneHub;
+  return MilestoneEvent.members
+    .filter((payload) => !payload.fields.type.literal.startsWith("workflow."))
+    .map((payload) => eventOf(hub, payload, Parameters));
+});
+
+const eventOf = <P extends typeof WorkflowParameters | typeof Parameters>(
   hub: MilestoneHub.MilestoneHub["Service"],
   payload: (typeof MilestoneEvent.members)[number],
   parameters: P,

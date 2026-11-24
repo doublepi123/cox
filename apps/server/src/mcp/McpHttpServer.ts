@@ -13,8 +13,9 @@ import * as Sink from "effect/Sink";
 import * as Stream from "effect/Stream";
 import type * as Types from "effect/Types";
 import { AiError, McpProtocol, McpSchema, McpServer, Tool, Toolkit } from "effect/ai";
-import { HttpRouter, HttpServerRequest, HttpServerResponse } from "effect/http";
+import { HttpBody, HttpRouter, HttpServerRequest, HttpServerResponse } from "effect/http";
 import {
+  AuthSessionId,
   OrchestratorMcpFailure,
   PreviewAutomationError,
   ProviderInteractionMode,
@@ -24,6 +25,8 @@ import {
 } from "@t3tools/contracts";
 
 import packageJson from "../../package.json" with { type: "json" };
+import * as SessionStore from "../auth/SessionStore.ts";
+import * as MilestoneEvents from "../milestones/MilestoneEvents.ts";
 import * as ServerConfig from "../config.ts";
 import * as HtmlRender from "../htmlRender/HtmlRender.ts";
 import * as ThreadCommandExecutor from "../orchestration-v2/ThreadCommandExecutor.ts";
@@ -192,6 +195,7 @@ const makeMcpAuthMiddleware = Effect.gen(function* () {
   const registry = yield* McpSessionRegistry.McpSessionRegistry;
   const clients = yield* Effect.serviceOption(McpClientAuthenticator);
   const settings = yield* Effect.serviceOption(ServerSettings.ServerSettingsService);
+  const sessions = yield* Effect.serviceOption(SessionStore.SessionStore);
 
   const authenticateRequest = Effect.fn("McpHttpServer.authenticateRequest")(function* (
     request: HttpServerRequest.HttpServerRequest,
@@ -234,6 +238,23 @@ const makeMcpAuthMiddleware = Effect.gen(function* () {
     return yield* httpEffect.pipe(
       Effect.provideService(McpInvocationContext.McpInvocationContext, admitted),
       Effect.map(normalizeMcpHttpResponse),
+      Effect.map((response) => {
+        const { body } = response;
+        if (admitted.client === undefined || Option.isNone(sessions) || body._tag !== "Stream") {
+          return response;
+        }
+        const invalidated = sessions.value
+          .awaitInvalidation(AuthSessionId.make(admitted.client.sessionId))
+          .pipe(Effect.ignore);
+        return HttpServerResponse.setBody(
+          response,
+          HttpBody.stream(
+            Stream.interruptWhen(body.stream, invalidated),
+            body.contentType,
+            body.contentLength,
+          ),
+        );
+      }),
     );
   }) satisfies McpAuthMiddleware;
 }).pipe(Effect.withSpan("McpHttpServer.makeAuthMiddleware"));
@@ -1204,10 +1225,21 @@ export const layerWorkflowEvents = Layer.effectDiscard(
       McpSchema.EnabledWhen,
       McpInvocationContext.hiddenUnlessWorkflowEvents,
     );
+    for (const options of yield* MilestoneEvents.makeWorkflowEvents) {
+      yield* McpServer.registerEvent({ ...options, annotations });
+    }
+  }),
+);
+
+export const layerMilestoneEvents = Layer.effectDiscard(
+  Effect.gen(function* () {
+    const annotations = Context.make(McpSchema.EnabledWhen, McpInvocationContext.hiddenFromThreads);
     for (const options of yield* MilestoneEvents.make) {
       yield* McpServer.registerEvent({ ...options, annotations });
     }
   }),
 );
 
-export const layer = layerMcpTransport(Layer.merge(layerTools, layerWorkflowEvents));
+export const layer = layerMcpTransport(
+  Layer.mergeAll(layerTools, layerWorkflowEvents, layerMilestoneEvents),
+);
