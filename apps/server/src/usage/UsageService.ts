@@ -39,7 +39,7 @@ import type {
   TranscriptUsageFormat,
   UsageRecord,
 } from "@t3tools/provider-core/server/usage";
-import { resolveModelAliases, UsageAggregator } from "./usageAggregation.ts";
+import { resolveModelAliases, usageTimestampFilter, UsageAggregator } from "./usageAggregation.ts";
 import {
   createOverrideRateTable,
   isUnlistedModel,
@@ -383,7 +383,8 @@ export const make = Effect.gen(function* () {
             ([filePath, entry]) =>
               entry.provider === provider &&
               entry.mtimeMs >= retentionCutoffMs &&
-              (entry.records.length + entry.tailRecords.length > 0 || entry.malformedRecords > 0) &&
+              (entry.records.length + entry.tailRecords.length > 0 ||
+                entry.malformedRecords.length > 0) &&
               isWithinDirectory(filePath, dir),
           );
         const volumeId =
@@ -476,7 +477,7 @@ export const make = Effect.gen(function* () {
     format: TranscriptUsageFormat<unknown>,
   ): Effect.fn.Return<{
     readonly records: readonly UsageRecord[];
-    readonly malformedRecords: number;
+    readonly malformedRecords: readonly number[];
     readonly failed?: true;
     readonly update?: { readonly entry: CachedFile; readonly replaces: CachedFile | undefined };
   }> {
@@ -511,7 +512,7 @@ export const make = Effect.gen(function* () {
     if (parsed === null)
       return {
         records: cached?.provider === provider ? [...cached.records, ...cached.tailRecords] : [],
-        malformedRecords: cached?.provider === provider ? cached.malformedRecords : 0,
+        malformedRecords: cached?.provider === provider ? cached.malformedRecords : [],
         failed: true,
       };
 
@@ -576,7 +577,7 @@ export const make = Effect.gen(function* () {
       | readonly {
           readonly path: string;
           readonly records: readonly UsageRecord[];
-          readonly malformedRecords: number;
+          readonly malformedRecords: readonly number[];
         }[]
       | null;
     readonly refreshing?: true;
@@ -682,7 +683,7 @@ export const make = Effect.gen(function* () {
                   : Effect.succeed(volumeId),
                 (resolved): ScannedDir => ({
                   ...source,
-                  files: source.files?.map((file) => ({ ...file, malformedRecords: 0 })) ?? null,
+                  files: source.files?.map((file) => ({ ...file, malformedRecords: [] })) ?? null,
                   provider: reader.provider,
                   volumeId: resolved,
                 }),
@@ -770,6 +771,7 @@ export const make = Effect.gen(function* () {
     });
 
     const sources: UsageSource[] = [];
+    const inWindow = usageTimestampFilter({ ...input, ...hourlyWindow });
 
     // Deleted transcripts' saved usage still aggregates and deduplicates normally.
     const retainedSinceMs = Math.max(windowStartMs, retentionCutoffMs);
@@ -790,7 +792,15 @@ export const make = Effect.gen(function* () {
           malformedRecords: entry.malformedRecords,
         });
       }
-      return retainedFiles;
+      return retainedFiles.flatMap((file) => {
+        const records = file.records.filter(
+          (record) => record.dedupeKey !== null || inWindow(record.timestampMs),
+        );
+        const malformedRecords = file.malformedRecords.filter(inWindow);
+        return records.length === 0 && malformedRecords.length === 0
+          ? []
+          : [{ ...file, records, malformedRecords }];
+      });
     });
     const windowEndMs =
       hourlyWindow?.untilTimeMs ??
@@ -887,7 +897,7 @@ export const make = Effect.gen(function* () {
       const sessionIds = new Set<string>();
 
       for (const file of filesByDir[index] ?? []) {
-        malformedRecords += file.malformedRecords;
+        malformedRecords += file.malformedRecords.length;
         if (file.records.length === 0) {
           skippedFiles += 1;
           continue;
