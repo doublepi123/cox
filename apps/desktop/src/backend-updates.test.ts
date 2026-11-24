@@ -529,6 +529,29 @@ describe("managed desktop Cox backend", () => {
     expect(next.getState().currentVersion).toBe("0.1.2");
   });
 
+  it("finishes removing stale backups before close resolves", async () => {
+    const test = await fixture();
+    await mkdir(test.data);
+    await writeFile(join(test.data, "database"), "before");
+    const stale = join(
+      test.home,
+      "backend-updates",
+      "backups",
+      "00000000-0000-4000-8000-000000000000",
+    );
+    await mkdir(join(stale, "userdata"), { recursive: true });
+    await Promise.all(
+      Array.from({ length: 200 }, (_, index) =>
+        writeFile(join(stale, "userdata", `file-${index}`), "stale"),
+      ),
+    );
+    await test.manager.launch(test.start, test.stop);
+    await test.manager.close();
+    expect(await readdir(join(test.home, "backend-updates", "backups"))).not.toContain(
+      "00000000-0000-4000-8000-000000000000",
+    );
+  });
+
   it("restores both code and data before starting the previous backend after a failed migration", async () => {
     const test = await fixture();
     await mkdir(test.data);

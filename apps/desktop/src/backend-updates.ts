@@ -148,6 +148,7 @@ export class BackendUpdates {
   private release: BackendRelease | undefined;
   private operation: Promise<void> | undefined;
   private preferenceOperation: Promise<void> = Promise.resolve();
+  private cleanupOperation: Promise<void> = Promise.resolve();
   private preferences: UpdatePreferences = { automaticChecks: true, ignoredVersion: null };
   private controller: AbortController | undefined;
   private closed = false;
@@ -462,7 +463,7 @@ export class BackendUpdates {
         status: "idle",
         message: null,
       });
-      void this.cleanup().catch(() => {});
+      this.cleanupOperation = this.cleanup().catch(() => {});
       return origin;
     } catch (error) {
       await stop();
@@ -623,5 +624,6 @@ export class BackendUpdates {
     this.controller?.abort();
     await this.operation?.catch(() => {});
     await this.preferenceOperation;
+    await this.cleanupOperation;
   }
 }
