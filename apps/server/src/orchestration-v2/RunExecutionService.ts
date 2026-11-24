@@ -38,6 +38,7 @@ import * as Ref from "effect/Ref";
 import * as Schedule from "effect/Schedule";
 import * as Schema from "effect/Schema";
 
+import { holdAndroidWake } from "../AndroidWakeLink.ts";
 import * as McpSessionRegistry from "../mcp/McpSessionRegistry.ts";
 import * as McpAppModelContext from "../mcpApps/McpAppModelContext.ts";
 import * as PreviewAgentActivity from "../preview/PreviewAgentActivity.ts";
@@ -1618,7 +1619,12 @@ export const layer: Layer.Layer<
           }
           yield* trackChildLifecycle(event, deliveredEvent !== null);
         });
-        const providerEventFiber = yield* eventSink
+        const acquireWake = Effect.tryPromise({
+          try: holdAndroidWake,
+          catch: (cause) =>
+            new RunExecutionStartError({ commandId: input.commandId, runId: input.run.id, cause }),
+        });
+        const providerEvents = eventSink
           .consumeProviderEvents(
             eventSubscription.events,
             (event) =>
@@ -1786,8 +1792,18 @@ export const layer: Layer.Layer<
             ),
             Effect.ensuring(endPreviewActivity),
             Effect.ensuring(eventSubscription.close),
-            Effect.forkDetach,
           );
+        const providerEventFiber = yield* acquireWake.pipe(
+          Effect.onError(() => eventSubscription.close.pipe(Effect.ensuring(endPreviewActivity))),
+          Effect.flatMap((release) =>
+            providerEvents.pipe(
+              Effect.ensuring(Effect.sync(release)),
+              Effect.interruptible,
+              Effect.forkDetach,
+            ),
+          ),
+          Effect.uninterruptible,
+        );
 
         // A provider turn is a sign that the session is still alive. Keep
         // its already-issued MCP credential valid even when the agent goes
@@ -1862,7 +1878,11 @@ export const layer: Layer.Layer<
               }),
             ))
           : input.session.startTurn(turnInput);
-        yield* Effect.andThen(shouldStart, startTurn).pipe(
+        yield* Effect.acquireUseRelease(
+          acquireWake,
+          () => Effect.andThen(shouldStart, startTurn),
+          (release) => Effect.sync(release),
+        ).pipe(
           // Wait for acceptance so abandoned startup cannot leave a refresher
           // on the already-detached ingestion fiber.
           Effect.tap(() =>

@@ -26,6 +26,7 @@ import { FetchHttpClient, HttpRouter, HttpServer } from "effect/http";
 import * as HttpApiBuilder from "effect/http-api/HttpApiBuilder";
 
 import * as BackgroundPolicy from "./background/BackgroundPolicy.ts";
+import { enableAndroidWakeIdle, startAndroidWakeLink } from "./AndroidWakeLink.ts";
 import * as HostPowerMonitor from "./background/HostPowerMonitor.ts";
 import * as ServerConfig from "./config.ts";
 import { withUntracedRequests } from "./http.ts";
@@ -725,6 +726,7 @@ const layerMakeServer = Layer.unwrap(
     }
     // Before anything opens the database: one server per T3 home.
     const ownership = yield* ServerOwnership.acquireServerOwnership(config.serverRuntimeStatePath);
+    yield* Effect.acquireRelease(Effect.sync(startAndroidWakeLink), (close) => Effect.sync(close));
     const activation = yield* Deferred.make<void>();
     const awaitActivation = Deferred.await(activation);
     const layerActivation = Layer.succeed(ServerActivation.ServerActivation, awaitActivation);
@@ -771,6 +773,7 @@ const layerMakeServer = Layer.unwrap(
         return ServerRuntimeStartup.layerWithOptions({
           activate: notifier.start.pipe(
             Effect.andThen(computerRelay.start),
+            Effect.andThen(Effect.sync(enableAndroidWakeIdle)),
             Effect.andThen(Deferred.succeed(activation, undefined)),
             Effect.asVoid,
           ),

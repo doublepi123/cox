@@ -73,6 +73,7 @@ import { expandHomePath } from "@t3tools/provider-core/server/pathExpansion";
 import * as ProcessRunner from "../processRunner.ts";
 import * as PortScanner from "../preview/PortScanner.ts";
 import * as NativeTelemetryClient from "../resourceTelemetry/NativeTelemetryClient.ts";
+import { holdAndroidWake } from "../AndroidWakeLink.ts";
 import { terminalOutputStream } from "./OutputProtocol.ts";
 import * as PtyAdapter from "@t3tools/shared/PtyAdapter";
 
@@ -311,6 +312,7 @@ interface TerminalSessionState {
   childCommandLabel: string | null;
   runtimeEnv: Record<string, string> | null;
   stopOnSettle: boolean;
+  releaseAndroidWake: (() => void) | null;
 }
 
 interface TerminalGrid {
@@ -2083,10 +2085,13 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
     process: PtyAdapter.PtyProcess,
     threadId: string,
     terminalId: string,
+    onExit?: () => void,
   ) {
-    // Subscribe before SIGTERM to catch immediate exits; Effect.ensuring releases even on interruption, unlike JS finally.
     const exited = Deferred.makeUnsafe<void>();
+    let exitObserved = false;
     const unsubscribeExit = process.onExit(() => {
+      exitObserved = true;
+      onExit?.();
       Deferred.doneUnsafe(exited, Effect.void);
     });
     yield* Effect.gen(function* () {
@@ -2153,15 +2158,22 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
           }),
         ),
       );
-    }).pipe(Effect.ensuring(Effect.sync(unsubscribeExit)));
+    }).pipe(
+      Effect.ensuring(
+        Effect.sync(() => {
+          if (exitObserved) unsubscribeExit();
+        }),
+      ),
+    );
   });
 
   const startKillEscalation = Effect.fn("terminal.startKillEscalation")(function* (
     process: PtyAdapter.PtyProcess,
     threadId: string,
     terminalId: string,
+    onExit?: () => void,
   ) {
-    const fiber = yield* runKillEscalation(process, threadId, terminalId).pipe(
+    const fiber = yield* runKillEscalation(process, threadId, terminalId, onExit).pipe(
       Effect.ensuring(
         modifyManagerState((state) => {
           if (!state.killFibers.has(process)) {
@@ -2523,6 +2535,8 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
 
         const process = session.process;
         cleanupProcessHandles(session);
+        session.releaseAndroidWake?.();
+        session.releaseAndroidWake = null;
         session.process = null;
         session.pid = null;
         session.hasRunningSubprocess = false;
@@ -2613,7 +2627,10 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
       threadId: session.threadId,
       terminalId: session.terminalId,
     });
-    yield* startKillEscalation(process, session.threadId, session.terminalId);
+    yield* startKillEscalation(process, session.threadId, session.terminalId, () => {
+      session.releaseAndroidWake?.();
+      session.releaseAndroidWake = null;
+    });
     yield* evictInactiveSessionsIfNeeded();
   });
 
@@ -2758,6 +2775,18 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
                 }
               }
             }
+            const wakeRelease = yield* Effect.tryPromise({
+              try: () => holdAndroidWake(),
+              catch: (cause) =>
+                new PtyAdapter.PtySpawnError({
+                  adapter: "terminal-manager",
+                  attemptedShells: shellCandidates.map((candidate) =>
+                    formatShellCandidate(candidate),
+                  ),
+                  cause,
+                }),
+            });
+            session.releaseAndroidWake = wakeRelease;
             const spawnResult = yield* trySpawn(shellCandidates, terminalEnv, session);
             ptyProcess = spawnResult.process;
             startedShell = spawnResult.shellLabel;
@@ -2815,6 +2844,8 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
       if (ptyProcess) {
         yield* startKillEscalation(ptyProcess, session.threadId, session.terminalId);
       }
+      session.releaseAndroidWake?.();
+      session.releaseAndroidWake = null;
 
       yield* modifyManagerState((state) => {
         cleanupProcessHandles(session);
@@ -3105,9 +3136,15 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
         session: TerminalSessionState,
       ) {
         cleanupProcessHandles(session);
-        if (!session.process) return;
+        if (!session.process) {
+          session.releaseAndroidWake?.();
+          session.releaseAndroidWake = null;
+          return;
+        }
         yield* clearKillFiber(session.process);
         yield* runKillEscalation(session.process, session.threadId, session.terminalId);
+        session.releaseAndroidWake?.();
+        session.releaseAndroidWake = null;
       });
 
       yield* Effect.forEach(sessions, cleanupSession, {
@@ -3167,6 +3204,7 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
         childCommandLabel: null,
         runtimeEnv: normalizedRuntimeEnv(input.env),
         stopOnSettle: input.stopOnSettle ?? false,
+        releaseAndroidWake: null,
       };
 
       const createdSession = session;

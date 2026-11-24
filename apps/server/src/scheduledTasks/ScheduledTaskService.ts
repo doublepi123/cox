@@ -47,6 +47,7 @@ import * as Semaphore from "effect/Semaphore";
 import * as Stream from "effect/Stream";
 import * as SqlClient from "effect/sql/SqlClient";
 
+import { hasAndroidWakeLink, holdAndroidWake } from "../AndroidWakeLink.ts";
 import * as ThreadLaunchService from "../orchestration-v2/ThreadLaunchService.ts";
 import * as ManagedProjectFolders from "../project/ManagedProjectFolders.ts";
 import * as Metrics from "../observability/Metrics.ts";
@@ -451,8 +452,31 @@ export const layer = Layer.effect(
     const changesPubSub = yield* PubSub.sliding<void>(1);
     const dueTasks = DueHint.make();
     const pendingWebhooks = DueHint.make();
+    const scheduleWakeGate = yield* Semaphore.make(1);
+    let releaseScheduleWake: (() => void) | undefined;
+    const reconcileScheduleWake = Effect.gen(function* () {
+      if (!hasAndroidWakeLink()) return;
+      const [deadline] = yield* sql<{ pending: number }>`
+        SELECT EXISTS(SELECT 1 FROM scheduled_tasks
+          WHERE enabled = 1 AND next_run_at IS NOT NULL) AS pending
+      `.pipe(NodeSqliteClient.readOnly);
+      if (deadline?.pending === 0) {
+        releaseScheduleWake?.();
+        releaseScheduleWake = undefined;
+      } else {
+        releaseScheduleWake ??= yield* Effect.tryPromise(holdAndroidWake);
+      }
+    }).pipe(
+      scheduleWakeGate.withPermits(1),
+      Effect.uninterruptible,
+      Effect.catch((error) =>
+        Effect.logWarning("Could not reconcile the Android scheduled-task wake lease", { error }),
+      ),
+    );
+    yield* Effect.addFinalizer(() => Effect.sync(() => releaseScheduleWake?.()));
     // Every scheduled_tasks write that can change next_run_at, enabled or run state notifies.
     const notifyChanged = dueTasks.invalidate.pipe(
+      Effect.andThen(reconcileScheduleWake),
       Effect.andThen(PubSub.publish(changesPubSub, undefined)),
       Effect.asVoid,
     );
@@ -1330,6 +1354,7 @@ export const layer = Layer.effect(
       ),
     );
 
+    yield* reconcileScheduleWake;
     yield* scheduler.register("scheduled-tasks", runDueTasks());
 
     const list: ScheduledTaskService["Service"]["list"] = () =>
