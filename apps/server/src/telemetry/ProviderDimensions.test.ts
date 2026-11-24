@@ -12,10 +12,12 @@ const provider = (
   instanceId: string,
   driver: string,
   models: ReadonlyArray<{ slug: string; isCustom: boolean; aliases?: ReadonlyArray<string> }>,
+  auth: Partial<ServerProvider["auth"]> = {},
 ) =>
   ({
     instanceId: ProviderInstanceId.make(instanceId),
     driver,
+    auth: { status: "authenticated", ...auth },
     models,
   }) as unknown as ServerProvider;
 
@@ -70,6 +72,19 @@ it("omits custom, user-configured, and unknown models and instance names", () =>
       targetModel: undefined,
     },
   ]);
+});
+
+it("labels public Codex and Claude model families only for vendor endpoints", () => {
+  const model = { slug: "gpt-6-new", aliases: ["new"], isCustom: false };
+  const vendor = provider("vendor", "codex", [model, { slug: "internal-name", isCustom: false }]);
+  const custom = provider("custom", "codex", [model], { endpoint: "https://example.com" });
+  const claude = provider("claude", "claudeAgent", [{ slug: "claude-opus-6", isCustom: false }]);
+  const label = (p: ServerProvider, model: string) =>
+    providerDimensions([p], { instanceId: p.instanceId, model }).model;
+  expect(label(vendor, "new")).toBe("gpt-6-new");
+  expect(label(vendor, "internal-name")).toBeUndefined();
+  expect(label(custom, model.slug)).toBeUndefined();
+  expect(label(claude, "claude-opus-6")).toBe("claude-opus-6");
 });
 
 it("records canonical model labels from the Antigravity live catalog", () => {

@@ -4,17 +4,13 @@ import type {
   ServerProvider,
 } from "@t3tools/contracts";
 
-/**
- * Drivers whose model catalogs are published by the vendor. Other drivers
- * (OpenCode, Pi, ACP agents) list models from the user's own configuration,
- * such as local Ollama tags, so their model names stay out of analytics.
- */
-const VENDOR_CATALOG_DRIVERS: ReadonlySet<string> = new Set([
-  "codex",
-  "claudeAgent",
-  "cursor",
-  "grok",
-  "antigravity",
+// Codex and Claude include early-access names, so only their public families qualify.
+const VENDOR_CATALOGS: ReadonlyMap<string, RegExp | undefined> = new Map([
+  ["codex", /^gpt-/u],
+  ["claudeAgent", /^claude-/u],
+  ["cursor", undefined],
+  ["grok", undefined],
+  ["antigravity", undefined],
 ]);
 
 export interface ProviderDimensions {
@@ -33,12 +29,20 @@ export function providerDimensions(
 ): ProviderDimensions {
   const provider = providers.find((candidate) => candidate.instanceId === selection.instanceId);
   if (provider === undefined) return { provider: "unknown" };
+  if (
+    !VENDOR_CATALOGS.has(provider.driver) ||
+    provider.auth.endpoint !== undefined ||
+    provider.auth.type === "customEndpoint" ||
+    provider.auth.type === "bedrock"
+  )
+    return { provider: provider.driver };
   const model =
     provider.models.find((candidate) => candidate.slug === selection.model) ??
     provider.models.find(
       (candidate) => !candidate.isCustom && candidate.aliases?.includes(selection.model),
     );
-  return VENDOR_CATALOG_DRIVERS.has(provider.driver) && model !== undefined && !model.isCustom
+  const family = VENDOR_CATALOGS.get(provider.driver);
+  return model !== undefined && !model.isCustom && (family === undefined || family.test(model.slug))
     ? { provider: provider.driver, model: model.slug }
     : { provider: provider.driver };
 }
