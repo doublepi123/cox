@@ -671,6 +671,8 @@ const writeParentRun = (input: {
     const providerThreadId = input.stable
       ? ProviderThreadId.make(`${input.runId}:provider-thread`)
       : null;
+    const setupUnfinished =
+      input.status === "preparing" || input.status === "failed" || input.status === "interrupted";
     yield* eventSink.write({
       events: [
         ...(providerThreadId === null
@@ -723,13 +725,11 @@ const writeParentRun = (input: {
             status: input.status,
             queuePosition: null,
             requestedAt: now,
-            startedAt: now,
+            startedAt: setupUnfinished ? null : now,
             completedAt: input.status === "completed" ? now : null,
             checkpointId: input.stable ? CheckpointId.make(`${input.runId}:checkpoint`) : null,
             contextHandoffId: null,
-            ...(input.status === "preparing" ||
-            input.status === "failed" ||
-            input.status === "interrupted"
+            ...(setupUnfinished
               ? { workspacePreparation: { type: "worktree" as const, baseRef: "main" } }
               : {}),
           },
