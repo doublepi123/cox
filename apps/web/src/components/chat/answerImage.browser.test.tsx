@@ -60,8 +60,10 @@ describe("local response image rendering", () => {
     const favicon = screen.container.querySelector<HTMLImageElement>("a img")!;
     expect(favicon.src).toContain("https://www.google.com/s2/favicons?");
     favicon.loading = "eager";
-    await vi.waitFor(() => expect(favicon.naturalWidth).toBe(32));
-    expect(favicon.complete).toBe(true);
+    await vi.waitFor(() => {
+      expect(favicon.complete).toBe(true);
+      expect(favicon.naturalWidth).toBe(32);
+    });
     expect(resources.origin).not.toBe(location.origin);
     await expect(fetch(`${resources.origin}/favicon.png`)).rejects.toThrow();
 
@@ -102,9 +104,11 @@ describe("local response image rendering", () => {
         />,
       );
       await screen.getByRole("button", { name: "Export response as image" }).click();
-      const image = document.querySelector<HTMLImageElement>(".answer-image-card img")!;
-      image.loading = "eager";
-      await vi.waitFor(() => expect(image.naturalWidth).toBe(32));
+      await vi.waitFor(() => {
+        const image = document.querySelector<HTMLImageElement>(".answer-image-card img");
+        expect(image?.complete).toBe(true);
+        expect(image?.naturalWidth).toBe(32);
+      });
       await expect
         .element(
           page.getByText(
