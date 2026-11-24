@@ -594,6 +594,7 @@ export class GitLabPullRequestCli extends Context.Service<
       readonly number: number;
       readonly verdict: PullRequestReviewVerdict;
       readonly body: string;
+      readonly expectedHeadSha?: string | undefined;
       readonly comments: ReadonlyArray<PullRequestReviewCommentDraft>;
       readonly expectedHeadSha?: string | undefined;
     }) => Effect.Effect<void, GitLabPullRequestCliError>;
@@ -2504,6 +2505,15 @@ export const make = Effect.gen(function* () {
       }
       if (input.comments.length > 0) {
         const refs = yield* getDiffRefs(input);
+        // Line comments are placed on the head read here, so it must be the one reviewed.
+        if (input.expectedHeadSha !== undefined && refs.headSha !== input.expectedHeadSha) {
+          return yield* new GitLabMutationRefusedError({
+            command: "glab",
+            cwd: input.cwd,
+            operation: "submitReview",
+            reasons: [`the head is now ${refs.headSha}, not ${input.expectedHeadSha}`],
+          });
+        }
         yield* Effect.forEach(
           input.comments,
           (comment) =>
