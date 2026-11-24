@@ -45,6 +45,7 @@ const VIDEO_TAG_SRC_PATTERN = /<(?:video|source)\b[^<>]*\bsrc\s*=\s*["']([^"']+)
 
 const STANDALONE_VIDEO_TAG_PATTERN = /^\s*<video\b/iu;
 const VIDEO_TAG_END_PATTERN = /<\/video>\s*$/iu;
+const VIDEO_TAG_CLOSE_PATTERN = /<\/video>/iu;
 
 const TABLE_MAX_LINES = 64;
 const TABLE_START_PATTERN = /^\s*<table\b/iu;
@@ -230,7 +231,7 @@ function splitBodyAt(body: string, baseOffset: number): ReadonlyArray<PullReques
     }
     const lastCandidate = Math.min(index + VIDEO_TAG_MAX_LINES, lines.length) - 1;
     let cursor = index;
-    while (cursor < lastCandidate && !VIDEO_TAG_END_PATTERN.test(lines[cursor]!)) {
+    while (cursor < lastCandidate && !VIDEO_TAG_CLOSE_PATTERN.test(lines[cursor]!)) {
       cursor += 1;
     }
     const source = VIDEO_TAG_END_PATTERN.test(lines[cursor]!)
