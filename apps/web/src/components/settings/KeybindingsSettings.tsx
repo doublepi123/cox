@@ -144,11 +144,14 @@ function KeybindingsSearchInput({
         </InputGroupAddon>
         <InputGroupInput
           ref={inputRef}
-          type="search"
+          type="text"
+          role="searchbox"
+          enterKeyHint="search"
           value={query}
           onChange={(event) => onChange(event.currentTarget.value)}
           onKeyDown={(event) => {
-            if (event.key !== "Escape") return;
+            if (event.key !== "Escape" || event.nativeEvent.isComposing || event.keyCode === 229)
+              return;
             event.preventDefault();
             if (query.length > 0) {
               event.stopPropagation();
