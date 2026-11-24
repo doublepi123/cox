@@ -530,6 +530,21 @@ export function PullRequestMetaLine({
   );
 }
 
+export function pullRequestChecksCountLabel(
+  checks: ReadonlyArray<PullRequestCheck>,
+  translate: (key: string, values: { count: number }) => string = (key, { count }) =>
+    key.replace("{count}", String(count)),
+): string | null {
+  const failed = checks.filter(
+    (check) => check.status === "failure" || check.status === "cancelled",
+  ).length;
+  if (failed > 0) return translate("{count} failed", { count: failed });
+  const awaitingAction = checks.filter((check) => check.status === "action-required").length;
+  if (awaitingAction > 0) return translate("{count} awaiting action", { count: awaitingAction });
+  const running = checks.filter((check) => check.status === "pending").length;
+  return running > 0 ? translate("{count} running", { count: running }) : null;
+}
+
 export function summarizePullRequestChecks(checks: ReadonlyArray<PullRequestCheck>): string {
   if (checks.length === 0) return "No checks reported";
   const actionRequired = checks.filter((check) => check.status === "action-required");

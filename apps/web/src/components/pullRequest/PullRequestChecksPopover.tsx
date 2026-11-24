@@ -23,6 +23,7 @@ import { groupPullRequestChecks } from "./pullRequestDetail.logic";
 import {
   PullRequestCheckStatusIcon,
   pullRequestCheckStatusLabel,
+  pullRequestChecksCountLabel,
   pullRequestChecksStatePresentation,
   summarizePullRequestChecks,
 } from "./pullRequestPresentation";
@@ -151,12 +152,8 @@ export function PullRequestChecksPopover({
   render?: React.ReactElement;
 }) {
   const presentation = pullRequestChecksStatePresentation(checksState);
-  const incompleteCount =
-    checks?.filter((check) => check.status === "pending" || check.status === "action-required")
-      .length ?? 0;
-  const failedCount =
-    checks?.filter((check) => check.status === "failure" || check.status === "cancelled").length ??
-    0;
+  const { t } = useTranslation();
+  const countLabel = checks === undefined ? null : pullRequestChecksCountLabel(checks, t);
   const summary = checks === undefined || stale ? null : summarizePullRequestChecks(checks);
   return (
     <Popover>
@@ -181,20 +178,8 @@ export function PullRequestChecksPopover({
         onClick={(event) => event.stopPropagation()}
       >
         <presentation.Icon aria-hidden className={cn("size-3.5", presentation.toneClassName)} />
-        {variant === "count" ? (
-          <>
-            {checks !== undefined && incompleteCount > 0 ? (
-              // Clip the second line so "checks" disappears whole when the count must shrink.
-              <span className="h-lh min-w-0 overflow-hidden text-left whitespace-normal tabular-nums">
-                <span className="whitespace-nowrap">
-                  {checks.length - incompleteCount}/{checks.length}
-                </span>{" "}
-                checks
-              </span>
-            ) : failedCount > 0 ? (
-              <span className="min-w-0 truncate tabular-nums">{failedCount} failed</span>
-            ) : null}
-          </>
+        {variant === "count" && countLabel !== null ? (
+          <span className="min-w-0 truncate tabular-nums">{countLabel}</span>
         ) : null}
       </PopoverTrigger>
       <PopoverPopup align="start" width="md" side="bottom">

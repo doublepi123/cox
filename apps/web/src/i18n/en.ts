@@ -4633,4 +4633,5 @@ export const en = {
   "Loading Cursor hooks": "Loading Cursor hooks",
   "Loading Cursor rules and skills": "Loading Cursor rules and skills",
   "Connecting to Cursor": "Connecting to Cursor",
+  "{count} awaiting action": "{count} awaiting action",
 } as const;
