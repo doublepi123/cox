@@ -5,6 +5,7 @@ import { Spinner } from "~/components/ui/spinner";
 import {
   AuthPreviewOperateScope,
   type EditorId,
+  type AssetResource,
   type EnvironmentId,
   type ResolvedKeybindingsConfig,
   type ScopedThreadRef,
@@ -46,7 +47,17 @@ import { mediaFileReference } from "@t3tools/client-runtime/media-reference";
 import { FolderTree, Globe2, WrapTextIcon } from "lucide-react";
 import { Code2, Eye, Table2 } from "lucide";
 import * as Schema from "effect/Schema";
-import { lazy, Suspense, useEffect, useEffectEvent, useRef, useState } from "react";
+import {
+  lazy,
+  Suspense,
+  useEffect,
+  useEffectEvent,
+  useRef,
+  useState,
+  type ComponentProps,
+  type RefObject,
+  type KeyboardEvent as ReactKeyboardEvent,
+} from "react";
 
 import { isBrowserPreviewFile, openFileInPreview } from "~/browser/openFileInPreview";
 import { useAssetUrlRefresh, useAssetUrlState } from "~/assets/assetUrls";
@@ -87,7 +98,10 @@ import FileBrowserPanel from "./FileBrowserPanel";
 import { FileExplorerPane } from "./FileExplorerPane";
 import { FileBreadcrumbs } from "./FileBreadcrumbs";
 import { breadcrumbPathOf, retainedBreadcrumbTrail, trailChildOf } from "./filePath";
-import { FileMarkdownPreview } from "./FileMarkdownPreview";
+import { ChunkedMarkdown } from "./ChunkedMarkdown";
+import { splitMarkdown } from "@t3tools/shared/markdownChunks";
+import LargeFilePreview from "./LargeFilePreview";
+import { FULL_TEXT_MAX_BYTES } from "./largeTextProtocol";
 import {
   type FileCommentAnnotationEntry,
   type FileCommentAnnotationGroup,
@@ -1087,30 +1101,26 @@ function RenderedMarkdownSurface({
 }) {
   const saveTarget = { environmentId, cwd, relativePath };
   useFileSaveSession(saveTarget, onPendingChange);
+  const onTaskListChange = readOnly
+    ? undefined
+    : ({ markerOffset, checked }: { readonly markerOffset: number; readonly checked: boolean }) => {
+        const currentContents =
+          getOptimisticProjectFileQueryData(environmentId, cwd, relativePath)?.contents ?? contents;
+        const nextContents = setMarkdownTaskChecked(currentContents, markerOffset, checked);
+        if (nextContents === currentContents) return;
+        setProjectFileQueryData(environmentId, cwd, relativePath, nextContents);
+        changeFileSaveSession(saveTarget, nextContents);
+      };
 
   return (
-    <ScrollArea sizing="flex">
-      <FileMarkdownPreview
-        text={contents}
-        cwd={cwd}
-        relativePath={relativePath}
-        threadRef={threadRef}
-        workspaceMutationId={workspaceMutationId}
-        onTaskListChange={
-          readOnly
-            ? undefined
-            : ({ markerOffset, checked }) => {
-                const currentContents =
-                  getOptimisticProjectFileQueryData(environmentId, cwd, relativePath)?.contents ??
-                  contents;
-                const nextContents = setMarkdownTaskChecked(currentContents, markerOffset, checked);
-                if (nextContents === currentContents) return;
-                setProjectFileQueryData(environmentId, cwd, relativePath, nextContents);
-                changeFileSaveSession(saveTarget, nextContents);
-              }
-        }
-      />
-    </ScrollArea>
+    <ChunkedMarkdown
+      {...splitMarkdown(contents)}
+      cwd={cwd}
+      relativePath={relativePath}
+      threadRef={threadRef}
+      workspaceMutationId={workspaceMutationId}
+      onTaskListChange={onTaskListChange}
+    />
   );
 }
 
@@ -1255,7 +1265,8 @@ export default function FilePreviewPanel({
   const revealHandled =
     revealLine === null ||
     (handledReveal?.path === relativePath && handledReveal.requestId === revealRequestId);
-  const renderMarkdown = isMarkdown && renderMarkdownPreferred && revealHandled;
+  const markdownRenderable = isMarkdown && (file.data?.byteLength ?? 0) <= FULL_TEXT_MAX_BYTES;
+  const renderMarkdown = markdownRenderable && renderMarkdownPreferred && revealHandled;
   const renderMermaid = isMermaid && renderMermaidPreferred && revealHandled;
   const renderBrowserFile = isPdf || (isHtml && renderBrowserFilePreferred && revealHandled);
   const renderTable = tableDelimiter !== null && renderTablePreferred && revealHandled;
@@ -1269,7 +1280,10 @@ export default function FilePreviewPanel({
           ? ("html" as const)
           : null;
   const canToggleRendered =
-    previewPath !== null && attachment === undefined && renderedMode !== null;
+    previewPath !== null &&
+    attachment === undefined &&
+    renderedMode !== null &&
+    (!isMarkdown || markdownRenderable);
   const showsRawText =
     previewPath !== null &&
     file.data !== null &&
@@ -1288,6 +1302,15 @@ export default function FilePreviewPanel({
     file.data.contents.length > 0
       ? file.data.contents
       : null;
+  const showsLargeText =
+    previewPath !== null &&
+    attachment === undefined &&
+    !isMedia &&
+    !renderBrowserFile &&
+    !isDocument &&
+    !renderMermaid &&
+    file.data?.truncated === true;
+  const copyLargeText = useRef<(() => Promise<string>) | null>(null);
   const { copyToClipboard, isCopied } = useCopyToClipboard({
     target: previewPath ?? "",
     onError: (error) =>
@@ -1535,6 +1558,16 @@ export default function FilePreviewPanel({
               {isCopied ? <CheckIcon className="size-3.5" /> : <CopyIcon className="size-3.5" />}
             </FileSurfaceAction>
           ) : null}
+          {showsLargeText && absolutePath && relativePath ? (
+            <LargeFileActions
+              environmentId={environmentId}
+              threadRef={threadRef}
+              absolutePath={absolutePath}
+              draftCwd={draft ? cwd : null}
+              name={relativePath}
+              copyContents={copyLargeText}
+            />
+          ) : null}
           {canOpenInBrowser ? (
             <FileSurfaceAction label="Open file in preview browser" onPress={handleOpenInBrowser}>
               <Globe2 className="size-3.5" />
@@ -1561,7 +1594,7 @@ export default function FilePreviewPanel({
       !isMedia &&
       !renderBrowserFile &&
       file.data?.truncated &&
-      (draft || isMarkdown || isMermaid || isHtml) ? (
+      renderMermaid ? (
         <div className="shrink-0 border-b border-warning/20 bg-warning-surface px-3 py-1.5 text-2xs text-warning-foreground">
           Preview limited to the first 1 MB of a {file.data.byteLength.toLocaleString()} byte file.
         </div>
@@ -1638,21 +1671,20 @@ export default function FilePreviewPanel({
               title={relativePath}
               workspaceMutationId={workspaceMutationId}
             />
-          ) : relativePath &&
-            absolutePath &&
-            file.data?.truncated &&
-            !isDocument &&
-            !draft &&
-            !isMarkdown &&
-            !isMermaid &&
-            !isHtml ? (
+          ) : relativePath && absolutePath && showsLargeText ? (
             <WorkspaceLargeTextPreview
-              key={`${absolutePath}:${renderTable}:${fileRefreshRevision}`}
+              key={`${absolutePath}:${renderTable}:${renderMarkdown}:${fileRefreshRevision}`}
               environmentId={environmentId}
               threadRef={threadRef}
               absolutePath={absolutePath}
+              draftCwd={draft ? cwd : null}
               name={relativePath}
               delimiter={renderTable ? tableDelimiter : null}
+              markdownCwd={renderMarkdown ? cwd : null}
+              copyContents={copyLargeText}
+              preview={file.data?.contents ?? ""}
+              sizeBytes={file.data?.byteLength ?? 0}
+              onPostRender={onFilePostRender}
               workspaceMutationId={workspaceMutationId}
               revealLine={revealLine}
               revealRequestId={revealRequestId}
@@ -1797,36 +1829,98 @@ export default function FilePreviewPanel({
   );
 }
 
-const LargeTextViewer = lazy(() => import("./LargeTextViewer"));
-export function WorkspaceLargeTextPreview(props: {
+// A draft has no thread yet, so its download is scoped to the draft's workspace instead.
+function largeFileResource(
+  threadRef: ScopedThreadRef,
+  absolutePath: string,
+  draftCwd: string | null,
+): AssetResource {
+  return draftCwd === null
+    ? {
+        _tag: "media-file",
+        threadId: threadRef.threadId,
+        path: absolutePath,
+        disposition: "attachment",
+      }
+    : {
+        _tag: "draft-workspace-file",
+        cwd: draftCwd,
+        path: absolutePath,
+        disposition: "attachment",
+      };
+}
+
+function LargeFileActions(props: {
   environmentId: EnvironmentId;
   threadRef: ScopedThreadRef;
   absolutePath: string;
+  draftCwd: string | null;
   name: string;
-  delimiter: "," | "\t" | null;
-  workspaceMutationId: string | null;
-  revealLine: number | null;
-  revealRequestId: number;
-  wordWrap: boolean;
+  copyContents: RefObject<(() => Promise<string>) | null>;
 }) {
   const { t } = useTranslation();
-  const resource = {
-    _tag: "media-file",
-    threadId: props.threadRef.threadId,
-    path: props.absolutePath,
-    disposition: "attachment",
-  } as const;
-  const copyContents = useRef<(() => Promise<string>) | null>(null);
   const { copyToClipboard, isCopied } = useCopyToClipboard({ target: props.name });
   const [saving, setSaving] = useState(false);
-  const [revision, setRevision] = useState(0);
-  const showError = (cause: unknown) => {
+  const refreshAssetUrl = useAssetUrlRefresh(
+    props.environmentId,
+    largeFileResource(props.threadRef, props.absolutePath, props.draftCwd),
+  );
+  const showError = (cause: unknown) =>
     toastManager.add({
       type: "error",
       title: "Could not read file",
       description: cause instanceof Error ? cause.message : "Try again.",
     });
-  };
+  return (
+    <>
+      <FileSurfaceAction
+        label={isCopied ? t("Copied") : "Copy contents"}
+        onPress={() => {
+          const copy = props.copyContents.current;
+          if (!copy) return;
+          void copy()
+            .then((text) => copyToClipboard(text, undefined))
+            .catch(showError);
+        }}
+      >
+        {isCopied ? <CheckIcon className="size-3.5" /> : <CopyIcon className="size-3.5" />}
+      </FileSurfaceAction>
+      <FileSurfaceAction
+        label={saving ? "Preparing file…" : "Save file"}
+        disabled={saving}
+        onPress={() => {
+          setSaving(true);
+          void (async () => {
+            const url = await refreshAssetUrl();
+            if (!url) throw new Error("Reconnect to the environment and try again.");
+            const response = await fetch(url);
+            if (!response.ok) throw new Error("The file could not be loaded. Try again.");
+            const downloadUrl = URL.createObjectURL(await response.blob());
+            setTimeout(() => URL.revokeObjectURL(downloadUrl), 30_000);
+            const anchor = document.createElement("a");
+            anchor.href = downloadUrl;
+            anchor.download = props.name.split(/[\\/]/).at(-1) || props.name;
+            anchor.click();
+          })()
+            .catch(showError)
+            .finally(() => setSaving(false));
+        }}
+      >
+        <DownloadIcon className="size-3.5" />
+      </FileSurfaceAction>
+    </>
+  );
+}
+
+export function WorkspaceLargeTextPreview(
+  props: Omit<ComponentProps<typeof LargeFilePreview>, "src" | "onRetry"> & {
+    environmentId: EnvironmentId;
+    absolutePath: string;
+    draftCwd: string | null;
+  },
+) {
+  const resource = largeFileResource(props.threadRef, props.absolutePath, props.draftCwd);
+  const [revision, setRevision] = useState(0);
   // Each workspace mutation re-mints the URL, so an edited file loads its new bytes.
   const assetUrl = useAssetUrlState(
     props.environmentId,
@@ -1850,70 +1944,21 @@ export function WorkspaceLargeTextPreview(props: {
         message="Unable to load file preview."
         onRetry={() => {
           setRevision((value) => value + 1);
-          void refreshAssetUrl().catch(showError);
+          void refreshAssetUrl();
         }}
       />
     );
-  if (assetUrl._tag !== "Success" || loaded === null)
-    return <div className="p-6 text-xs text-muted-foreground">{t("Loading…")}</div>;
+  if (assetUrl._tag !== "Success" || loaded === null) return <FileSurfaceLoading />;
   const src = `${loaded.url}${loaded.url.includes("?") ? "&" : "?"}revision=${encodeURIComponent(loaded.revision)}`;
   return (
-    <>
-      <div className={FILE_SURFACE_SUBHEADER_CLASS}>
-        <span className="min-w-0 flex-1 text-xs text-muted-foreground">Full file</span>
-        <FileSurfaceAction
-          label={isCopied ? t("Copied") : "Copy contents"}
-          onPress={() => {
-            const copy = copyContents.current;
-            if (!copy) return;
-            void copy()
-              .then((text) => copyToClipboard(text, undefined))
-              .catch(showError);
-          }}
-        >
-          {isCopied ? <CheckIcon className="size-3.5" /> : <CopyIcon className="size-3.5" />}
-        </FileSurfaceAction>
-        <FileSurfaceAction
-          label={saving ? "Preparing file…" : "Save file"}
-          disabled={saving}
-          onPress={() => {
-            setSaving(true);
-            void (async () => {
-              const url = await refreshAssetUrl();
-              if (!url) throw new Error("Reconnect to the environment and try again.");
-              const response = await fetch(url);
-              if (!response.ok) throw new Error("The file could not be loaded. Try again.");
-              const downloadUrl = URL.createObjectURL(await response.blob());
-              setTimeout(() => URL.revokeObjectURL(downloadUrl), 30_000);
-              const anchor = document.createElement("a");
-              anchor.href = downloadUrl;
-              anchor.download = props.name.split(/[\\/]/).at(-1) || props.name;
-              anchor.click();
-            })()
-              .catch(showError)
-              .finally(() => setSaving(false));
-          }}
-        >
-          <DownloadIcon className="size-3.5" />
-        </FileSurfaceAction>
-      </div>
-      <Suspense fallback={<div className="p-6 text-xs text-muted-foreground">{t("Loading…")}</div>}>
-        <LargeTextViewer
-          key={`${src}:${revision}`}
-          name={props.name}
-          copyContents={copyContents}
-          onRetry={() => {
-            void refreshAssetUrl()
-              .then(() => setRevision((value) => value + 1))
-              .catch(showError);
-          }}
-          src={src}
-          delimiter={props.delimiter}
-          revealLine={props.revealLine}
-          revealRequestId={props.revealRequestId}
-          wordWrap={props.wordWrap}
-        />
-      </Suspense>
-    </>
+    <LargeFilePreview
+      {...props}
+      key={src}
+      src={src}
+      onRetry={() => {
+        setRevision((value) => value + 1);
+        void refreshAssetUrl();
+      }}
+    />
   );
 }

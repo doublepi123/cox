@@ -511,6 +511,10 @@
       "types": "./src/cliRelease.ts",
       "import": "./src/cliRelease.ts"
     },
+    "./markdownChunks": {
+      "types": "./src/markdownChunks.ts",
+      "import": "./src/markdownChunks.ts"
+    },
     "./markdownHast": {
       "types": "./src/markdownHast.ts",
       "import": "./src/markdownHast.ts"
