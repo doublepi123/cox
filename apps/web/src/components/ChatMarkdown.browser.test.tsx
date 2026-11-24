@@ -30,6 +30,17 @@ const { workspaceSearch, filesystemMetadata } = vi.hoisted(() => ({
   workspaceSearch: vi.fn(),
   filesystemMetadata: vi.fn(),
 }));
+const threadWorktrees = vi.hoisted(() => new Map<ThreadId, string>());
+vi.mock("../state/entities", async (original) => {
+  const actual = await original<typeof import("../state/entities")>();
+  return {
+    ...actual,
+    readThreadShell: (ref: Parameters<typeof actual.readThreadShell>[0]) => {
+      const worktreePath = threadWorktrees.get(ref.threadId);
+      return worktreePath === undefined ? actual.readThreadShell(ref) : { worktreePath };
+    },
+  };
+});
 const parsedSources = vi.hoisted(() => [] as string[]);
 vi.mock(import("../markdown/wordsHast"), async (original) => {
   const actual = await original();
@@ -124,6 +135,7 @@ function setup() {
   parsedSources.length = 0;
   settingsOverrides.mathRenderingEnabled = false;
   renderDiagram.mockReset();
+  threadWorktrees.clear();
   workspaceSearch.mockReset().mockResolvedValue(AsyncResult.success({ entries: [] }));
   filesystemMetadata.mockReset().mockResolvedValue(AsyncResult.success({ entries: [null] }));
 }
@@ -377,6 +389,28 @@ describe("ChatMarkdown workspace file opens", () => {
     environmentId: EnvironmentId.make("workspace"),
     threadId: ThreadId.make("thread"),
   };
+
+  it("opens a path from Markdown rendered in another checkout under that checkout", async () => {
+    setup();
+    const scratchThread = { ...threadRef, threadId: ThreadId.make("scratch-thread") };
+    threadWorktrees.set(scratchThread.threadId, "/scratch/thread");
+    filesystemMetadata.mockResolvedValue(AsyncResult.success({ entries: [{ kind: "file" }] }));
+    using openFile = vi
+      .spyOn(useRightPanelStore.getState(), "openFile")
+      .mockImplementation(() => {});
+    await using screen = await renderText("[State](packages/state/filesystem.ts)", {
+      cwd: "/repo-a",
+      threadRef: scratchThread,
+    });
+    await act(async () => screen.container.querySelector("a")!.click());
+    await vi.waitFor(() =>
+      expect(openFile).toHaveBeenCalledExactlyOnceWith(
+        scratchThread,
+        "/repo-a/packages/state/filesystem.ts",
+        undefined,
+      ),
+    );
+  });
 
   it("keeps a newer absolute file open when an earlier repo-relative lookup finishes", async () => {
     setup();
