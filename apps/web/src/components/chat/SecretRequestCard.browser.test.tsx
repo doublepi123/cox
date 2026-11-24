@@ -9,7 +9,13 @@ import { SecretRequestCard } from "./SecretRequestCard";
 import "~/index.css";
 
 const haptics = vi.hoisted(() => ({ selection: vi.fn(() => true) }));
-const sourceFixture = vi.hoisted(() => ({ enabled: false }));
+const sourceFixture = vi.hoisted(() => ({ enabled: false, canManage: true }));
+
+vi.mock(import("../../state/session"), async (original) => ({
+  ...(await original()),
+  useEnvironmentScope: (_environmentId, scope) =>
+    scope !== "providers:manage" || sourceFixture.canManage,
+}));
 
 vi.mock(import("../../state/use-atom-command"), () => ({
   useAtomCommand: () => vi.fn().mockResolvedValue({ _tag: "Success" }),
@@ -120,6 +126,36 @@ it("keeps secret inputs and actions touchable inside the shrunken visual viewpor
   const input = screen.getByLabelText("API token");
   expect(input.element().getBoundingClientRect().height).toBeGreaterThanOrEqual(44);
   expect(document.documentElement.scrollWidth).toBeLessThanOrEqual(390);
+});
+
+it("keeps typed entry available and hides reference sources without provider management", async () => {
+  sourceFixture.enabled = true;
+  sourceFixture.canManage = false;
+  using _sources = {
+    [Symbol.dispose]() {
+      sourceFixture.enabled = false;
+      sourceFixture.canManage = true;
+    },
+  };
+  const item = {
+    id: TurnItemId.make("secret-card-scoped"),
+    threadId: ThreadId.make("secret-thread-scoped"),
+    type: "secret_request",
+    secretStatus: "pending",
+    label: "API token",
+    reason: "Configure the service",
+  } as SecretRequestItem;
+  await using screen = await render(
+    <SecretRequestCard
+      environmentId={EnvironmentId.make("local")}
+      item={item}
+      visibility="local"
+    />,
+  );
+  await expect
+    .element(screen.getByRole("combobox", { name: "API token source" }))
+    .not.toBeInTheDocument();
+  await expect.element(screen.getByLabelText("API token")).toBeVisible();
 });
 
 it("emits mobile haptic selection for source, submit, and decline actions", async () => {

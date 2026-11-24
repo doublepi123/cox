@@ -9,6 +9,7 @@ import {
   requiredScopesForServerSettingsPatch,
   requiredScopesForProjectMutation,
   ProjectMutation,
+  SecretRequestAnswerInput,
   AuthSettingsWriteScope,
   AuthProvidersManageScope,
   AuthEnvironmentMaintainScope,
@@ -238,6 +239,7 @@ const requiredScopesForSettingsUpdate = (payload: unknown) => {
 
 const decodeProjectMutation = Schema.decodeUnknownSync(ProjectMutation);
 const decodeAssetCreateUrlInput = Schema.decodeUnknownSync(AssetCreateUrlInput);
+const decodeSecretRequestAnswer = Schema.decodeUnknownSync(SecretRequestAnswerInput);
 
 const requiredScopesForRpcCall = (
   method: string,
@@ -257,6 +259,12 @@ const requiredScopesForRpcCall = (
     ];
   }
   if (method === WS_METHODS.serverUpdateSettings) return requiredScopesForSettingsUpdate(payload);
+  if (
+    method === WS_METHODS.secretsAnswerRequest &&
+    decodeSecretRequestAnswer(payload).answer.type === "reference"
+  ) {
+    return [AuthOrchestrationOperateScope, AuthProvidersManageScope];
+  }
   if (method === WS_METHODS.projectsMutate) {
     return requiredScopesForProjectMutation(decodeProjectMutation(payload));
   }

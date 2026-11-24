@@ -19,10 +19,11 @@ import {
   isAtomCommandInterrupted,
   squashAtomCommandFailure,
 } from "@t3tools/client-runtime/state/runtime";
-import type {
-  EnvironmentId,
-  OrchestrationV2ProjectedTurnItem,
-  SecretProviderId,
+import {
+  AuthProvidersManageScope,
+  type EnvironmentId,
+  type OrchestrationV2ProjectedTurnItem,
+  type SecretProviderId,
 } from "@t3tools/contracts";
 import { useAtomValue } from "@effect/atom-react";
 import {
@@ -39,6 +40,7 @@ import { useId, useRef, useState, type FormEvent } from "react";
 import { hasFeatureFlag } from "@t3tools/client-runtime/state/server";
 import { triggerMobileHapticSelection } from "../../mobile/mobileShellBridge";
 import { serverEnvironment } from "../../state/server";
+import { useEnvironmentScope } from "../../state/session";
 import { useAtomCommand } from "../../state/use-atom-command";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
@@ -79,7 +81,8 @@ const NO_SOURCES: ReadonlyArray<SecretRequestSource> = [];
 
 function useSecretRequestSources(environmentId: EnvironmentId) {
   const config = useAtomValue(serverEnvironment.configValueAtom(environmentId));
-  return hasFeatureFlag(config, "secretProviders")
+  const canUseReferences = useEnvironmentScope(environmentId, AuthProvidersManageScope);
+  return canUseReferences && hasFeatureFlag(config, "secretProviders")
     ? secretRequestSources(config, config?.settings.secretProviders ?? {})
     : NO_SOURCES;
 }
