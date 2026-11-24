@@ -46,7 +46,7 @@ interface XmlNode {
   hasTextChoice?: boolean;
 }
 
-function xml(source: string, odfSpaces = false, htmlEntities = false): XmlNode {
+function xml(source: string, odfSpaces = false, htmlEntities = false, word = false): XmlNode {
   const root: XmlNode = { name: "root", attrs: {}, children: [] };
   const stack = [root];
   let nodes = 0;
@@ -75,6 +75,13 @@ function xml(source: string, odfSpaces = false, htmlEntities = false): XmlNode {
     // Keep one when no Choice carries text, such as a chart with a VML caption.
     if (
       (node.name === "Fallback" && parent.hasTextChoice) ||
+      (word &&
+        node.name === "r" &&
+        children(node)
+          .flatMap((child) => (child.name === "rPr" ? children(child) : []))
+          .some(
+            (prop) => prop.name === "vanish" && ["true", "1", "on"].includes(prop.attrs.val ?? "1"),
+          )) ||
       (odfSpaces &&
         node.name === "page-thumbnail" &&
         stack.some((ancestor) => ancestor.name === "notes"))
@@ -526,7 +533,12 @@ async function* document(path: string, extension: string): AsyncGenerator<TextPa
       try {
         const data = files.get(name);
         if (!data) throw new Error("Missing document part");
-        return xml(data, [".odt", ".ods", ".odp"].includes(extension), extension === ".epub");
+        return xml(
+          data,
+          [".odt", ".ods", ".odp"].includes(extension),
+          extension === ".epub",
+          extension === ".docx",
+        );
       } catch (error) {
         if (error instanceof Truncation) throw error;
         skip(name);
