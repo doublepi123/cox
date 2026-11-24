@@ -538,4 +538,38 @@ describe("Antigravity served reads", () => {
       status: "completed",
     });
   });
+
+  it("drops agy's toolSummary from Cox MCP call arguments only", () => {
+    const t3Call = normalizeAntigravityToolCall(
+      parseToolUpdate(
+        normalizeAntigravitySessionUpdate({
+          sessionId: "session-1",
+          update: {
+            sessionUpdate: "tool_call",
+            toolCallId: "call_t3_send",
+            title: "Running cox_thread_send",
+            kind: "other",
+            status: "in_progress",
+            rawInput: { message: "Hello", toolSummary: "Send greeting" },
+          },
+        }),
+      ).toolCall,
+    );
+    expect(t3Call.data.rawInput).toEqual({ message: "Hello" });
+
+    const foreignCall = normalizeAntigravityToolCall(
+      parseToolUpdate({
+        sessionId: "session-1",
+        update: {
+          sessionUpdate: "tool_call",
+          toolCallId: "call_other",
+          title: "mcp__other__cox_thread_send",
+          kind: "other",
+          status: "in_progress",
+          rawInput: { message: "Hello", toolSummary: "Send greeting" },
+        },
+      }).toolCall,
+    );
+    expect(foreignCall.data.rawInput).toEqual({ message: "Hello", toolSummary: "Send greeting" });
+  });
 });

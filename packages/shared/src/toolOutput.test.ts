@@ -2,6 +2,7 @@ import { describe, expect, it } from "vite-plus/test";
 
 import {
   compactDynamicToolOutput,
+  compactCoxMcpToolOutput,
   MAX_TOOL_OUTPUT_IMAGES,
   mcpToolResultOutput,
   omitToolOutputImageData,
@@ -33,6 +34,17 @@ describe("compactDynamicToolOutput", () => {
         output: { OkayOutput: JSON.stringify({ threadId: "thread-1" }) },
       }),
     ).toEqual({ threadId: "thread-1" });
+  });
+
+  it("compacts only Cox MCP tool results for recovery", () => {
+    const result = {
+      structuredContent: { threadId: "thread-1", messageId: "message-1", body: "private" },
+    };
+    expect(compactCoxMcpToolOutput("cox.cox_thread_send", result)).toEqual({
+      threadId: "thread-1",
+      messageId: "message-1",
+    });
+    expect(compactCoxMcpToolOutput("other.cox_thread_send", result)).toBeUndefined();
   });
 
   it("keeps nested thread identity and scalar task IDs without result bodies", () => {
