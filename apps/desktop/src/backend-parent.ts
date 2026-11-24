@@ -1,7 +1,20 @@
-import { spawnSync } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
+import { fileURLToPath } from "node:url";
 import { join } from "node:path";
 import { mkdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
 import { randomUUID } from "node:crypto";
+
+if (process.argv[2] === "--cox-monitor-backend" && process.send) {
+  const backendPid = Number(process.argv[3]);
+  if (process.platform === "win32" || backendPid <= 1 || backendPid !== process.ppid)
+    process.exit(0);
+  process.once("disconnect", () => process.exit(0));
+  process.stdin.once("end", () => {
+    process.kill(-backendPid, "SIGCONT");
+    setTimeout(() => process.kill(-backendPid, "SIGKILL"), 5_000);
+  });
+  process.stdin.resume();
+}
 
 const desktopParent = process.env.COX_DESKTOP_PARENT_PID;
 if (desktopParent !== undefined) {
@@ -31,6 +44,20 @@ if (desktopParent !== undefined) {
           unlinkSync(owner);
       } catch {}
     });
+  }
+  if (process.platform !== "win32" && process.env.COX_DESKTOP_RECOVERY_PIPE === "1") {
+    delete process.env.COX_DESKTOP_RECOVERY_PIPE;
+    const monitor = spawn(
+      process.execPath,
+      [fileURLToPath(import.meta.url), "--cox-monitor-backend", String(process.pid)],
+      { stdio: [4, "ignore", "ignore", "ipc"] },
+    );
+    await new Promise<void>((resolve, reject) => {
+      monitor.once("error", reject);
+      monitor.once("spawn", resolve);
+    });
+    monitor.channel?.unref();
+    monitor.unref();
   }
   let shuttingDown = false;
   const shutdown = () => {

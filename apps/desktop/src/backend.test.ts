@@ -327,6 +327,41 @@ describe("desktop backend supervisor", () => {
     expect(await readFile(join(home, "stopped"), "utf8")).toBe("graceful");
   });
 
+  it.runIf(process.platform !== "win32")(
+    "recovers a suspended backend when the launcher dies",
+    async () => {
+      const { home, entry } = await createBackend();
+      const child = spawn(
+        process.execPath,
+        ["--import", pathToFileURL(preload).href, entry, "--home-dir", home],
+        {
+          env: {
+            ...process.env,
+            COX_DESKTOP_PARENT_PID: String(process.pid),
+            COX_DESKTOP_RECOVERY_PIPE: "1",
+          },
+          detached: true,
+          stdio: ["ignore", "pipe", "pipe", "ipc", "pipe"],
+        },
+      );
+      const exited = once(child, "exit");
+      cleanups.unshift(async () => {
+        if (child.exitCode === null && child.signalCode === null && child.pid)
+          process.kill(-child.pid, "SIGKILL");
+        await exited;
+      });
+      child.on("message", (message: unknown) => {
+        if (message === "cox:backend-ready-to-start") child.send("cox:backend-start");
+      });
+      await once(child.stdout!, "data");
+      child.kill("SIGSTOP");
+      child.disconnect();
+      child.stdio[4]?.destroy();
+      expect(await exited).toEqual([0, null]);
+      expect(await readFile(join(home, "stopped"), "utf8")).toBe("graceful");
+    },
+  );
+
   it("never loads backend code if the desktop disconnected before preload completed", async () => {
     const { home, entry } = await createBackend();
     const child = spawn(

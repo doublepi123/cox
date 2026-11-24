@@ -75,6 +75,7 @@ export class BackendProcess {
   private exited: Promise<void> = Promise.resolve();
   private stopping: Promise<void> | undefined;
   private ready = false;
+  private starting = false;
 
   private readonly options: BackendOptions;
 
@@ -84,7 +85,39 @@ export class BackendProcess {
 
   start(): Promise<string> {
     if (this.stopping) throw new Error("The desktop backend has already been stopped.");
-    if (this.child) throw new Error("The desktop backend has already been started.");
+    if (this.starting) throw new Error("The desktop backend has already been started.");
+    this.starting = true;
+    return process.platform === "darwin"
+      ? this.waitForPreviousBackend().then(() => this.startChild())
+      : this.startChild();
+  }
+
+  private async waitForPreviousBackend(): Promise<void> {
+    const path = join(this.options.homeDirectory, "backend-owner.json");
+    const deadline = performance.now() + 6_000;
+    while (performance.now() < deadline && !this.stopping) {
+      try {
+        const owner: unknown = JSON.parse(await readFile(path, "utf8"));
+        if (
+          typeof owner !== "object" ||
+          owner === null ||
+          !("pid" in owner) ||
+          typeof owner.pid !== "number" ||
+          !Number.isSafeInteger(owner.pid) ||
+          owner.pid <= 1
+        )
+          return;
+        process.kill(owner.pid, 0);
+      } catch {
+        return;
+      }
+      await delay(50);
+    }
+  }
+
+  private startChild(): Promise<string> {
+    if (this.stopping) throw new Error("The desktop backend has already been stopped.");
+    const watchdog = process.platform !== "win32";
     const child = spawn(
       this.options.nodePath,
       [
@@ -99,10 +132,14 @@ export class BackendProcess {
       ],
       {
         cwd: this.options.cwd,
-        env: { ...this.options.environment, COX_DESKTOP_PARENT_PID: String(process.pid) },
-        detached: process.platform !== "win32",
+        env: {
+          ...this.options.environment,
+          COX_DESKTOP_PARENT_PID: String(process.pid),
+          ...(watchdog ? { COX_DESKTOP_RECOVERY_PIPE: "1" } : {}),
+        },
+        detached: watchdog,
         windowsHide: true,
-        stdio: ["ignore", "pipe", "pipe", "ipc"],
+        stdio: ["ignore", "pipe", "pipe", "ipc", watchdog ? "pipe" : "ignore"],
       },
     );
     child.on("message", (message: unknown) => {
