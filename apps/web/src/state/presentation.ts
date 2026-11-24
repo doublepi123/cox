@@ -9,6 +9,7 @@ import { Atom } from "effect/reactivity";
 
 import { environmentCatalog } from "../connection/catalog";
 import { serverEnvironment } from "./server";
+import { catalogIsComplete } from "./shell";
 
 export const environmentPresentations = createEnvironmentPresentationAtoms({
   catalogValueAtom: environmentCatalog.catalogValueAtom,
@@ -23,6 +24,16 @@ export const environmentSummaries = createEnvironmentSummaryAtoms({
 
 const EMPTY_ENVIRONMENT_PRESENTATION_ATOM = Atom.make<EnvironmentPresentation | null>(null).pipe(
   Atom.withLabel("web-environment-presentation:empty"),
+);
+
+export const environmentUnreachableAtom = Atom.family((environmentId: EnvironmentId | null) =>
+  Atom.make((get) => {
+    if (environmentId === null) return false;
+    const catalog = get(environmentCatalog.catalogValueAtom);
+    if (!catalogIsComplete(catalog, true)) return false;
+    const entry = catalog.entries.get(environmentId);
+    return !entry?.enabled || entry.unsupportedReason !== undefined;
+  }),
 );
 
 export function useEnvironmentPresentation(environmentId: EnvironmentId | null) {

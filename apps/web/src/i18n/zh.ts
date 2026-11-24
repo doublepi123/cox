@@ -4474,4 +4474,7 @@ export const zh = {
   "Loading Cursor rules and skills": "正在加载 Cursor 规则和技能",
   "Connecting to Cursor": "正在连接 Cursor",
   "{count} awaiting action": "{count} 项等待操作",
+  "Thread unavailable": "会话不可用",
+  "This thread is on an environment this app is not connected to.":
+    "此会话位于当前应用未连接的环境。",
 } as const;

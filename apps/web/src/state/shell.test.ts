@@ -7,6 +7,8 @@ import { Atom, AtomRegistry } from "effect/reactivity";
 import { describe, expect, it } from "vite-plus/test";
 
 import { createAllEnvironmentProjectSnapshotsReadyAtom } from "./shell";
+import { environmentCatalog } from "../connection/catalog";
+import { environmentUnreachableAtom } from "./presentation";
 
 const LOCAL = EnvironmentId.make("local");
 
@@ -62,6 +64,23 @@ function makeHarness(requiresPrimaryEnvironment = true) {
   const registry = AtomRegistry.make();
   return { catalog, shells, ready, registry };
 }
+
+it("calls an environment unreachable only when primary discovery proves it absent", () => {
+  const unknown = EnvironmentId.make("unknown");
+  const unreachable = (environmentIds: readonly EnvironmentId[], id: EnvironmentId) => {
+    const registry = AtomRegistry.make({
+      initialValues: [[environmentCatalog.catalogValueAtom, catalogState(environmentIds)]],
+    });
+    try {
+      return registry.get(environmentUnreachableAtom(id));
+    } finally {
+      registry.dispose();
+    }
+  };
+  expect(unreachable([], unknown)).toBe(false);
+  expect(unreachable([LOCAL], unknown)).toBe(true);
+  expect(unreachable([LOCAL], LOCAL)).toBe(false);
+});
 
 describe("project snapshot readiness", () => {
   it("does not clear a saved scope while the ready catalog is still empty", () => {

@@ -4634,4 +4634,7 @@ export const en = {
   "Loading Cursor rules and skills": "Loading Cursor rules and skills",
   "Connecting to Cursor": "Connecting to Cursor",
   "{count} awaiting action": "{count} awaiting action",
+  "Thread unavailable": "Thread unavailable",
+  "This thread is on an environment this app is not connected to.":
+    "This thread is on an environment this app is not connected to.",
 } as const;
