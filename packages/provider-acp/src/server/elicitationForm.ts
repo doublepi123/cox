@@ -189,6 +189,9 @@ export function parseElicitationForm(
         ? {}
         : { allowCustomAnswer: false }),
       ...(parsed.field.kind === "multiChoice" ? { multiSelect: true } : {}),
+      ...(parsed.field.kind === "multiChoice" && parsed.field.minItems > 0 && required.has(id)
+        ? { required: true }
+        : {}),
     });
   }
   return {

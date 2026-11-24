@@ -40,6 +40,7 @@ export function assertAcpTitledMultiSelectOutput(
       ],
       allowCustomAnswer: false,
       multiSelect: true,
+      required: true,
     },
   ]);
 }
