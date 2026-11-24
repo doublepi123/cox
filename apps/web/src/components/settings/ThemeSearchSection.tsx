@@ -314,12 +314,18 @@ export function ThemeSearchSection({
           onChange={(event) => changeQuery(event.currentTarget.value)}
           onKeyDown={(event) => {
             if (event.nativeEvent.isComposing || event.keyCode === 229) return;
+            if (event.key === "Escape" && (query || event.repeat)) {
+              event.preventDefault();
+              event.stopPropagation();
+              changeQuery("");
+            }
             if (event.key === "Enter" && !isSearching && installingId === null)
               themeSearch.searchNow();
           }}
           placeholder={t("Search themes...")}
           size="lg"
-          type="search"
+          role="searchbox"
+          type="text"
           value={query}
         />
       </InputGroup>
