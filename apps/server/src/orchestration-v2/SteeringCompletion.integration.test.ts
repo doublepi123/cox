@@ -9,6 +9,7 @@ import {
   ProviderInstanceId,
   ProviderThreadId,
   ProviderTurnId,
+  RuntimeRequestId,
   ThreadId,
   TurnItemId,
   type ModelSelection,
@@ -22,6 +23,7 @@ import * as Layer from "effect/Layer";
 import * as Queue from "effect/Queue";
 import * as Stream from "effect/Stream";
 import { CodexProviderCapabilitiesV2 } from "./Adapters/CodexAdapterV2.ts";
+import { DispatchModeLimit } from "./DispatchModeLimit.ts";
 import * as EffectWorker from "./EffectWorker.ts";
 import * as EventSink from "./EventSink.ts";
 import * as Orchestrator from "./Orchestrator.ts";
@@ -479,6 +481,8 @@ const composerSelection = {
   ...runSelection,
   options: [...runSelection.options, { id: "fastMode", value: false }],
 };
+
+const supervised = { runtimeMode: "approval-required", interactionMode: "default" } as const;
 
 const nextTurnSelectionHarness = Effect.fn("nextTurnSelectionHarness")(function* (
   name: string,
@@ -1365,6 +1369,136 @@ it.effect("queues a delegated completion wake whose steer the provider declined"
       yield* orchestrator.resumeQueuedRuns;
       yield* worker.drain();
       assert.equal(started[1]?.message.messageId, messageId, "the parent was never woken");
+    }).pipe(Effect.provide(layer));
+  }).pipe(Effect.scoped),
+);
+
+it.effect(
+  "refuses a limited caller's steer into a turn started before its thread was lowered",
+  () =>
+    Effect.gen(function* () {
+      const { steered, layer, startFirstTurn } =
+        yield* nextTurnSelectionHarness("steer-above-limit");
+      yield* Effect.gen(function* () {
+        const orchestrator = yield* Orchestrator.OrchestratorV2;
+        const worker = yield* EffectWorker.OrchestrationEffectWorkerV2;
+        const threadId = yield* startFirstTurn;
+        // Codex keeps its session, and its running turn the full-access policy it started with.
+        yield* orchestrator.dispatch({
+          type: "thread.runtime-mode.set",
+          commandId: CommandId.make("lower"),
+          threadId,
+          runtimeMode: "approval-required",
+        });
+        const steer = {
+          type: "message.dispatch",
+          commandId: CommandId.make("steer"),
+          threadId,
+          messageId: MessageId.make("message:steer"),
+          text: "follow up",
+          attachments: [],
+          dispatchMode: { type: "start_immediately" },
+          deliveryIntent: "steer",
+          createdBy: "agent",
+          creationSource: "mcp",
+        } as const;
+        const refused = yield* orchestrator
+          .dispatch(steer)
+          .pipe(Effect.provideService(DispatchModeLimit, supervised), Effect.flip);
+        assert.ok(refused._tag === "OrchestratorThreadAboveModeLimitError");
+        assert.equal(refused.runtimeMode, "full-access");
+        yield* worker.drain();
+        assert.deepEqual(steered, []);
+
+        // The refusal records nothing, and a caller without the limit still reaches the turn.
+        yield* orchestrator.dispatch(steer);
+        yield* worker.drain();
+        assert.lengthOf(steered, 1);
+
+        // The turn's own record decides: one that started within the limit takes the steer.
+        const attempt = (yield* orchestrator.getThreadProjection(threadId)).attempts[0]!;
+        assert.deepEqual(attempt.startedModes, {
+          runtimeMode: "full-access",
+          interactionMode: "default",
+        });
+        yield* (yield* EventSink.EventSinkV2).write({
+          events: [
+            {
+              id: EventId.make("started-supervised"),
+              type: "run-attempt.updated",
+              threadId,
+              occurredAt: yield* DateTime.now,
+              payload: { ...attempt, startedModes: supervised },
+            },
+          ],
+        });
+        yield* orchestrator
+          .dispatch({
+            ...steer,
+            commandId: CommandId.make("steer-within"),
+            messageId: MessageId.make("message:steer-within"),
+          })
+          .pipe(Effect.provideService(DispatchModeLimit, supervised));
+        yield* worker.drain();
+        assert.lengthOf(steered, 2);
+      }).pipe(Effect.provide(layer));
+    }),
+);
+
+it.effect("refuses a limited caller's answer to a turn started above its limit", () =>
+  Effect.gen(function* () {
+    const { started, layer, startFirstTurn } = yield* nextTurnSelectionHarness("answer-above");
+    yield* Effect.gen(function* () {
+      const orchestrator = yield* Orchestrator.OrchestratorV2;
+      const threadId = yield* startFirstTurn;
+      const now = yield* DateTime.now;
+      const requestId = RuntimeRequestId.make("request:question");
+      const session = (yield* orchestrator.getThreadProjection(threadId)).providerSessions[0]!;
+      yield* (yield* EventSink.EventSinkV2).write({
+        events: [
+          {
+            id: EventId.make("question"),
+            type: "runtime-request.updated",
+            threadId,
+            occurredAt: now,
+            payload: {
+              id: requestId,
+              nodeId: started[0]!.rootNodeId,
+              providerTurnId: null,
+              nativeRequestRef: null,
+              kind: "command",
+              status: "pending",
+              responseCapability: { type: "live", providerSessionId: session.id },
+              createdAt: now,
+              resolvedAt: null,
+            },
+          },
+        ],
+      });
+      yield* orchestrator.dispatch({
+        type: "thread.runtime-mode.set",
+        commandId: CommandId.make("lower"),
+        threadId,
+        runtimeMode: "approval-required",
+      });
+      const respond = {
+        type: "runtime-request.respond",
+        commandId: CommandId.make("respond"),
+        threadId,
+        requestId,
+        decision: "accept",
+      } as const;
+      const refused = yield* orchestrator
+        .dispatch(respond)
+        .pipe(Effect.provideService(DispatchModeLimit, supervised), Effect.flip);
+      assert.ok(refused._tag === "OrchestratorThreadAboveModeLimitError");
+      assert.equal(refused.runtimeMode, "full-access");
+
+      yield* orchestrator.dispatch(respond);
+      assert.equal(
+        (yield* orchestrator.getThreadProjection(threadId)).runtimeRequests[0]?.status,
+        "resolved",
+      );
     }).pipe(Effect.provide(layer));
   }).pipe(Effect.scoped),
 );

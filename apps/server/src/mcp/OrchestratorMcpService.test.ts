@@ -3026,6 +3026,81 @@ describe("OrchestratorMcpService provider resolution", () => {
       }),
     );
 
+    it.effect(
+      "refuses to replay a creation over a task whose thread now runs above the caller",
+      () =>
+        Effect.gen(function* () {
+          const rows = yield* Ref.make<ReadonlyArray<ScheduledTask>>([]);
+          const upserted = yield* Ref.make(0);
+          const bound = task({ threadId: boundThreadId });
+          const mcp = yield* OrchestratorMcpService.OrchestratorMcpService.pipe(
+            Effect.provide(
+              OrchestratorMcpService.layer.pipe(
+                Layer.provideMerge(
+                  Layer.mergeAll(
+                    Layer.mock(ThreadLaunchService.ThreadLaunchService)({}),
+                    Layer.mock(GitVcsDriver.GitVcsDriver)({
+                      resolvePrimaryRemoteName: () => Effect.succeed("origin"),
+                      resolveDefaultBranchName: () => Effect.succeed("main"),
+                      resolveCommit: () => Effect.succeed({ commitSha: "abc" }),
+                    }),
+                    Layer.mock(ThreadManagementService.ThreadManagementService)({
+                      getThreadShell: () =>
+                        Effect.succeed(
+                          liveThreadShell(boundThreadId, { runtimeMode: "full-access" }),
+                        ),
+                    }),
+                    Layer.mock(ProjectService.ProjectService)({
+                      getById: () =>
+                        Effect.succeedSome({
+                          id: projectId,
+                          title: "Project",
+                          workspaceRoot: "/project",
+                          defaultModelSelection: bound.modelSelection,
+                          scripts: [],
+                          createdAt: bound.createdAt,
+                          updatedAt: bound.updatedAt,
+                          deletedAt: null,
+                        }),
+                    }),
+                    Layer.mock(ScheduledTaskService.ScheduledTaskService)({
+                      list: () => Effect.map(Ref.get(rows), (tasks) => ({ tasks })),
+                      upsert: (input) =>
+                        Effect.gen(function* () {
+                          const id = ScheduledTaskService.scheduledTaskIdForCommand(
+                            input.commandId!,
+                          );
+                          const created = { ...bound, id, threadId: null };
+                          yield* Ref.set(rows, [{ ...bound, id }]);
+                          yield* Ref.update(upserted, (count) => count + 1);
+                          return { task: created };
+                        }),
+                    }),
+                    ServerSettings.layerTest(),
+                    NodeCrypto.layer,
+                    Layer.mock(ProviderRegistry.ProviderRegistry)({}),
+                    Layer.mock(ProviderAdapterRegistry.ProviderAdapterRegistryV2)({}),
+                    Layer.mock(SecretRequests.SecretRequests)({}),
+                  ),
+                ),
+              ),
+            ),
+          );
+          const create = (prompt: string) =>
+            mcp.scheduleTask(supervisedClient, {
+              projectId,
+              prompt,
+              schedule: { type: "webhook" },
+              freshSession: true,
+              clientRequestId: "nightly",
+            });
+          yield* create("Check the build");
+          const error = yield* create("Something else").pipe(Effect.flip);
+          assert.equal(error.code, "runtime_mode_escalation_denied");
+          assert.equal(yield* Ref.get(upserted), 1);
+        }),
+    );
+
     it.effect("reports a saved task even when its bound thread cannot be read", () =>
       Effect.gen(function* () {
         const upserted = yield* Ref.make(0);

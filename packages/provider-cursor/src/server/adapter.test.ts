@@ -2761,6 +2761,19 @@ describe("CursorAdapterV2", () => {
       platform: "linux",
     });
     assert.deepEqual(options.mcpServers, cursorMcpServers(mcpSession));
+    assert.isTrue(options.local?.settingSources?.includes("project"));
+    const limited = makeCursorAgentOptions({
+      modelSelection: { instanceId: ProviderInstanceId.make("cursor"), model: "composer-2.5" },
+      runtimePolicy: {
+        runtimeMode: "approval-required",
+        interactionMode: "default",
+        cwd: "/workspace",
+      },
+      threadId,
+      mcpSession,
+      platform: "linux",
+    });
+    assert.isFalse(limited.local?.settingSources?.includes("project"));
 
     const logged = JSON.stringify(CursorAgentSdk.loggedCursorAgentOptions(options));
     assert.notInclude(logged, "secret-cursor-api-key");
