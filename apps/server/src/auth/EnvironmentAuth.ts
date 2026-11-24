@@ -308,6 +308,9 @@ export class EnvironmentAuth extends Context.Service<
     readonly authenticateMcpClient: (
       request: HttpServerRequest.HttpServerRequest,
     ) => Effect.Effect<McpClientSession, ServerAuthCredentialError | ServerAuthInternalError>;
+    readonly revokeMcpClientToken: (
+      token: string,
+    ) => Effect.Effect<boolean, ServerAuthInternalError>;
     readonly issueMcpClientSession: (input: {
       readonly label: string;
       readonly access: AuthMcpClientAccess;
@@ -830,6 +833,24 @@ export const make = Effect.gen(function* () {
     );
   };
 
+  const revokeMcpClientToken: EnvironmentAuth["Service"]["revokeMcpClientToken"] = Effect.fn(
+    "EnvironmentAuth.revokeMcpClientToken",
+  )(function* (token) {
+    const session = yield* sessions.verify(token).pipe(
+      Effect.asSome,
+      Effect.catchIf(SessionStore.isSessionCredentialInvalidError, () => Effect.succeedNone),
+      Effect.mapError((cause) => new ServerAuthSessionCredentialValidationError({ cause })),
+    );
+    if (
+      Option.isNone(session) ||
+      session.value.subject !== MCP_CLIENT_SUBJECT ||
+      session.value.method !== "bearer-access-token"
+    ) {
+      return false;
+    }
+    return yield* revokeSession(session.value.sessionId);
+  });
+
   const issueMcpClientSession: EnvironmentAuth["Service"]["issueMcpClientSession"] = (input) =>
     sessions
       .issue({
@@ -883,6 +904,7 @@ export const make = Effect.gen(function* () {
     authenticateWebSocketUpgrade,
     issueWebSocketTicket,
     authenticateMcpClient,
+    revokeMcpClientToken,
     issueMcpClientSession,
     authenticateBrowserSession,
   });

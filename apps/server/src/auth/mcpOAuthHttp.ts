@@ -7,6 +7,7 @@ import {
 } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
 import * as Digest from "effect/crypto/Digest";
+import * as Redacted from "effect/Redacted";
 import * as Result from "effect/Result";
 import * as Schema from "effect/Schema";
 import { HttpServerRequest, HttpServerResponse } from "effect/http";
@@ -168,6 +169,15 @@ export const layer = HttpApiBuilder.group(
         Effect.gen(function* () {
           yield* noStore;
           return yield* oauth.exchangeCode({ request, urls: yield* requestUrls, token: payload });
+        }),
+      )
+      .handle("revoke", ({ payload }) =>
+        Effect.gen(function* () {
+          yield* noStore;
+          if (payload.token === undefined) return;
+          yield* environmentAuth
+            .revokeMcpClientToken(Redacted.value(payload.token))
+            .pipe(Effect.orDie);
         }),
       );
   }),

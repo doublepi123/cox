@@ -243,6 +243,7 @@ it.live("derives discovery metadata from the origin the client reached", () =>
         authorization_endpoint: `${ORIGIN}/oauth/mcp/authorize`,
         token_endpoint: `${ORIGIN}/oauth/mcp/token`,
         registration_endpoint: `${ORIGIN}/oauth/mcp/register`,
+        revocation_endpoint: `${ORIGIN}/oauth/mcp/revoke`,
         code_challenge_methods_supported: ["S256"],
       });
     }),
@@ -379,6 +380,25 @@ it.live("signs in with explicit browser approval and issues a token only /mcp ac
         }),
       );
       expect(ticket.status).toBe(401);
+
+      const revoke = (value: string) => handler(at("/oauth/mcp/revoke", form({ token: value })));
+      const owner = yield* auth.issueSession();
+      expect((yield* revoke("not-a-token")).status).toBe(200);
+      expect((yield* revoke(owner.token)).status).toBe(200);
+      yield* auth.authenticateHttpRequest(
+        HttpServerRequest.fromWeb(
+          at("/api", { headers: { authorization: `Bearer ${owner.token}` } }),
+        ),
+      );
+      expect((yield* revoke(token.access_token)).status).toBe(200);
+      expect((yield* revoke(token.access_token)).status).toBe(200);
+      yield* auth
+        .authenticateMcpClient(
+          HttpServerRequest.fromWeb(
+            at("/mcp", { headers: { authorization: `Bearer ${token.access_token}` } }),
+          ),
+        )
+        .pipe(Effect.flip);
     }),
   ),
 );
