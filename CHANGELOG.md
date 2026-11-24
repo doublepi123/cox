@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+## 0.2.38 — 2026-11-25
+
+- Let CoCode on Android release its wake lock while the local Cox runtime is idle. Agent turns and terminal processes wait for Android to confirm the lock before starting. Enabled schedules with a pending run keep the device awake so they can run on time.
+
 ## 0.2.37 — 2026-11-25
 
 - Port the November 25 T3 batch: 86 of 122 upstream commits ported and 4
