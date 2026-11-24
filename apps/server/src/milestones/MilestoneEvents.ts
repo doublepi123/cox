@@ -38,6 +38,14 @@ const Parameters = Schema.Struct({
   ),
 });
 
+const WorkflowParameters = Schema.Struct({
+  workflows: Schema.optional(
+    Schema.Array(TrimmedNonEmptyString).annotate({ description: "Workflow names." }),
+  ),
+  workflowRunIds,
+  includeSubagentChildren,
+});
+
 const DESCRIPTIONS: Record<MilestoneEventValue["type"], string> = {
   "thread.run_settled": "A thread's turn ended: completed, failed, interrupted or cancelled.",
   "thread.needs_input": "An agent waits on a person to answer a question or approve an action.",

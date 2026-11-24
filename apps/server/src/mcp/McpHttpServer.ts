@@ -27,7 +27,6 @@ import {
 
 import packageJson from "../../package.json" with { type: "json" };
 import * as SessionStore from "../auth/SessionStore.ts";
-import * as MilestoneEvents from "../milestones/MilestoneEvents.ts";
 import * as ServerConfig from "../config.ts";
 import * as HtmlRender from "../htmlRender/HtmlRender.ts";
 import * as ThreadCommandExecutor from "../orchestration-v2/ThreadCommandExecutor.ts";
