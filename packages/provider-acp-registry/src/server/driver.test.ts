@@ -29,7 +29,7 @@ import {
   checkAcpRegistryProviderReadiness,
   checkAcpRegistryProviderStatus,
 } from "./driver.ts";
-import { normalizeAcpRegistryLiveConfiguration } from "./probe.ts";
+import { discoverAcpRegistryModelOptions, normalizeAcpRegistryLiveConfiguration } from "./probe.ts";
 
 const decodeSettings = Schema.decodeSync(AcpRegistrySettings);
 const identity = {
@@ -524,6 +524,83 @@ describe("acpRegistrySnapshotReadiness", () => {
         message: 'Sign in in provider settings using "Log in with Grok".',
       });
     },
+  );
+
+  it.effect("discovers reasoning options before a model is used and restores the probe model", () =>
+    Effect.gen(function* () {
+      const settings = decodeSettings({ agentId: "test-agent" });
+      let modelId = "default-model";
+      const visited: Array<string> = [];
+      const config = (current: string): ReadonlyArray<EffectAcpSchema.SessionConfigOption> => [
+        {
+          id: "model",
+          name: "Model",
+          category: "model",
+          type: "select",
+          currentValue: current,
+          options: [
+            { value: "default-model", name: "Default model" },
+            { value: "reasoning-model", name: "Reasoning model" },
+          ],
+        },
+        {
+          id: "effort",
+          name: "Effort",
+          category: "thought_level",
+          type: "select",
+          currentValue: "low",
+          options: (current === "reasoning-model" ? ["low", "high"] : ["low"]).map((value) => ({
+            value,
+            name: value,
+          })),
+        },
+      ];
+      const modelConfigurations = yield* discoverAcpRegistryModelOptions({
+        getConfigOptions: Effect.sync(() => config(modelId)),
+        getModeState: Effect.void,
+        setConfigOption: (_option, value) =>
+          Effect.sync(() => {
+            modelId = String(value);
+            visited.push(modelId);
+            return { configOptions: config(modelId) };
+          }),
+      });
+      expect(visited).toEqual(["reasoning-model", "default-model"]);
+      const original = normalizeAcpRegistryLiveConfiguration(config(modelId));
+      const snapshot = buildCheckedAcpRegistrySnapshot({
+        ...identity,
+        settings,
+        checkedAt: "2026-11-24T00:00:00Z",
+        inspection: {
+          status: "ready",
+          version: "1.0.0",
+          agentId: "test-agent",
+          distribution: "npx",
+        },
+        probe: {
+          probe: {
+            ...original,
+            ready: true,
+            instanceId: identity.instanceId,
+            icon: null,
+            authMethods: [],
+            sessionManagement: noSessionManagement,
+          },
+          slashCommands: [],
+          skills: [],
+          modelConfigurations,
+        },
+      });
+      expect(
+        snapshot.models.map((entry) => [
+          entry.slug,
+          entry.capabilities?.optionDescriptors?.find((option) => option.id === "effort"),
+        ]),
+      ).toMatchObject([
+        ["default-model", { options: [{ id: "low" }] }],
+        ["reasoning-model", { options: [{ id: "low" }, { id: "high" }] }],
+      ]);
+    }),
   );
 
   it.effect("runs the disposable probe only after local inspection is ready", () =>

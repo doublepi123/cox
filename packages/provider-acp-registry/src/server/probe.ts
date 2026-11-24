@@ -48,6 +48,10 @@ const MAX_COMMAND_LINE_LENGTH = 2_048;
 const PROBE_TIMEOUT_SECONDS = 60;
 const PROBE_TIMEOUT = `${PROBE_TIMEOUT_SECONDS} seconds`;
 const COMMAND_ADVERTISEMENT_GRACE = "500 millis";
+const MODEL_DISCOVERY_BATCH_SIZE = 24;
+const MODEL_DISCOVERY_BATCH_TIMEOUT = "30 seconds";
+const MODEL_RESTORE_TIMEOUT = "5 seconds";
+
 const encodeJson = Schema.encodeEffect(Schema.fromJsonString(Schema.Unknown));
 
 const boundedText = (value: string, maximumLength: number): string =>
@@ -316,6 +320,7 @@ export interface AcpRegistryConfigurationProbeInput {
 type AcpRegistryManagementInput = AcpRegistryConfigurationProbeInput;
 
 export interface AcpRegistryConfigurationProbeResult {
+  readonly modelConfigurations?: ReadonlyArray<AcpRegistryLiveConfiguration>;
   readonly probe: AcpRegistryProbeResult;
   readonly slashCommands: ReadonlyArray<ServerProviderSlashCommand>;
   readonly skills: ReadonlyArray<ServerProviderSkill>;
@@ -324,6 +329,51 @@ export interface AcpRegistryConfigurationProbeResult {
 export type AcpRegistryConfigurationProbe<Requirements = never> = (
   input: AcpRegistryConfigurationProbeInput,
 ) => Effect.Effect<AcpRegistryConfigurationProbeResult, AcpRegistryOperationError, Requirements>;
+
+export const discoverAcpRegistryModelOptions = Effect.fn("AcpRegistryProbe.discoverModelOptions")(
+  function* (
+    runtime: Pick<
+      AcpSessionRuntime.AcpSessionRuntime["Service"],
+      "getConfigOptions" | "getModeState" | "setConfigOption"
+    >,
+  ) {
+    const options = yield* runtime.getConfigOptions;
+    const model = findModelConfigOption(options);
+    if (model === undefined) return [];
+    const targets = [
+      ...new Set(flattenSelectChoices(model.options).map(({ value }) => value)),
+    ].filter((id) => id !== model.currentValue);
+    const learned: Array<AcpRegistryLiveConfiguration> = [];
+    if (targets.length === 0) return learned;
+    yield* Effect.gen(function* () {
+      for (let start = 0; start < targets.length; start += MODEL_DISCOVERY_BATCH_SIZE) {
+        const finished = yield* Effect.forEach(
+          targets.slice(start, start + MODEL_DISCOVERY_BATCH_SIZE),
+          (id) =>
+            runtime.setConfigOption(model.id, id).pipe(
+              Effect.andThen(Effect.all([runtime.getConfigOptions, runtime.getModeState])),
+              Effect.tap(([options, modeState]) =>
+                Effect.sync(() => {
+                  const config = normalizeAcpRegistryLiveConfiguration(options, modeState);
+                  if (config.currentModelId === id) learned.push(config);
+                }),
+              ),
+              Effect.ignore,
+            ),
+          { discard: true },
+        ).pipe(Effect.timeoutOption(MODEL_DISCOVERY_BATCH_TIMEOUT));
+        if (Option.isNone(finished)) return;
+      }
+    }).pipe(
+      Effect.ensuring(
+        runtime
+          .setConfigOption(model.id, model.currentValue, { resendCurrentValue: true })
+          .pipe(Effect.timeoutOption(MODEL_RESTORE_TIMEOUT), Effect.ignore),
+      ),
+    );
+    return learned;
+  },
+);
 
 const isolateDeepSeekProbeHistory = Effect.fn("AcpRegistryProbe.isolateDeepSeekProbeHistory")(
   function* (commandPath: string, spawn: AcpSessionRuntime.AcpSpawnInput) {
@@ -373,7 +423,7 @@ export const probeAcpRegistryConfiguration = Effect.fn("AcpRegistryProbe.probeCo
     const crypto = yield* SecureRandom.SecureRandom;
     const pty = yield* Effect.serviceOption(PtyAdapter.PtyAdapter);
 
-    const result = yield* Effect.gen(function* () {
+    const openSession = Effect.gen(function* () {
       // Resolution may install packages; bound it by the probe deadline.
       const resolved = yield* catalog
         .resolve(input.settings, input.cwd, input.environment)
@@ -483,9 +533,8 @@ export const probeAcpRegistryConfiguration = Effect.fn("AcpRegistryProbe.probeCo
       yield* Deferred.await(commandsAdvertised).pipe(
         Effect.timeoutOption(COMMAND_ADVERTISEMENT_GRACE),
       );
-      return { resolved, started, commands: yield* Ref.get(commandsRef) };
+      return { resolved, started, runtime, commands: yield* Ref.get(commandsRef) };
     }).pipe(
-      Effect.scoped,
       Effect.timeoutOrElse({
         duration: PROBE_TIMEOUT,
         orElse: () =>
@@ -500,19 +549,24 @@ export const probeAcpRegistryConfiguration = Effect.fn("AcpRegistryProbe.probeCo
         error._tag === "AcpRegistryOperationError" ? error : acpRegistryProbeFailure(error),
       ),
     );
-    return {
-      probe: acpRegistryProbeResult(
-        input.instanceId,
-        result.started,
-        result.resolved.agent?.icon ?? null,
-        {
-          command: result.resolved.spawn.command,
-          args: result.resolved.spawn.args,
-        },
-      ),
-      slashCommands: result.commands.slashCommands,
-      skills: result.commands.skills,
-    };
+    return yield* Effect.gen(function* () {
+      const result = yield* openSession;
+      const modelConfigurations = yield* discoverAcpRegistryModelOptions(result.runtime);
+      return {
+        probe: acpRegistryProbeResult(
+          input.instanceId,
+          result.started,
+          result.resolved.agent?.icon ?? null,
+          {
+            command: result.resolved.spawn.command,
+            args: result.resolved.spawn.args,
+          },
+        ),
+        slashCommands: result.commands.slashCommands,
+        skills: result.commands.skills,
+        modelConfigurations,
+      };
+    }).pipe(Effect.scoped);
   },
 );
 

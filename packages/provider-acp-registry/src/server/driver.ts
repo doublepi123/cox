@@ -215,6 +215,29 @@ function baseSnapshot(
       ? null
       : (resolveOfficialAcpRegistryIconUrl(input.probe?.probe.icon) ??
         officialAcpRegistryIconUrlForAgentId(input.settings.agentId));
+  const ownOptions = new Map(
+    input.probe?.modelConfigurations?.flatMap((configuration) => {
+      if (configuration.currentModelId === null) return [];
+      const modelIds = new Set(configuration.modelOptionIds);
+      return [
+        [
+          configuration.currentModelId,
+          configuration.configOptions.filter((option) => modelIds.has(option.id)),
+        ] as const,
+      ];
+    }),
+  );
+  const models = modelsFromDiscovery(input.probe?.probe, input.settings.customModels).map(
+    (model) => {
+      const options = ownOptions.get(model.slug);
+      if (model.isCustom || model.isDefault || !options?.length) return model;
+      const shared = model.capabilities?.optionDescriptors ?? [];
+      return {
+        ...model,
+        capabilities: createModelCapabilities({ optionDescriptors: [...shared, ...options] }),
+      };
+    },
+  );
   return {
     instanceId: input.instanceId,
     driver: DRIVER_KIND,
@@ -241,7 +264,7 @@ function baseSnapshot(
             : input.settings.agentId.length > 0),
     },
     ...(input.message ? { message: input.message } : {}),
-    models: modelsFromDiscovery(input.probe?.probe, input.settings.customModels),
+    models,
     ...(input.probe === undefined
       ? {}
       : {
