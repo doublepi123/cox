@@ -1835,6 +1835,7 @@ export const layer: Layer.Layer<
   Layer.provide(
     Layer.succeed(ThreadWorktreeRestore, {
       restore: Effect.fn("ThreadWorktreeRestore.restore")(() => Effect.void),
+      takeRecreated: Effect.fn("ThreadWorktreeRestore.takeRecreated")(() => Effect.undefined),
     }),
   ),
   Layer.provide(ThreadCommandExecutor.layer),

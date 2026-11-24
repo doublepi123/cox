@@ -1,4 +1,4 @@
-import type { OrchestrationV2AppThread } from "@t3tools/contracts";
+import type { OrchestrationV2AppThread, ThreadId } from "@t3tools/contracts";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
@@ -110,9 +110,13 @@ export const makeRestoreMissingWorktree = Effect.fn("makeRestoreMissingWorktree"
   ) {
     const { worktreePath, branch } = thread;
     if (worktreePath === null || branch === null) return;
-    const taskFolder = yield* taskFolders.find(worktreePath);
+    const taskFolder = yield* taskFolders
+      .find(worktreePath)
+      .pipe(Effect.mapError((cause) => new WorktreeRecreateError({ worktreePath, branch, cause })));
     if (taskFolder !== null) {
-      return yield* taskFolders
+      const existed = yield* fileSystem.exists(worktreePath).pipe(Effect.orElseSucceed(() => true));
+      let recreated = false;
+      yield* taskFolders
         .restore({
           taskFolder,
           branch,
@@ -121,11 +125,18 @@ export const makeRestoreMissingWorktree = Effect.fn("makeRestoreMissingWorktree"
               cwd: checkout.repositoryPath,
               worktreePath: checkout.worktreePath,
               branch,
-            }),
+            }).pipe(
+              Effect.tap(() =>
+                Effect.sync(() => {
+                  recreated = true;
+                }),
+              ),
+            ),
         })
         .pipe(
           Effect.mapError((cause) => new WorktreeRecreateError({ worktreePath, branch, cause })),
         );
+      return recreated || !existed ? worktreePath : undefined;
     }
     const exists = yield* fileSystem.exists(worktreePath).pipe(Effect.orElseSucceed(() => true));
     if (exists || !(yield* isManagedWorktreePath(worktreePath))) return;
@@ -138,13 +149,17 @@ export const makeRestoreMissingWorktree = Effect.fn("makeRestoreMissingWorktree"
           : new WorktreeRecreateError({ worktreePath, branch, cause }),
       ),
     );
+    return worktreePath;
   });
 });
 
 export class ThreadWorktreeRestore extends Context.Service<
   ThreadWorktreeRestore,
   {
-    readonly restore: Effect.Success<ReturnType<typeof makeRestoreMissingWorktree>>;
+    readonly restore: (
+      thread: Pick<OrchestrationV2AppThread, "id" | "projectId" | "worktreePath" | "branch">,
+    ) => Effect.Effect<void, WorktreeRecreateError | WorktreeRecreateNoBaseError>;
+    readonly takeRecreated: (threadId: ThreadId) => Effect.Effect<string | undefined>;
   }
 >()("cox/workspace/restoreMissingWorktree/ThreadWorktreeRestore") {}
 
@@ -159,12 +174,22 @@ export const layer = Layer.effect(
         Effect.orElseSucceed(() => undefined),
       ),
     );
+    const recreated = new Map<ThreadId, string>();
     return {
-      restore: Effect.fn("ThreadWorktreeRestore.restore")(
-        (thread: Parameters<typeof restore>[0]) =>
-          thread.worktreePath === null
-            ? Effect.void
-            : withWorkspaceLease(path.resolve(thread.worktreePath), restore(thread)),
+      restore: Effect.fn("ThreadWorktreeRestore.restore")(function* (thread) {
+        if (thread.worktreePath === null) return;
+        const result = yield* withWorkspaceLease(
+          path.resolve(thread.worktreePath),
+          restore(thread),
+        );
+        if (result !== undefined) recreated.set(thread.id, result);
+      }),
+      takeRecreated: Effect.fn("ThreadWorktreeRestore.takeRecreated")((threadId) =>
+        Effect.sync(() => {
+          const result = recreated.get(threadId);
+          recreated.delete(threadId);
+          return result;
+        }),
       ),
     };
   }),

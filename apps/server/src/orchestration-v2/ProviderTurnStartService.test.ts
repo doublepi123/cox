@@ -36,11 +36,13 @@ import * as PlatformError from "effect/PlatformError";
 import * as Schema from "effect/Schema";
 
 import * as ServerConfig from "../config.ts";
+import { ThreadWorktreeRestore } from "../workspace/restoreMissingWorktree.ts";
 import { withWorkspaceLease } from "../workspace/workspaceLease.ts";
 import * as GitWorkflow from "../git/GitWorkflowService.ts";
 import * as GitVcsDriver from "../vcs/GitVcsDriver.ts";
 import { layerNoTaskFolders, layerRealGit } from "./ProviderTurnStartService.testkit.ts";
 import * as ProjectService from "../project/ProjectService.ts";
+import * as ProjectSetupScriptRunner from "../project/ProjectSetupScriptRunner.ts";
 import * as ProviderAuthService from "../provider/ProviderAuthService.ts";
 import * as ServerSettings from "../serverSettings.ts";
 import * as ContextHandoffService from "./ContextHandoffService.ts";
@@ -138,7 +140,10 @@ function startWithMissingWorktree(
         Layer.mock(EventSink.EventSinkV2)({ writeIfRunCurrent }),
         IdAllocator.layer,
         Layer.succeed(FileSystem.FileSystem, {
-          exists: () => Effect.succeed(false),
+          exists: (target: string) =>
+            Effect.succeed(
+              normalize(target) === normalize(worktreePath) && createWorktree.mock.calls.length > 0,
+            ),
           realPath: (target: string) =>
             normalize(target) in realPaths
               ? Effect.succeed(realPaths[normalize(target)])
@@ -153,6 +158,10 @@ function startWithMissingWorktree(
         } as never),
         layerWorktreeLocation(),
         layerNoTaskFolders,
+        Layer.mock(ThreadWorktreeRestore)({ takeRecreated: () => Effect.undefined }),
+        Layer.mock(ProjectSetupScriptRunner.ProjectSetupScriptRunner)({
+          runForThread: () => Effect.succeed({ status: "no-script" }),
+        }),
         Layer.mock(GitWorkflow.GitWorkflowService)({
           pruneWorktrees,
           createWorktree,
@@ -276,6 +285,8 @@ function makeLocalCommandHarness(input: {
   readonly workspaceRoot?: string;
   readonly gitWorkflow?: GitWorkflow.GitWorkflowService["Service"];
   readonly fileSystem?: FileSystem.FileSystem;
+  readonly runSetup?: ProjectSetupScriptRunner.ProjectSetupScriptRunner["Service"]["runForThread"];
+  readonly recreatedBeforeDispatch?: boolean;
   readonly previousNativeSession?: boolean;
   readonly previousMessages?: ReadonlyArray<string>;
   readonly logoutFailure?: string;
@@ -944,6 +955,7 @@ function makeLocalCommandHarness(input: {
       ),
     }),
   );
+  const recreatedBeforeDispatch = { pending: input.recreatedBeforeDispatch === true };
   const layer = ProviderTurnStart.layer.pipe(
     Layer.provide(
       Layer.mergeAll(
@@ -975,6 +987,17 @@ function makeLocalCommandHarness(input: {
         IdAllocator.layer,
         layerWorktreeLocation(input.worktreesDir),
         layerNoTaskFolders,
+        Layer.mock(ProjectSetupScriptRunner.ProjectSetupScriptRunner)({
+          runForThread: input.runSetup ?? (() => Effect.succeed({ status: "no-script" })),
+        }),
+        Layer.mock(ThreadWorktreeRestore)({
+          takeRecreated: () =>
+            Effect.sync(() => {
+              if (!recreatedBeforeDispatch.pending) return undefined;
+              recreatedBeforeDispatch.pending = false;
+              return input.worktreePath ?? undefined;
+            }),
+        }),
         input.fileSystem === undefined
           ? FileSystem.layerNoop({ exists: () => Effect.succeed(true) })
           : Layer.succeed(FileSystem.FileSystem, input.fileSystem),
@@ -1208,6 +1231,96 @@ effectIt.effect(
         expect(harness.projection().runs.at(-1)?.status).toBe("running");
       }
     }).pipe(Effect.scoped, Effect.provide(layerRealGit)),
+);
+
+effectIt.effect.each([
+  { async: false, exitCode: 0 },
+  { async: false, exitCode: 1 },
+  { async: true, exitCode: 0 },
+])("restored setup respects async=$async and exitCode=$exitCode", (input) =>
+  Effect.gen(function* () {
+    const fileSystem = yield* FileSystem.FileSystem;
+    const path = yield* Path.Path;
+    const worktreesDir = yield* fileSystem.makeTempDirectoryScoped({ prefix: "t3-restore-setup-" });
+    const worktreePath = path.join(worktreesDir, "project", "restore");
+    const setupStarted = yield* Deferred.make<void>();
+    const setupDone = yield* Deferred.make<ProjectSetupScriptRunner.ProjectSetupScriptCompletion>();
+    const completionObserved = yield* Deferred.make<void>();
+    const harness = makeLocalCommandHarness({
+      text: "Continue",
+      worktreesDir,
+      worktreePath,
+      fileSystem,
+      failReadsAfterRunning: true,
+      runSetup: () =>
+        withWorkspaceLease(worktreePath, Deferred.succeed(setupStarted, undefined)).pipe(
+          Effect.as({
+            status: "started",
+            scriptId: "setup",
+            scriptName: "Setup",
+            scriptCommand: "setup",
+            terminalId: "setup-test",
+            cwd: worktreePath,
+            async: input.async,
+            completion: Deferred.await(setupDone).pipe(
+              Effect.tap(() => Deferred.succeed(completionObserved, undefined)),
+            ),
+          }),
+        ),
+    });
+    harness.createWorktree.mockImplementation(() =>
+      fileSystem
+        .makeDirectory(path.join(worktreePath, ".git"), { recursive: true })
+        .pipe(Effect.as({} as never), Effect.orDie),
+    );
+
+    const startup = yield* harness.start.pipe(Effect.forkChild({ startImmediately: true }));
+    yield* Deferred.await(setupStarted);
+    if (input.async) yield* Fiber.join(startup);
+    else expect(harness.open).not.toHaveBeenCalled();
+    yield* Deferred.succeed(setupDone, { exitCode: input.exitCode, durationMs: 0 });
+    yield* Deferred.await(completionObserved);
+    yield* Fiber.join(startup);
+
+    const failed = !input.async && input.exitCode !== 0;
+    expect(harness.projection().runs.at(-1)?.status).toBe(failed ? "failed" : "running");
+    expect(harness.open).toHaveBeenCalledTimes(failed ? 0 : 1);
+    if (failed) {
+      expect(harness.projection().turnItems).toMatchObject([
+        {
+          type: "error",
+          title: "Couldn't set up restored workspace",
+          failure: {
+            message: `Setup script exited with ${input.exitCode} in '${worktreePath}'.`,
+          },
+        },
+      ]);
+    }
+  }).pipe(Effect.scoped, Effect.provide(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))),
+);
+
+effectIt.effect("runs setup for a worktree a send recreated before dispatch", () =>
+  Effect.gen(function* () {
+    const fileSystem = yield* FileSystem.FileSystem;
+    const path = yield* Path.Path;
+    const worktreesDir = yield* fileSystem.makeTempDirectoryScoped({ prefix: "t3-sent-setup-" });
+    const worktreePath = path.join(worktreesDir, "project", "restore");
+    yield* fileSystem.makeDirectory(path.join(worktreePath, ".git"), { recursive: true });
+    const runSetup = vi.fn(() => Effect.succeed({ status: "no-script" as const }));
+    const harness = makeLocalCommandHarness({
+      text: "Continue",
+      worktreesDir,
+      worktreePath,
+      fileSystem,
+      failReadsAfterRunning: true,
+      recreatedBeforeDispatch: true,
+      runSetup,
+    });
+    yield* harness.start;
+    expect(harness.createWorktree).not.toHaveBeenCalled();
+    expect(runSetup).toHaveBeenCalledWith(expect.objectContaining({ worktreePath }));
+    expect(harness.open).toHaveBeenCalledTimes(1);
+  }).pipe(Effect.scoped, Effect.provide(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))),
 );
 
 effectIt.effect(
@@ -1541,7 +1654,7 @@ effectIt.effect.each(["cleanup-first", "startup-first"])(
       const path = yield* Path.Path;
       const workspaceRoot = yield* fileSystem.makeTempDirectoryScoped({ prefix: "t3-start-" });
       const worktreePath = path.join(workspaceRoot, "project", "worktree");
-      yield* fileSystem.makeDirectory(worktreePath, { recursive: true });
+      yield* fileSystem.makeDirectory(path.join(worktreePath, ".git"), { recursive: true });
       const release = yield* Deferred.make<void>();
       const openEntered = yield* Deferred.make<void>();
       const harness = makeLocalCommandHarness({

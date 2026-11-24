@@ -206,7 +206,10 @@ it.effect("dispatch rejects a message when its managed worktree cannot be recrea
       branch: "feature",
     });
   });
-  const restoration = Layer.succeed(ThreadWorktreeRestore, { restore });
+  const restoration = Layer.succeed(ThreadWorktreeRestore, {
+    restore,
+    takeRecreated: () => Effect.undefined,
+  });
   const layer = ThreadManagementService.layerWithLegacyImporter.pipe(
     Layer.provide(restoration),
     Layer.provide(

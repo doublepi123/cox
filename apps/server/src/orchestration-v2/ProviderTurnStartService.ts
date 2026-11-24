@@ -34,9 +34,13 @@ import * as ServerConfig from "../config.ts";
 import { withWorkspaceLease } from "../workspace/workspaceLease.ts";
 import * as GitWorkflowService from "../git/GitWorkflowService.ts";
 import * as ProjectService from "../project/ProjectService.ts";
+import * as ProjectSetupScriptRunner from "../project/ProjectSetupScriptRunner.ts";
 import * as ProviderAuthService from "../provider/ProviderAuthService.ts";
 import * as ServerSettings from "../serverSettings.ts";
-import { makeRestoreMissingWorktree } from "../workspace/restoreMissingWorktree.ts";
+import {
+  makeRestoreMissingWorktree,
+  ThreadWorktreeRestore,
+} from "../workspace/restoreMissingWorktree.ts";
 import type * as TaskFolders from "../workspace/TaskFolders.ts";
 import * as EventSink from "./EventSink.ts";
 import * as ContextHandoffService from "./ContextHandoffService.ts";
@@ -82,6 +86,15 @@ export class ProviderTurnStartError extends Schema.TaggedError<ProviderTurnStart
     cause: Schema.optional(Schema.Defect()),
   },
 ) {}
+
+class WorktreeSetupScriptFailedError extends Schema.TaggedError<WorktreeSetupScriptFailedError>()(
+  "WorktreeSetupScriptFailedError",
+  { worktreePath: Schema.String, exitCode: Schema.NullOr(Schema.Number) },
+) {
+  override get message(): string {
+    return `Setup script exited with ${this.exitCode ?? "no exit code"} in '${this.worktreePath}'.`;
+  }
+}
 
 /** Runs that ended without completing: their provider turn may still project as running. */
 const NON_COMPLETING_TERMINAL_RUN_STATUSES: ReadonlySet<OrchestrationV2Run["status"]> = new Set([
@@ -144,12 +157,14 @@ export const layer: Layer.Layer<
   | ServerSettings.ServerSettingsService
   | GitWorkflowService.GitWorkflowService
   | ProjectService.ProjectService
+  | ProjectSetupScriptRunner.ProjectSetupScriptRunner
   | ProviderAuthService.ProviderAuthService
   | ProjectionStore.ProjectionStoreV2
   | ProviderSessionManager.ProviderSessionManagerV2
   | RunExecutionService.RunExecutionServiceV2
   | RuntimePolicy.RuntimePolicyV2
   | TaskFolders.TaskFolders
+  | ThreadWorktreeRestore
 > = Layer.effect(
   ProviderTurnStartServiceV2,
   Effect.gen(function* () {
@@ -163,6 +178,8 @@ export const layer: Layer.Layer<
     const providerSessions = yield* ProviderSessionManager.ProviderSessionManagerV2;
     const runExecution = yield* RunExecutionService.RunExecutionServiceV2;
     const runtimePolicy = yield* RuntimePolicy.RuntimePolicyV2;
+    const setupScripts = yield* ProjectSetupScriptRunner.ProjectSetupScriptRunner;
+    const worktreeRestore = yield* ThreadWorktreeRestore;
     const restoreMissingWorktree = yield* makeRestoreMissingWorktree((projectId) =>
       projects.getById(projectId).pipe(
         Effect.map((row) => Option.getOrUndefined(row)?.workspaceRoot),
@@ -578,6 +595,48 @@ export const layer: Layer.Layer<
           message: recreateResult.failure.message,
         });
         return;
+      }
+      const recreatedBeforeDispatch = yield* worktreeRestore.takeRecreated(projection.thread.id);
+      const recreated =
+        recreateResult.success ??
+        (recreatedBeforeDispatch === projection.thread.worktreePath
+          ? recreatedBeforeDispatch
+          : undefined);
+      if (recreated !== undefined) {
+        const worktreePath = recreated;
+        // Opening the setup terminal takes its own workspace lease.
+        return {
+          worktreeSetup: Effect.gen(function* () {
+            const setupResult = yield* Effect.result(
+              Effect.gen(function* () {
+                const setup = yield* setupScripts.runForThread({
+                  threadId: projection.thread.id,
+                  projectId: projection.thread.projectId,
+                  worktreePath,
+                  observeCompletion: {},
+                });
+                if (setup.status !== "started" || !setup.completion) return;
+                if (setup.async === true) {
+                  yield* setup.completion.pipe(Effect.forkDetach);
+                } else {
+                  const { exitCode } = yield* setup.completion;
+                  if (exitCode !== 0)
+                    return yield* new WorktreeSetupScriptFailedError({ worktreePath, exitCode });
+                }
+              }),
+            );
+            if (setupResult._tag === "Failure") {
+              yield* settleStartFailure({
+                signal: "worktree-setup-failure",
+                title: "Couldn't set up restored workspace",
+                error: setupResult.failure,
+                message: setupResult.failure.message,
+              });
+              return;
+            }
+            yield* startWithWorkspaceLease(input);
+          }),
+        };
       }
       const selectInheritedBackgroundItems = (
         current: ProjectionStore.ProjectionRuntimeRecoveryState,
@@ -1799,26 +1858,29 @@ export const layer: Layer.Layer<
       });
     });
 
-    return ProviderTurnStartServiceV2.of({
-      start: Effect.fn("ProviderTurnStartService.start")(
-        function* (input) {
-          // Storage cleanup removes worktrees under the same lease. Only startup
-          // holds it; the provider turn runs after it is released.
-          const { thread } = yield* projectionStore.getThreadRecords(input.threadId, []);
-          const providerTurn = yield* thread.worktreePath === null
-            ? start(input)
-            : withWorkspaceLease(path.resolve(thread.worktreePath), start(input));
-          if (providerTurn !== undefined) yield* providerTurn;
-        },
-        (effect, input) =>
-          effect.pipe(
-            Effect.mapError((cause) =>
-              isProviderTurnStartError(cause)
-                ? cause
-                : new ProviderTurnStartError({ runId: input.runId, cause }),
-            ),
+    const startWithWorkspaceLease: ProviderTurnStartServiceV2Shape["start"] = Effect.fn(
+      "ProviderTurnStartService.start",
+    )(
+      function* (input) {
+        // Storage cleanup removes worktrees under the same lease. Only startup
+        // holds it; the provider turn runs after it is released.
+        const { thread } = yield* projectionStore.getThreadRecords(input.threadId, []);
+        const providerTurn = yield* thread.worktreePath === null
+          ? start(input)
+          : withWorkspaceLease(path.resolve(thread.worktreePath), start(input));
+        if (providerTurn !== undefined) {
+          yield* "worktreeSetup" in providerTurn ? providerTurn.worktreeSetup : providerTurn;
+        }
+      },
+      (effect, input) =>
+        effect.pipe(
+          Effect.mapError((cause) =>
+            isProviderTurnStartError(cause)
+              ? cause
+              : new ProviderTurnStartError({ runId: input.runId, cause }),
           ),
-      ),
-    });
+        ),
+    );
+    return ProviderTurnStartServiceV2.of({ start: startWithWorkspaceLease });
   }),
 );

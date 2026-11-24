@@ -176,6 +176,13 @@ const layerRunExecutionServiceProvided = RunExecutionService.layer.pipe(
   ),
 );
 
+export const layerProjectSetupScriptRunner = ProjectSetupScriptRunner.layer.pipe(
+  Layer.provide(layerProjectService),
+  // Whether a thread came from a linked environment, which skips setup.
+  Layer.provide(ProjectionStore.layer),
+);
+const layerWorktreeRestore = WorktreeRestore.layer.pipe(Layer.provide(ProjectStore.layer));
+
 const layerProviderTurnStartServiceProvided = ProviderTurnStartService.layer.pipe(
   Layer.provide(
     Layer.mergeAll(
@@ -185,6 +192,7 @@ const layerProviderTurnStartServiceProvided = ProviderTurnStartService.layer.pip
       ProjectionStore.layer,
       layerProviderSessionManagerProvided,
       layerProviderAuthServiceProvided,
+      layerWorktreeRestore,
       layerRunExecutionServiceProvided,
       layerRuntimePolicyProvided,
     ),
@@ -269,16 +277,11 @@ const layerThreadManagementProvided = ThreadManagementService.layerWithLegacyImp
     Layer.mergeAll(
       layerOrchestratorProvided,
       layerLegacyV1ThreadImporterProvided,
-      WorktreeRestore.layer.pipe(Layer.provide(ProjectStore.layer)),
+      layerWorktreeRestore,
       layerCommandReceiptStoreProvided,
       layerProviderSessionManagerProvided,
     ),
   ),
-);
-export const layerProjectSetupScriptRunner = ProjectSetupScriptRunner.layer.pipe(
-  Layer.provide(layerProjectService),
-  // Whether a thread came from a linked environment, which skips setup.
-  Layer.provide(ProjectionStore.layer),
 );
 const layerManagedProjectFoldersProvided = ManagedProjectFolders.layer.pipe(
   Layer.provide(layerProjectService),
@@ -423,5 +426,6 @@ export const layerProduction = Layer.mergeAll(
 ).pipe(
   Layer.provide(ResourceCleanupService.layer.pipe(Layer.provide(layerScheduledTaskProvided))),
   Layer.provide(Scheduler.layer),
+  Layer.provide(layerProjectSetupScriptRunner),
   Layer.provideMerge(layerEventInfrastructure),
 );
