@@ -3602,6 +3602,166 @@ describe("ClaudeAdapterV2 background wake turns", () => {
     });
   const makeWakeHarness = makeWakeHarnessWithOptions();
 
+  describe("warm process after the session changed outside Cox", () => {
+    const firstReply = "00000000-0000-4000-8000-000000000c01";
+    const secondReply = "00000000-0000-4000-8000-000000000c02";
+    const terminalPrompt = "00000000-0000-4000-8000-000000000c03";
+    const terminalReply = "00000000-0000-4000-8000-000000000c04";
+    const line = (entry: object) =>
+      `${JSON.stringify({ isSidechain: false, sessionId: WAKE_NATIVE_SESSION, ...entry })}\n`;
+    const entry = (
+      type: "user" | "assistant",
+      uuid: string,
+      parentUuid: string | null,
+      content: unknown,
+      extra?: object,
+    ) => line({ type, uuid, parentUuid, message: { role: type, content }, ...extra });
+    const coxTurn = (promptUuid: string) =>
+      entry("user", promptUuid, null, "Request 1") +
+      entry("assistant", firstReply, promptUuid, [{ type: "text", text: "Working." }]) +
+      entry("assistant", secondReply, firstReply, [{ type: "text", text: "Done." }]);
+    const terminalExchange =
+      entry("user", terminalPrompt, secondReply, "Typed in the terminal") +
+      entry("assistant", terminalReply, terminalPrompt, [{ type: "text", text: "Answered." }]);
+
+    // Streams one Cox turn of two reply blocks, writes the transcript, then starts the next turn.
+    const nextTurnAfter = Effect.fnUntraced(function* (input: {
+      readonly transcript: ((promptUuid: string) => string) | null;
+      readonly backgroundShell?: boolean;
+      readonly pinnedHead?: string;
+    }) {
+      const fileSystem = yield* FileSystem.FileSystem;
+      const path = yield* Path.Path;
+      const configDir = yield* fileSystem.makeTempDirectoryScoped({ prefix: "cox-claude-stale-" });
+      const projectDir = path.join(configDir, "projects", "-workspace");
+      yield* fileSystem.makeDirectory(projectDir, { recursive: true });
+      const harness = yield* makeWakeHarnessWithOptions({
+        environment: { CLAUDE_CONFIG_DIR: configDir },
+        freshQueueOnReopen: true,
+      });
+      const providerThread =
+        input.pinnedHead === undefined
+          ? harness.providerThread
+          : {
+              ...harness.providerThread,
+              nativeConversationHeadRef: {
+                driver: ClaudeAdapterV2.CLAUDE_PROVIDER,
+                nativeId: input.pinnedHead,
+                strength: "weak" as const,
+              },
+            };
+      const now = yield* DateTime.now;
+      const turn = (ordinal: number) =>
+        makeClaudeTestTurnInput({
+          threadId: harness.threadId,
+          providerThread,
+          now,
+          attemptId: RunAttemptId.make(`attempt-stale-process:${ordinal}`),
+          text: `Request ${ordinal}`,
+          attachments: [],
+          providerTurnOrdinal: ordinal,
+        });
+      yield* harness.runtime.startTurn(turn(1));
+      if (input.backgroundShell === true) yield* harness.offerAndWait(wakeTaskStarted);
+      yield* harness.offerAndWait(makeAssistantTextFrame({ uuid: firstReply, text: "Working." }));
+      yield* harness.offerAndWait(makeAssistantTextFrame({ uuid: secondReply, text: "Done." }));
+      yield* harness.offerAndWait(turnOneResult);
+      assert.equal((yield* Queue.take(harness.terminalReceipts)).status, "completed");
+      if (input.transcript !== null) {
+        yield* fileSystem.writeFileString(
+          path.join(projectDir, `${WAKE_NATIVE_SESSION}.jsonl`),
+          input.transcript(harness.promptUuid(0)),
+        );
+      }
+      yield* harness.runtime.startTurn(turn(2));
+      return harness;
+    });
+    const layer = Layer.mergeAll(
+      IdAllocator.layer,
+      McpProviderSessions.layer,
+      NodeServices.layer,
+      NodeCrypto.layer,
+    );
+
+    it.effect.each([
+      {
+        name: "the session transcript gained messages outside Cox",
+        transcript: (promptUuid: string) => coxTurn(promptUuid) + terminalExchange,
+      },
+      {
+        // The terminal's rows alone are longer than the tail Cox reads first.
+        name: "a long terminal exchange followed its last message",
+        transcript: (promptUuid: string) =>
+          coxTurn(promptUuid) +
+          entry("user", terminalPrompt, secondReply, "x".repeat(1_200_000)) +
+          entry("assistant", terminalReply, terminalPrompt, [
+            { type: "text", text: "y".repeat(1_200_000) },
+          ]),
+      },
+    ])("replaces a warm process when $name", (row) =>
+      Effect.gen(function* () {
+        const harness = yield* nextTurnAfter(row);
+        assert.lengthOf(harness.processQueues, 2, "the next turn must open a fresh process");
+        assert.equal(harness.getOpenedOptions()?.resume, WAKE_NATIVE_SESSION);
+        assert.isUndefined(harness.getOpenedOptions()?.resumeSessionAt);
+      }).pipe(Effect.provide(layer)),
+    );
+
+    it.effect.each([
+      {
+        name: "the file lags the stream",
+        transcript: (promptUuid: string) =>
+          entry("user", promptUuid, null, "Request 1") +
+          entry("assistant", firstReply, promptUuid, [{ type: "text", text: "Working." }]),
+      },
+      {
+        name: "only bookkeeping follows Cox's reply",
+        transcript: (promptUuid: string) =>
+          coxTurn(promptUuid) +
+          line({
+            type: "system",
+            subtype: "turn_duration",
+            uuid: "sys-1",
+            parentUuid: secondReply,
+          }) +
+          line({ type: "last-prompt", leafUuid: secondReply }) +
+          entry("assistant", "side-1", secondReply, [{ type: "text", text: "x" }], {
+            isSidechain: true,
+          }) +
+          entry("user", "meta-1", secondReply, "Caveat", { isMeta: true }) +
+          entry("user", "stop-1", secondReply, "[Request interrupted by user]") +
+          JSON.stringify({ type: "user", uuid: "half-written", parentUuid: secondReply }).slice(
+            0,
+            30,
+          ),
+      },
+      { name: "there is no transcript", transcript: null },
+      {
+        name: "a pinned head decides where to resume",
+        transcript: (promptUuid: string) => coxTurn(promptUuid) + terminalExchange,
+        pinnedHead: firstReply,
+      },
+      {
+        name: "replacing it would end background work",
+        transcript: (promptUuid: string) => coxTurn(promptUuid) + terminalExchange,
+        backgroundShell: true,
+      },
+      {
+        // Longer than the tail Cox reads, and the process's own messages are not written yet.
+        name: "a long transcript's tail holds none of its messages",
+        transcript: () =>
+          entry("user", "old-1", null, "x".repeat(1_200_000)) +
+          entry("assistant", "old-2", "old-1", [{ type: "text", text: "y".repeat(1_200_000) }]),
+      },
+    ])("keeps the warm process when $name", (row) =>
+      Effect.gen(function* () {
+        const harness = yield* nextTurnAfter(row);
+        assert.lengthOf(harness.processQueues, 1);
+        assert.lengthOf(harness.offeredMessages, 2);
+      }).pipe(Effect.provide(layer)),
+    );
+  });
+
   // Default display sends the first pre-tool thinking block empty; a blank update is never promoted.
   const update = "Found it: the memory file is the cause.";
   it.effect.each([
