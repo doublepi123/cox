@@ -46,6 +46,7 @@ import {
 } from "@t3tools/contracts";
 import { AgentScope, agentScopeLauncherScript } from "@t3tools/shared/AgentScope";
 import * as HostProcess from "@t3tools/shared/HostProcess";
+import { appLinkUrl } from "@t3tools/shared/appLinks";
 import { normalizePreviewUrl } from "@t3tools/shared/preview";
 import { resolvePreviewViewport } from "@t3tools/shared/previewViewport";
 import * as NodeCrypto from "node:crypto";
@@ -790,6 +791,12 @@ const make = Effect.gen(function* () {
     const navigationGenerations = new WeakMap<object, number>();
     page.on("request", (request) => {
       if (!isMainNavigation(request)) return;
+      if (appLinkUrl(request.url()) !== null) {
+        const from = request.redirectedFrom();
+        const generation = from && navigationGenerations.get(from);
+        if (generation) settleAbortedNavigation(tab, generation, request.url(), undefined);
+        return;
+      }
       navigationGenerations.set(request, ++tab.navigationGeneration);
       clearAbortedNavigation(tab);
       tab.loading = true;
@@ -826,7 +833,7 @@ const make = Effect.gen(function* () {
         errorText,
         timestamp: new Date().toISOString(),
       });
-      if (!isMainNavigation(request)) return;
+      if (!isMainNavigation(request) || appLinkUrl(request.url()) !== null) return;
       // Newer navigations own status; untracked initial popup requests yield to any tracked navigation.
       const generation = navigationGenerations.get(request) ?? 0;
       if (generation !== tab.navigationGeneration) return;

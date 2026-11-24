@@ -1248,6 +1248,41 @@ it.live(
     ).pipe(Effect.provide(layer)),
 );
 
+it.effect("an app link's aborted request leaves the page it was clicked on", () =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      const { broker, tabId } = yield* ready;
+      const page = contexts[0]!.page;
+      const navigation = (url: string, redirectedFrom: unknown = null) => ({
+        url: () => url,
+        method: () => "GET",
+        isNavigationRequest: () => true,
+        redirectedFrom: () => redirectedFrom,
+        frame: () => page,
+        failure: () => ({ errorText: "net::ERR_ABORTED" }),
+      });
+      const loading = Effect.map(
+        broker.invoke<PreviewAutomationStatus>({ scope, tabId, operation: "status", input: {} }),
+        (status) => status.loading,
+      );
+      // Chromium hands the link to the OS, aborts the request and keeps the current page.
+      const direct = navigation("obsidian://open?vault=notes");
+      page.emit("request", direct);
+      page.emit("requestfailed", direct);
+      expect(yield* loading).toBe(false);
+
+      // A page that redirects to an app link ends its navigation there; the redirect itself finished.
+      const open = navigation("https://example.com/open");
+      page.emit("request", open);
+      expect(yield* loading).toBe(true);
+      const redirected = navigation("obsidian://open?vault=notes", open);
+      page.emit("request", redirected);
+      page.emit("requestfailed", redirected);
+      expect(yield* loading).toBe(false);
+    }),
+  ).pipe(Effect.provide(layer)),
+);
+
 it.effect("a navigation that fails while a load reads its title keeps its failure", () =>
   Effect.scoped(
     Effect.gen(function* () {
