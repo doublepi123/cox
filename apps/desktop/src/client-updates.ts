@@ -622,6 +622,73 @@ export class ClientUpdates {
     }
   }
 
+  private async downloadLatest(signal: AbortSignal) {
+    let path: string | undefined;
+    try {
+      const { feed, artifact, installMode } = await this.readRelease(
+        AbortSignal.any([signal, AbortSignal.timeout(30_000)]),
+      );
+      this.feed = feed;
+      this.artifact = artifact;
+      if (compareBackendVersions(feed.version, this.options.desktopVersion) <= 0) {
+        this.publish({
+          latestVersion: feed.version,
+          status: "idle",
+          message: null,
+          progress: null,
+        });
+        return undefined;
+      }
+      this.publish({
+        latestVersion: feed.version,
+        installMode,
+        status: "downloading",
+        message: null,
+        progress: {
+          phase: "downloading",
+          transferredBytes: 0,
+          totalBytes: artifact.size,
+          bytesPerSecond: null,
+          remainingSeconds: null,
+        },
+      });
+      if (installMode === "automatic" && this.options.platform === "win32") {
+        this.automatic ??= await (this.options.createAutomaticUpdater ?? signedWindowsUpdater)(
+          this.directory,
+          this.options.publisherName!,
+        );
+        path = await this.automatic.download(feed, artifact, signal, (progress) =>
+          this.publish({ progress }),
+        );
+      } else path = await this.downloadManual(artifact, signal);
+      await this.verify(path, artifact, signal);
+      if (installMode === "automatic" && this.options.platform === "darwin") {
+        this.publish({
+          progress: {
+            phase: "validating",
+            transferredBytes: artifact.size,
+            totalBytes: artifact.size,
+            bytesPerSecond: null,
+            remainingSeconds: null,
+          },
+        });
+        await this.options.macUpdater!.prepare(path, {
+          version: feed.version,
+          architecture: artifact.architecture,
+          flavor: artifact.flavor,
+          backendVersion: artifact.backendVersion,
+        });
+      }
+      signal.throwIfAborted();
+      this.downloaded = path;
+      this.publish({ status: "ready", progress: null, message: null });
+      return { path, artifact };
+    } catch (error) {
+      if (path) await rm(path, { force: true }).catch(() => {});
+      throw error;
+    }
+  }
+
   async download(): Promise<DesktopClientUpdateState> {
     await this.initialized;
     await this.preferenceOperation;
@@ -648,71 +715,12 @@ export class ClientUpdates {
     }
     this.controller = new AbortController();
     const signal = AbortSignal.any([this.controller.signal, AbortSignal.timeout(15 * 60_000)]);
-    this.operation = (async () => {
-      let path: string | undefined;
-      try {
-        const { feed, artifact, installMode } = await this.readRelease(
-          AbortSignal.any([signal, AbortSignal.timeout(30_000)]),
-        );
-        this.feed = feed;
-        this.artifact = artifact;
-        if (compareBackendVersions(feed.version, this.options.desktopVersion) <= 0) {
-          this.publish({
-            latestVersion: feed.version,
-            status: "idle",
-            message: null,
-            progress: null,
-          });
-          return;
-        }
-        this.publish({
-          latestVersion: feed.version,
-          installMode,
-          status: "downloading",
-          message: null,
-          progress: {
-            phase: "downloading",
-            transferredBytes: 0,
-            totalBytes: artifact.size,
-            bytesPerSecond: null,
-            remainingSeconds: null,
-          },
-        });
-        if (installMode === "automatic" && this.options.platform === "win32") {
-          this.automatic ??= await (this.options.createAutomaticUpdater ?? signedWindowsUpdater)(
-            this.directory,
-            this.options.publisherName!,
-          );
-          path = await this.automatic.download(feed, artifact, signal, (progress) =>
-            this.publish({ progress }),
-          );
-        } else path = await this.downloadManual(artifact, signal);
-        await this.verify(path, artifact, signal);
-        if (installMode === "automatic" && this.options.platform === "darwin") {
-          this.publish({
-            progress: {
-              phase: "validating",
-              transferredBytes: artifact.size,
-              totalBytes: artifact.size,
-              bytesPerSecond: null,
-              remainingSeconds: null,
-            },
-          });
-          await this.options.macUpdater!.prepare(path, {
-            version: feed.version,
-            architecture: artifact.architecture,
-            flavor: artifact.flavor,
-            backendVersion: artifact.backendVersion,
-          });
-        }
-        signal.throwIfAborted();
-        this.downloaded = path;
-        this.publish({ status: "ready", progress: null, message: null });
-      } catch (error) {
-        if (path) await rm(path, { force: true }).catch(() => {});
+    this.operation = this.downloadLatest(signal).then(
+      () => {},
+      (error: unknown) => {
         this.publish({ status: "error", progress: null, message: String(error) });
-      }
-    })();
+      },
+    );
     try {
       await this.operation;
     } finally {
@@ -739,13 +747,31 @@ export class ClientUpdates {
     const signal = this.controller.signal;
     const operation = (async () => {
       try {
-        await this.verify(downloaded, artifact, signal);
+        let installer = downloaded;
+        let installArtifact = artifact;
+        try {
+          await this.verify(installer, installArtifact, signal);
+        } catch (error) {
+          if (record(error).code !== "ENOENT" || this.options.offline) throw error;
+          this.downloaded = undefined;
+          if (this.manualDownload) {
+            await rm(this.manualDownload, { recursive: true, force: true });
+            this.manualDownload = undefined;
+          }
+          const replacement = await this.downloadLatest(
+            AbortSignal.any([signal, AbortSignal.timeout(15 * 60_000)]),
+          );
+          if (replacement === undefined)
+            throw new Error("A newer desktop update is no longer available.");
+          installer = replacement.path;
+          installArtifact = replacement.artifact;
+        }
         signal.throwIfAborted();
         this.publish({
           progress: {
             phase: "installing",
-            transferredBytes: artifact.size,
-            totalBytes: artifact.size,
+            transferredBytes: installArtifact.size,
+            totalBytes: installArtifact.size,
             bytesPerSecond: null,
             remainingSeconds: null,
           },
@@ -753,12 +779,12 @@ export class ClientUpdates {
         if (this.state.installMode === "automatic" && this.options.platform === "darwin")
           await this.options.macUpdater!.apply();
         else if (this.state.installMode === "automatic" && this.automatic)
-          await this.automatic.apply(downloaded);
+          await this.automatic.apply(installer);
         else {
           const openInstaller =
             this.options.openInstaller ??
             (async (path: string) => (await import("electron")).shell.openPath(path));
-          const error = await openInstaller(downloaded);
+          const error = await openInstaller(installer);
           if (error) throw new Error("The desktop installer could not be opened: " + error);
           this.installerHandedOff = true;
         }

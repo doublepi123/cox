@@ -470,6 +470,24 @@ describe("desktop client update lifecycle", () => {
     },
   );
 
+  it("downloads again when the staged installer was deleted before apply", async () => {
+    const { updates, home, fetcher, openInstaller } = await fixture();
+    await updates.check();
+    expect((await updates.download()).status).toBe("ready");
+    const downloads = join(home, "client-updates", "downloads");
+    const [folder] = await readdir(downloads);
+    const { filename, url } = feed().artifacts[0]!;
+    await rm(join(downloads, folder!, filename));
+
+    await updates.apply();
+
+    expect(fetcher.mock.calls.filter(([address]) => address === url)).toHaveLength(2);
+    expect(openInstaller).toHaveBeenCalledOnce();
+    const [installed] = openInstaller.mock.calls[0]!;
+    expect(await readFile(installed)).toEqual(bytes);
+    expect(await readdir(downloads)).toHaveLength(1);
+  });
+
   it("revalidates the staged file and refuses to apply after local corruption", async () => {
     const { updates, home, openInstaller } = await fixture();
     await updates.check();
