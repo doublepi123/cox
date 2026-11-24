@@ -31,6 +31,7 @@ import { resolveProjectSettings } from "@t3tools/shared/projectSettings";
 import { resolveRuntimeMode } from "../../delegatedTaskModes.ts";
 import * as McpInvocationContext from "../../McpInvocationContext.ts";
 import * as McpToolAccess from "../../McpToolAccess.ts";
+import * as OrchestrationMcp from "../../OrchestratorMcpService.ts";
 import { newCommandId, readCaller, resolveProjectId, unavailable } from "../../threadAccess.ts";
 import { ProjectToolkit } from "./tools.ts";
 
@@ -238,7 +239,7 @@ export const layer = McpToolAccess.toLayer(ProjectToolkit, {
                 ),
               )
             : undefined;
-        const modelSelection =
+        let modelSelection =
           input.modelSelection ??
           launchedModel ??
           caller?.modelSelection ??
@@ -269,11 +270,21 @@ export const layer = McpToolAccess.toLayer(ProjectToolkit, {
             : runtimeMode;
         if (!replaying) {
           const providers = yield* (yield* ProviderRegistry.ProviderRegistry).getProviders;
+          const { instanceId } = modelSelection;
+          const provider = providers.find((candidate) => candidate.instanceId === instanceId);
+          if (provider !== undefined && input.modelSelection !== undefined) {
+            const options = yield* OrchestrationMcp.validateModelOptions(
+              provider,
+              modelSelection.model,
+              modelSelection.options,
+            );
+            if (options !== undefined && options !== modelSelection.options) {
+              modelSelection = { ...modelSelection, options };
+            }
+          }
           startedRuntimeMode = yield* resolveRuntimeMode(startedRuntimeMode, input.runtimeMode, {
             modelSelection,
-            supportedRuntimeModes: providers.find(
-              (provider) => provider.instanceId === modelSelection.instanceId,
-            )?.supportedRuntimeModes,
+            supportedRuntimeModes: provider?.supportedRuntimeModes,
           });
         }
         const result = yield* ThreadMessageIntake.launchThread({
