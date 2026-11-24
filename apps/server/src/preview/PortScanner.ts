@@ -422,22 +422,13 @@ const parseProcEnvironThread = (raw: string): ThreadId | null => {
   return value ? ThreadId.make(value) : null;
 };
 
-/**
- * Reads macOS `ps -E -o pid=,command=`, which appends each process's launch environment to its
- * argv with spaces, so an argument that spells the assignment out also matches.
- */
-const parsePsEnvironmentThreads = (raw: string): ReadonlyMap<number, ThreadId | null> => {
-  const threads = new Map<number, ThreadId | null>();
+const parsePsCommandLines = (raw: string): ReadonlyMap<number, string> => {
+  const lines = new Map<number, string>();
   for (const line of raw.split("\n")) {
     const match = /^\s*(\d+)\s(.*)$/.exec(line);
-    if (!match) continue;
-    const value = AGENT_THREAD_ASSIGNMENT.exec(match[2]!)?.[1];
-    threads.set(
-      Number(match[1]),
-      value && !DEVTOOLS_PORT_ARGUMENT.test(match[2]!) ? ThreadId.make(value) : null,
-    );
+    if (match) lines.set(Number(match[1]), match[2]!);
   }
-  return threads;
+  return lines;
 };
 
 const parseProcessTable = (raw: string): ReadonlyMap<number, ProcessTableRow> => {
@@ -570,20 +561,49 @@ export const make = Effect.gen(function* PortDiscoveryMake() {
                 { concurrency: 16 },
               ),
             )
-          : yield* processRunner
-              .run({
-                command: "ps",
-                args: ["-E", "-ww", "-o", "pid=,command=", "-p", unread.join(",")],
-                timeout: Duration.millis(PS_TIMEOUT_MS),
-                maxOutputBytes: PS_MAX_OUTPUT_BYTES,
-              })
-              .pipe(
-                Effect.map((result) => parsePsEnvironmentThreads(result.stdout)),
-                Effect.orElseSucceed(() => {
-                  agentScanPending = true;
-                  return new Map();
-                }),
+          : yield* Effect.gen(function* () {
+              const readCommandLines = (withEnvironment: boolean) =>
+                processRunner.run({
+                  command: "ps",
+                  args: [
+                    ...(withEnvironment ? ["-E"] : []),
+                    "-ww",
+                    "-o",
+                    "pid=,command=",
+                    "-p",
+                    unread.join(","),
+                  ],
+                  timeout: Duration.millis(PS_TIMEOUT_MS),
+                  maxOutputBytes: PS_MAX_OUTPUT_BYTES,
+                });
+              const [withEnvironment, argumentsOnly] = yield* Effect.all(
+                [readCommandLines(true), readCommandLines(false)],
+                { concurrency: 2 },
               );
+              if (exitedWithError(withEnvironment) || exitedWithError(argumentsOnly)) {
+                agentScanPending = true;
+                return new Map();
+              }
+              const combined = parsePsCommandLines(withEnvironment.stdout);
+              const threads = new Map<number, ThreadId | null>();
+              // macOS prints the launch environment after the arguments. Only the suffix counts.
+              for (const [pid, command] of parsePsCommandLines(argumentsOnly.stdout)) {
+                const line = combined.get(pid);
+                if (line === undefined || (line !== command && !line.startsWith(command + " ")))
+                  continue;
+                const value = AGENT_THREAD_ASSIGNMENT.exec(line.slice(command.length))?.[1];
+                threads.set(
+                  pid,
+                  value && !DEVTOOLS_PORT_ARGUMENT.test(command) ? ThreadId.make(value) : null,
+                );
+              }
+              return threads;
+            }).pipe(
+              Effect.orElseSucceed(() => {
+                agentScanPending = true;
+                return new Map();
+              }),
+            );
     const next = new Map<number, ThreadId | null>();
     for (const pid of pids) {
       const threadId = cached.has(pid) ? cached.get(pid) : read.get(pid);

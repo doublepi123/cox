@@ -822,8 +822,10 @@ effectIt.effect.each(["linux", "darwin"] as const)(
                 processOutput(
                   input.command === "lsof"
                     ? `p4242\ncnode\nn127.0.0.1:${appPort}\np6000\ncchrome\nn127.0.0.1:${devToolsPort}\n`
-                    : `  4242 node server.js PATH=/usr/bin ${PortScanner.AGENT_THREAD_ENV}=thread-agent\n` +
-                        `  6000 /opt/google/chrome/chrome --remote-debugging-port=0 about:blank PATH=/usr/bin ${PortScanner.AGENT_THREAD_ENV}=thread-agent\n`,
+                    : input.args.includes("-E")
+                      ? `  4242 node server.js PATH=/usr/bin ${PortScanner.AGENT_THREAD_ENV}=thread-agent\n` +
+                        `  6000 /opt/google/chrome/chrome --remote-debugging-port=0 about:blank PATH=/usr/bin ${PortScanner.AGENT_THREAD_ENV}=thread-agent\n`
+                      : "  4242 node server.js\n  6000 /opt/google/chrome/chrome --remote-debugging-port=0 about:blank\n",
                 ),
               ),
           }),
@@ -841,6 +843,54 @@ effectIt.effect.each(["linux", "darwin"] as const)(
         { port: appPort, pid: 4242, agent: { threadId: "thread-agent" } },
       ]);
     }).pipe(Effect.provide(layer));
+  },
+);
+
+effectIt.effect.each(["arguments", "environment"] as const)(
+  "on macOS, a stop recognizes a thread marker in the environment only ($0)",
+  (source) => {
+    const port = 43_128;
+    const marker = `${PortScanner.AGENT_THREAD_ENV}=thread-a`;
+    const command = source === "arguments" ? `node server.js ${marker}` : "node server.js";
+    const layer = PortScanner.layer.pipe(
+      Layer.provide(
+        Layer.mergeAll(
+          layerNoProc,
+          Layer.succeed(ProcessRunner.ProcessRunner, {
+            run: (input) => {
+              if (input.command === "lsof") {
+                return Effect.succeed(processOutput(`p4242\ncnode\nn127.0.0.1:${port}\n`));
+              }
+              if (input.args[0] === "-A") {
+                return Effect.succeed(processOutput("4242 4300 4242\n"));
+              }
+              const env = input.args.includes("-E")
+                ? ` PATH=/usr/bin${source === "environment" ? ` ${marker}` : ""}`
+                : "";
+              return Effect.succeed(processOutput(`  4242 ${command}${env}\n`));
+            },
+          }),
+          Layer.succeed(HostProcess.Platform, "darwin"),
+          FetchHttpClient.layer,
+        ),
+      ),
+    );
+    return Effect.gen(function* () {
+      const signal = vi.spyOn(ProcessGroup, "signalProcessGroup").mockImplementation(() => {
+        throw Object.assign(new Error("No such process"), { code: "ESRCH" });
+      });
+      yield* Effect.addFinalizer(() => Effect.sync(() => signal.mockRestore()));
+      const scanner = yield* PortScanner.PortDiscovery;
+      scanner.trackAgent();
+      if (source === "environment") {
+        yield* scanner.stopServer({ pid: 4242, port });
+        expect(signal).toHaveBeenCalledExactlyOnceWith(4242, "SIGTERM");
+      } else {
+        const refused = yield* Effect.flip(scanner.stopServer({ pid: 4242, port }));
+        expect(refused.reason).toBe("not-found");
+        expect(signal).not.toHaveBeenCalled();
+      }
+    }).pipe(Effect.scoped, Effect.provide(layer));
   },
 );
 
@@ -891,6 +941,11 @@ effectIt.effect.each(["linux", "darwin"] as const)(
               // A direct child of this process, so stop refuses it without signaling anything.
               if (input.args[0] === "-A") {
                 return Effect.succeed(processOutput(`4242 ${process.pid} 4242\n`));
+              }
+              if (!input.args.includes("-E")) {
+                return Effect.succeed(
+                  processOutput("  4242 node server.js\n  5000 postgres -D /data\n"),
+                );
               }
               if (environmentFails) {
                 return Effect.fail(
