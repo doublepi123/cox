@@ -18,10 +18,32 @@ export function LabsSettingsPanel() {
         <BoringSidebarRow />
         <BoringSidebarMultilineRow />
         <PromptSuggestionsRow />
+        <WorkflowsRow />
         <ToolCallVisibilityRow />
       </SettingsSection>
       <LegacyFeaturesSection />
     </SettingsPageContainer>
+  );
+}
+
+function WorkflowsRow() {
+  const { t } = useTranslation();
+  const settings = useScopedSettings();
+  const updateSettings = useUpdateScopedSettings();
+  return (
+    <SettingsRow
+      {...searchableSetting("workflows-beta")}
+      description={t(
+        "Run workflows from this server's Cox home. Open Workflows from the command palette. When turned off, runs wait until it is on again.",
+      )}
+      control={
+        <Switch
+          checked={settings.workflowsEnabled}
+          onCheckedChange={(checked) => updateSettings({ workflowsEnabled: Boolean(checked) })}
+          aria-label={t("Workflows")}
+        />
+      }
+    />
   );
 }
 

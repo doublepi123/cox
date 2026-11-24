@@ -455,6 +455,13 @@ export const SETTINGS_SEARCH_ITEMS = [
     searchTerms: ["beta claude codex next message suggestion predicted prompt tab"],
   },
   {
+    id: "workflows-beta",
+    title: "Workflows",
+    to: "/settings/labs",
+    scope: "environment",
+    searchTerms: ["beta workflow durable runs automation steps schedule webhook folder"],
+  },
+  {
     id: "computer-control",
     title: "Computer control",
     to: "/settings/labs",

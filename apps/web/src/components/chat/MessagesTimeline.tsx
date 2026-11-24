@@ -274,6 +274,8 @@ interface MessagesTimelineProps {
     readonly sideChat?: boolean;
     /** Where it runs, when that is another environment. */
     readonly environmentLabel?: string;
+    /** What this thread is to it, when not its subagent or side chat: `Step of`, say. */
+    readonly relation?: { readonly label: string; readonly actionLabel: string };
     readonly open?: () => void;
   } | null;
   workflowOpening?: WorkflowOpening | null;
@@ -1126,7 +1128,10 @@ const ConversationTimeline = memo(function ConversationTimeline({
       <div className="messages-timeline-row-frame">
         <div className="chat-content-lane pt-1 sm:pt-2">
           <TimelineSystemDivider
-            label={parentThreadLink.sideChat ? "Context from" : "Subagent of"}
+            label={
+              parentThreadLink.relation?.label ??
+              translateUi(parentThreadLink.sideChat ? "Context from" : "Subagent of")
+            }
             detail={
               parentThreadLink.environmentLabel === undefined
                 ? parentThreadLink.title
@@ -1135,7 +1140,11 @@ const ConversationTimeline = memo(function ConversationTimeline({
             icon={parentThreadLink.sideChat ? MessagesSquareIcon : BotIcon}
             {...(parentThreadLink.open === undefined
               ? {}
-              : { actionLabel: "Open parent thread", onAction: parentThreadLink.open })}
+              : {
+                  actionLabel:
+                    parentThreadLink.relation?.actionLabel ?? translateUi("Open parent thread"),
+                  onAction: parentThreadLink.open,
+                })}
           />
         </div>
       </div>
