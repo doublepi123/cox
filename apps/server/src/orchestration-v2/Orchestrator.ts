@@ -9671,14 +9671,18 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
         for (const question of approvalTurnItem.questions) {
           const answer = answers?.[question.id];
           const answered = isMessageQuestionAnswer(answer);
-          // Clients send "" for a skipped optional question, such as an attachment-only answer.
-          if (!answered && question.required === false) continue;
-          if (!answered) {
+          // Clients send "" for a skipped optional question or an attachment-only answer.
+          if (!answered && !command.attachmentsByQuestionId?.[question.id]?.length) {
+            if (question.required === false) continue;
             return yield* new OrchestratorDispatchError({
               commandId: command.commandId,
               commandType: command.type,
               cause: "Answer each question before sending.",
             });
+          }
+          if (!answered) {
+            replies.push(question.question);
+            continue;
           }
           const text = typeof answer === "string" ? answer : answer.join(", ");
           replies.push(`${question.question}\n${text.trim()}`);
@@ -9877,7 +9881,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
           threadId: command.threadId,
           messageId: MessageId.make(`async-answer:${command.requestId}`),
           text: replies.join("\n\n"),
-          attachments: [],
+          attachments: Object.values(command.attachmentsByQuestionId ?? {}).flat(),
           createdBy: "user" as const,
           creationSource: "server" as const,
           dispatchMode,

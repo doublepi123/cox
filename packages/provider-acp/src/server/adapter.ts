@@ -8112,15 +8112,9 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
           if (text.length > 0) {
             prompt.push({ type: "text", text });
           }
-          const imageAttachments = turnInput.message.attachments.filter(
-            isProviderNativeImageAttachment,
-          );
-          if (imageAttachments.length > 0 && !supportsImagePrompts) {
-            return yield* new ProviderAdapter.ProviderAdapterProtocolError({
-              driver,
-              detail: "ACP driver did not negotiate image prompt support",
-            });
-          }
+          const imageAttachments = supportsImagePrompts
+            ? turnInput.message.attachments.filter(isProviderNativeImageAttachment)
+            : [];
           if (flavor.buildPrompt) {
             const setup = yield* Ref.get(activeSessionSetup);
             const blocks = yield* flavor
