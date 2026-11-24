@@ -3041,6 +3041,60 @@ it("unwraps one text attachment without turning off the word wrap setting", asyn
   expect(screen.container.querySelector("pre")?.dataset.wordWrap).toBe("false");
 });
 
+it.each([false, true])(
+  "renders visible notebook outputs beyond the preload limit (all: %s)",
+  async (all) => {
+    const { default: NotebookPreview } = await import("./NotebookPreview");
+    const outputs = Array.from({ length: 17 }, (_, index) => ({
+      kind: "html" as const,
+      text: `<span>Saved result ${index + 1}</span>`,
+    }));
+    await using screen = await render(
+      <div
+        style={{ display: "flex", flexDirection: "column", height: all ? 1090 : 950, width: 600 }}
+      >
+        <NotebookPreview
+          notebook={{
+            type: "notebook",
+            language: "python",
+            cells: [
+              {
+                kind: "code",
+                source: "",
+                outputs: all
+                  ? [{ kind: "text", text: Array(12).fill("Processing").join("\n") }, ...outputs]
+                  : outputs,
+              },
+            ],
+          }}
+        />
+      </div>,
+    );
+    const viewport = screen.container.querySelector<HTMLElement>(".scrollbar-gutter-both")!;
+    await vi.waitFor(() =>
+      expect(viewport.querySelectorAll("iframe").length).toBeGreaterThanOrEqual(12),
+    );
+    const last = viewport.querySelector<HTMLElement>(
+      `[data-notebook-output="0-${all ? 17 : 16}"]`,
+    )!;
+    await act(() => {
+      viewport.scrollTop = all ? viewport.scrollHeight : 170;
+    });
+    await vi.waitFor(() => {
+      expect(last.querySelector("iframe")?.contentDocument?.body.textContent?.trim()).toBe(
+        "Saved result 17",
+      );
+      if (all) {
+        expect(
+          Array.from(viewport.querySelectorAll("iframe"), (frame) =>
+            frame.contentDocument?.body.textContent?.trim(),
+          ),
+        ).toEqual(outputs.map((_, index) => `Saved result ${index + 1}`));
+      }
+    });
+  },
+);
+
 it("mounts a bounded set of saved notebook outputs as the reader scrolls", async () => {
   const notebook = {
     nbformat: 4,
@@ -3073,7 +3127,9 @@ it("mounts a bounded set of saved notebook outputs as the reader scrolls", async
   );
   expect(screen.container.querySelectorAll("iframe").length).toBeLessThanOrEqual(16);
   const first = screen.container.querySelector("iframe")!;
+  const firstOutput = first.parentElement!;
   expect(first.srcdoc).toContain("saved 0-0");
+  await vi.waitFor(() => expect(first.clientHeight).toBeGreaterThan(0));
   const viewport = screen.container.querySelector<HTMLElement>(".scrollbar-gutter-both")!;
   await act(() => {
     viewport.scrollTop = viewport.scrollHeight;
@@ -3087,12 +3143,27 @@ it("mounts a bounded set of saved notebook outputs as the reader scrolls", async
     expect(first.isConnected).toBe(false);
   });
   expect(screen.container.querySelectorAll("iframe").length).toBeLessThanOrEqual(16);
+  const reservedHeight = firstOutput.getBoundingClientRect().height;
+  using cleanup = new DisposableStack();
+  const pending = new AbortController();
+  cleanup.defer(() => pending.abort());
+  // Hold the remounted frame in its loading state until it scrolls away again.
+  firstOutput.addEventListener("load", (event) => event.stopPropagation(), {
+    capture: true,
+    signal: pending.signal,
+  });
   await act(() => {
     viewport.scrollTop = 0;
   });
-  await vi.waitFor(() =>
-    expect(screen.container.querySelector("iframe")?.srcdoc).toContain("saved 0-0"),
-  );
+  await vi.waitFor(() => {
+    expect(firstOutput.querySelector("iframe")?.srcdoc).toContain("saved 0-0");
+    expect(firstOutput.getBoundingClientRect().height).toBe(reservedHeight);
+  });
+  await act(() => {
+    viewport.scrollTop = viewport.scrollHeight;
+  });
+  await vi.waitFor(() => expect(firstOutput.querySelector("iframe")).toBeNull());
+  expect(firstOutput.getBoundingClientRect().height).toBe(reservedHeight);
 });
 
 it.each([
