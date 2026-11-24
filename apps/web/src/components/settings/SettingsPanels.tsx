@@ -148,6 +148,9 @@ export function useSettingsRestore(onRestored?: () => void) {
       ? [t("Diff colors")]
       : []),
     ...(settings.chatWidth !== DEFAULT_UNIFIED_SETTINGS.chatWidth ? [t("Chat width")] : []),
+    ...(settings.htmlPreviewWidth !== DEFAULT_UNIFIED_SETTINGS.htmlPreviewWidth
+      ? [t("HTML preview width")]
+      : []),
     ...(settings.effortDisplay !== DEFAULT_UNIFIED_SETTINGS.effortDisplay
       ? [t("Effort display")]
       : []),
@@ -327,6 +330,7 @@ export function useSettingsRestore(onRestored?: () => void) {
       appearanceContrast: DEFAULT_UNIFIED_SETTINGS.appearanceContrast,
       diffColorScheme: DEFAULT_UNIFIED_SETTINGS.diffColorScheme,
       chatWidth: DEFAULT_UNIFIED_SETTINGS.chatWidth,
+      htmlPreviewWidth: DEFAULT_UNIFIED_SETTINGS.htmlPreviewWidth,
       effortDisplay: DEFAULT_UNIFIED_SETTINGS.effortDisplay,
       mathRenderingEnabled: DEFAULT_UNIFIED_SETTINGS.mathRenderingEnabled,
       timestampFormat: DEFAULT_UNIFIED_SETTINGS.timestampFormat,
