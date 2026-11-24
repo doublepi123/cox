@@ -50,8 +50,11 @@ it("keeps the title when dragging a search result from a collapsed folder", asyn
     router: false,
   });
   const folder = page.getByRole("button", { name: /^render/ });
+  await expect.element(folder).toBeVisible();
+  if (folder.element().getAttribute("aria-expanded") === "false") await userEvent.click(folder);
   await expect.element(folder).toHaveAttribute("aria-expanded", "true");
   await userEvent.click(folder);
+  await expect.element(folder).toHaveAttribute("aria-expanded", "false");
   await expect.element(page.getByText(second.title, { exact: true })).not.toBeInTheDocument();
   await userEvent.fill(page.getByRole("combobox", { name: "Search threads" }), "search-target");
   const result = page.getByRole("option", { name: /Thread search-target/ });
@@ -73,6 +76,8 @@ it("keeps the title when dragging a search result from a collapsed folder", asyn
   };
   await act(() => {
     result.element().dispatchEvent(pointer("pointerdown", bounds.x + 10, bounds.y + 10));
+  });
+  await act(() => {
     document.dispatchEvent(pointer("pointermove", -100, 100));
   });
   await vi.waitFor(() => {
