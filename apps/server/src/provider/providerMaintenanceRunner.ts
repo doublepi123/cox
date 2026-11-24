@@ -16,7 +16,7 @@ import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
 import * as Layer from "effect/Layer";
-import * as Option from "effect/Option";
+
 import * as Ref from "effect/Ref";
 import * as Schedule from "effect/Schedule";
 import * as Schema from "effect/Schema";
@@ -42,7 +42,6 @@ import type { ProviderMaintenanceCapabilities } from "@t3tools/provider-core/ser
 import { collectUint8StreamText } from "@t3tools/provider-core/server/collectStreamText";
 const isServerProviderUpdateError = Schema.is(ServerProviderUpdateError);
 
-const UPDATE_TIMEOUT_MS = 30 * 60_000;
 const UPDATE_OUTPUT_MAX_BYTES = 10_000;
 // Sample installer output because every progress update resends the provider list to all clients.
 const UPDATE_PROGRESS_INTERVAL = Duration.seconds(1);
@@ -54,7 +53,7 @@ export interface ProviderMaintenanceCommandResult {
   readonly stdout: string;
   readonly stderr: string;
   readonly exitCode: number | null;
-  readonly timedOut: boolean;
+
   readonly stdoutTruncated: boolean;
   readonly stderrTruncated: boolean;
 }
@@ -176,31 +175,14 @@ const runProviderMaintenanceCommandWithSpawner = Effect.fn("ProviderMaintenanceR
           stdout: stdout.text,
           stderr: stderr.text,
           exitCode: Number(exitCode),
-          timedOut: false,
+
           stdoutTruncated: stdout.truncated,
           stderrTruncated: stderr.truncated,
         } satisfies ProviderMaintenanceCommandResult;
       },
     );
 
-    return yield* collectCommandResult().pipe(
-      Effect.scoped,
-      Effect.timeoutOption(Duration.millis(UPDATE_TIMEOUT_MS)),
-      Effect.map((result) =>
-        Option.match(result, {
-          onSome: (value) => value,
-          onNone: () =>
-            ({
-              stdout: "",
-              stderr: "",
-              exitCode: null,
-              timedOut: true,
-              stdoutTruncated: false,
-              stderrTruncated: false,
-            }) satisfies ProviderMaintenanceCommandResult,
-        }),
-      ),
-    );
+    return yield* collectCommandResult().pipe(Effect.scoped);
   },
 );
 
@@ -262,9 +244,6 @@ function lastOutputLine(result: ProviderMaintenanceCommandResult): string | null
 }
 
 function failureMessage(result: ProviderMaintenanceCommandResult): string {
-  if (result.timedOut) {
-    return "Update timed out after 30 minutes.";
-  }
   const summary =
     result.exitCode !== null && result.exitCode !== 0
       ? `Update command exited with code ${result.exitCode}`
@@ -541,12 +520,12 @@ export const make = Effect.fn("ProviderMaintenanceRunner.make")(function* () {
             yield* setRunningMessage(`Running ${describeCommand(command)}`);
             const result = yield* runMaintenanceCommand(command, setRunningMessage);
             const finishedAt = yield* nowIso;
-            if (result.timedOut || result.exitCode !== 0) {
+            if (result.exitCode !== 0) {
               yield* Effect.logWarning("Provider update command failed", {
                 provider,
                 command: describeCommand(command),
                 exitCode: result.exitCode,
-                timedOut: result.timedOut,
+
                 output: commandOutput(result),
               });
               return yield* finish(
