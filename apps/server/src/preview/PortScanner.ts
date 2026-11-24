@@ -25,6 +25,7 @@ import * as Scope from "effect/Scope";
 import * as Semaphore from "effect/Semaphore";
 import { FetchHttpClient, HttpClient } from "effect/http";
 
+import * as ProcessLauncher from "../process/ProcessLauncher.ts";
 import * as ProcessRunner from "../processRunner.ts";
 
 export class PortDiscovery extends Context.Service<
@@ -422,6 +423,18 @@ const parseProcEnvironThread = (raw: string): ThreadId | null => {
   return value ? ThreadId.make(value) : null;
 };
 
+const parseProcStatParent = (raw: string): number | null => {
+  const end = raw.lastIndexOf(")");
+  if (end < 0) return null;
+  const parent = Number(
+    raw
+      .slice(end + 1)
+      .trim()
+      .split(/\s+/)[1],
+  );
+  return Number.isSafeInteger(parent) && parent > 0 ? parent : null;
+};
+
 const parsePsCommandLines = (raw: string): ReadonlyMap<number, string> => {
   const lines = new Map<number, string>();
   for (const line of raw.split("\n")) {
@@ -451,10 +464,12 @@ export const stoppableProcessGroup = (
   table: ReadonlyMap<number, ProcessTableRow>,
   pid: number,
   serverPid: number,
+  launcherPid?: number,
 ): number | null => {
   const group = table.get(pid)?.pgid;
   if (group === undefined || group <= 1) return null;
   const guarded = new Set([serverPid]);
+  if (launcherPid !== undefined) guarded.add(launcherPid);
   for (
     let parent = table.get(serverPid)?.ppid;
     parent !== undefined && parent > 1 && !guarded.has(parent);
@@ -463,7 +478,11 @@ export const stoppableProcessGroup = (
     guarded.add(parent);
   }
   for (const row of table.values()) {
-    if (row.pgid === group && (guarded.has(row.pid) || row.ppid === serverPid)) return null;
+    if (
+      row.pgid === group &&
+      (guarded.has(row.pid) || row.ppid === serverPid || row.ppid === launcherPid)
+    )
+      return null;
   }
   return group;
 };
@@ -530,11 +549,14 @@ export const make = Effect.gen(function* PortDiscoveryMake() {
   // servers it left may still run. So does startup, for agents that ran before a restart.
   let agentScanPending = true;
 
+  const launcher = yield* ProcessLauncher.ProcessLauncher;
   const readAgentThreads = Effect.fn("PortDiscovery.readAgentThreads")(function* (
     pids: ReadonlyArray<number>,
   ) {
     const cached = yield* Ref.get(agentThreadsRef);
     const unread = pids.filter((pid) => !cached.has(pid));
+    const launcherPid =
+      hostPlatform === "linux" && unread.length > 0 ? yield* launcher.currentPid : undefined;
     const read: ReadonlyMap<number, ThreadId | null> =
       unread.length === 0
         ? new Map()
@@ -554,6 +576,23 @@ export const make = Effect.gen(function* PortDiscoveryMake() {
                             Effect.orElseSucceed(() => false),
                             Effect.map(
                               (isDevTools) => [pid, isDevTools ? null : threadId] as const,
+                            ),
+                          ),
+                    ),
+                    Effect.flatMap(([listenerPid, threadId]) =>
+                      threadId === null
+                        ? Effect.succeed([listenerPid, null] as const)
+                        : fileSystem.readFileString(`/proc/${listenerPid}/stat`).pipe(
+                            Effect.map(parseProcStatParent),
+                            Effect.orElseSucceed(() => null),
+                            Effect.map(
+                              (parent) =>
+                                [
+                                  listenerPid,
+                                  parent === process.pid || parent === launcherPid
+                                    ? null
+                                    : threadId,
+                                ] as const,
                             ),
                           ),
                     ),
@@ -1157,7 +1196,7 @@ export const make = Effect.gen(function* PortDiscoveryMake() {
     const table = yield* readProcessTable;
     // It exited after the scan, so there is nothing left to stop.
     if (!table.has(input.pid)) return;
-    const group = stoppableProcessGroup(table, input.pid, process.pid);
+    const group = stoppableProcessGroup(table, input.pid, process.pid, yield* launcher.currentPid);
     if (group === null) return yield* new PreviewStopLocalServerError({ reason: "shared-group" });
     // False when the whole group already exited.
     const signalGroup = (signal: "SIGTERM" | "SIGKILL") =>
