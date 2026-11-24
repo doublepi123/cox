@@ -60,6 +60,8 @@ cox workflow store set <key> '<json>'
 
 Every start needs a `--key`: starting twice with the same key returns the same run — even after a version bump — so retries do not duplicate work. Use `signal` with `--run` and `--wait` to answer a question or wake a run, or with `--workflow` and `--channel` to wake whichever run waits on that channel. A signal for a question that is no longer open is kept for a later wait rather than refused, so check `cox workflow questions` first. Use `store` to read or change state kept between runs.
 
+For the `cox_workflow` MCP tool, full access in default interaction mode is required to start, signal, resume or cancel runs, change stored state, or read webhook paths. Lower modes can still read runs, questions and stored state.
+
 ## Triggers
 
 - **Schedules:** `every` runs on an interval, starting one interval after the workflow loads; `daily` runs at a local time of day (a time missed by more than 10 minutes while the server is down is skipped).

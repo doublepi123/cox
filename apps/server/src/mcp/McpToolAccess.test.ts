@@ -126,6 +126,7 @@ const ProbeToolkit = Toolkit.make(
     }),
   }),
   Tool.make("writes_environment", probe),
+  Tool.make("writes_owner_work", probe),
 );
 const ran = Effect.succeed({ ran: "ran" });
 const probeHandlers: McpToolAccess.Handlers<typeof ProbeToolkit.tools> = {
@@ -143,6 +144,7 @@ const probeHandlers: McpToolAccess.Handlers<typeof ProbeToolkit.tools> = {
     (_, modes) => Effect.succeed({ ran: `${modes.runtimeMode}/${modes.interactionMode}` }),
   ),
   writes_environment: McpToolAccess.writesEnvironment(() => ran),
+  writes_owner_work: McpToolAccess.writesOwnerWork("drive owner work", () => ran),
 };
 const layerProbeHandlers = McpToolAccess.toLayer(ProbeToolkit, probeHandlers);
 
@@ -182,6 +184,7 @@ export const refusedAtCompileTime = () => {
       writes_threads: unchecked,
       starts_threads: unchecked,
       writes_environment: unchecked,
+      writes_owner_work: unchecked,
     }),
   );
 };
@@ -298,6 +301,14 @@ it.effect.each([
   ["writes_environment", plan, {}, "capability_denied"],
   ["writes_environment", fullAccessClient, {}, "ran"],
   ["writes_environment", supervisedClient, {}, "capability_denied"],
+
+  ["writes_owner_work", fullAccess, {}, "ran"],
+  ["writes_owner_work", supervised, {}, "capability_denied"],
+  ["writes_owner_work", plan, {}, "capability_denied"],
+  ["writes_owner_work", ended, {}, "parent_not_active"],
+  ["writes_owner_work", fullAccessClient, {}, "ran"],
+  ["writes_owner_work", supervisedClient, {}, "capability_denied"],
+  ["writes_owner_work", readOnlyClient, {}, "capability_denied"],
 ] as const)("%s from %o with %o: %s", ([tool, scope, args, expected]) =>
   call(tool, scope, args).pipe(
     Effect.map((outcome) => expect(outcome).toBe(expected)),

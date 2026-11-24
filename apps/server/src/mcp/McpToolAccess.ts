@@ -144,6 +144,25 @@ export const writes = <P, A, E, R>(handle: (params: P) => Effect.Effect<A, E, R>
     () => orchestratingCaller,
   );
 
+/** Runs work whose definition picks its own modes. */
+export const writesOwnerWork = <P, A, E, R>(
+  what: string,
+  handle: (params: P) => Effect.Effect<A, E, R>,
+) => {
+  const check = orchestratingCaller.pipe(
+    Effect.tap((caller) =>
+      assertFullAccess(
+        caller,
+        `Only a caller with full-access/default access can ${what}, because that work picks its own modes.`,
+      ),
+    ),
+  );
+  return declare(
+    (params: P) => check.pipe(Effect.flatMap(() => handle(params))),
+    () => check,
+  );
+};
+
 /** Requires handler capability checks, not thread control; linked work is refused the same way. */
 export const writesWithCapability = <P, A, E, R>(handle: (params: P) => Effect.Effect<A, E, R>) =>
   declare(
