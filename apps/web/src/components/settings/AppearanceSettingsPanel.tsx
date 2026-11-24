@@ -315,11 +315,7 @@ export function AppearanceSettingsPanel() {
                     updateSettings({ htmlPreviewWidth: value });
                 }}
               >
-                <SelectTrigger
-                  size="sm"
-                  className="w-full min-w-0"
-                  aria-label={t("HTML preview width")}
-                >
+                <SelectTrigger size="sm" aria-label={t("HTML preview width")}>
                   <SelectValue>
                     {t(HTML_PREVIEW_WIDTH_LABELS[settings.htmlPreviewWidth])}
                   </SelectValue>

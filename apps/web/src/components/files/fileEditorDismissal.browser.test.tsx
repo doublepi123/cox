@@ -5,7 +5,6 @@ import { describe, expect, it, vi } from "vite-plus/test";
 
 import { render } from "../../../test/render";
 
-import { isMacPlatform } from "~/lib/utils";
 import { installFileEditorDismissal } from "./fileEditorDismissal";
 
 describe("installFileEditorDismissal", () => {
