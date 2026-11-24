@@ -23,8 +23,8 @@ export function guardHttpResponseWriteErrors<T extends NodeHttp.Server>(
 
 /**
  * NodeHttpServer listens before serve() attaches its handlers, so requests in
- * between would hang. Install this after the write-error guards so only the
- * serving handlers trigger the handoff.
+ * between would hang. Its own pre-listen fallback stays silent while any other
+ * request listener exists, so only a listener added after listening takes over.
  */
 export function rejectRequestsUntilServing<T extends NodeHttp.Server>(server: T): T {
   const rejectRequest = (_request: NodeHttp.IncomingMessage, response: NodeHttp.ServerResponse) => {
@@ -39,6 +39,7 @@ export function rejectRequestsUntilServing<T extends NodeHttp.Server>(server: T)
   server.on("upgrade", rejectUpgrade);
   // Node emits newListener before adding the handler, making the handoff synchronous.
   server.on("newListener", function onNewListener(event) {
+    if (!server.listening) return;
     if (event === "request") server.off("request", rejectRequest);
     if (event === "upgrade") server.off("upgrade", rejectUpgrade);
     if (
