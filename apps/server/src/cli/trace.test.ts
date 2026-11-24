@@ -6,7 +6,7 @@ import * as Layer from "effect/Layer";
 import * as TestConsole from "effect/testing/TestConsole";
 import { Command } from "effect/cli";
 
-import { makeTraceSpanSummary, traceCommand } from "./trace.ts";
+import { formatTraceSummary, makeTraceSpanSummary, traceCommand } from "./trace.ts";
 
 const run = Command.runWith(traceCommand, { version: "0.0.0" });
 const services = Layer.mergeAll(NodeServices.layer, TestConsole.layer);
@@ -120,4 +120,38 @@ it("keeps reading end times in other numeric spellings", () => {
     JSON.stringify({ name: "rpc", durationMs: 1, endTimeUnixNano: "1795478400001e6" }),
   );
   assert.strictEqual(summarizer.finish().lastEndMs, 1_795_478_400_001);
+});
+
+it("formats large summaries without overflowing the call stack", () => {
+  const rowCount = 150_000;
+  const entry = {
+    name: "long-span-name",
+    count: 1,
+    perMinute: 1,
+    p50Ms: 1,
+    p90Ms: 1,
+    maxMs: 1,
+    interrupted: 0,
+    failures: 0,
+  };
+  const spans = Array.from({ length: rowCount }, () => entry);
+
+  const lines = formatTraceSummary(
+    {
+      spanCount: rowCount,
+      skippedLineCount: 0,
+      firstEndMs: 0,
+      lastEndMs: MINUTE_MS,
+      minutes: 1,
+      spans,
+    },
+    rowCount,
+  ).split("\n");
+
+  assert.strictEqual(lines.length, rowCount + 3);
+  assert.strictEqual(lines[2], "span            count  /min  p50  p90  max  interrupted  failed");
+  assert.strictEqual(
+    lines.at(-1),
+    "long-span-name      1   1.0  1ms  1ms  1ms            0       0",
+  );
 });
