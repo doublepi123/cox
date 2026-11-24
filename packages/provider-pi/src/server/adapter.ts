@@ -2906,6 +2906,16 @@ export const makePiAdapterV2 = Effect.fn("makePiAdapterV2")(function* (
             Effect.gen(function* () {
               runtimeRetired = true;
               const state = threadState;
+              const idle =
+                state !== null &&
+                state.activeTurn === null &&
+                pendingWake === null &&
+                pendingPrompts.size === 0 &&
+                pendingPromptResponses.length === 0 &&
+                pendingCompactResponses.length === 0 &&
+                !nativeCompacting &&
+                rollbackBarrier === null &&
+                extensionStatusReset === null;
               if (extensionStatusReset !== null)
                 yield* Deferred.fail(
                   extensionStatusReset.ready,
@@ -2934,7 +2944,7 @@ export const makePiAdapterV2 = Effect.fn("makePiAdapterV2")(function* (
               if (unsolicitedActivityDetected) {
                 yield* updateProviderSession("error", PI_UNSOLICITED_ACTIVITY_ERROR);
                 yield* Queue.end(events);
-              } else if (stopRequested) {
+              } else if (stopRequested || idle) {
                 yield* updateProviderSession("stopped", null);
                 yield* Queue.end(events);
               } else {
