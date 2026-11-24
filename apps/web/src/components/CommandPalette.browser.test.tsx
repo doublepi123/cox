@@ -1,8 +1,8 @@
 import { EnvironmentId, ProjectId, ThreadId } from "@t3tools/contracts";
 import { describe, expect, it, vi } from "vite-plus/test";
-import { page } from "vite-plus/test/browser";
+import { page, userEvent } from "vite-plus/test/browser";
 
-import { render } from "../../test/render";
+import { act, render } from "../../test/render";
 import { openCommandPalette } from "../commandPaletteBus";
 import { useCommandPaletteStore } from "../commandPaletteStore";
 import { makeThreadFixture } from "../test-fixtures";
@@ -26,6 +26,36 @@ function setup(state: { projects?: ReadonlyArray<Project>; threads?: ReadonlyArr
 }
 
 describe("CommandPalette open intents", () => {
+  it("leaves a submenu only on a fresh, unmodified Backspace", async () => {
+    setup();
+    await using _screen = await render(<CommandPalette>{null}</CommandPalette>);
+
+    openCommandPalette({ open: "new-thread-in" });
+    const rootInput = page.getByPlaceholder("Search commands, projects, and threads...");
+
+    const submenuInput = page.getByPlaceholder("Search...");
+    await expect.element(submenuInput).toHaveFocus();
+
+    for (const init of [
+      { repeat: true },
+      { ctrlKey: true },
+      { isComposing: true },
+    ] satisfies ReadonlyArray<KeyboardEventInit>) {
+      const event = new KeyboardEvent("keydown", {
+        key: "Backspace",
+        bubbles: true,
+        cancelable: true,
+        ...init,
+      });
+      await act(() => submenuInput.element().dispatchEvent(event));
+      expect(event.defaultPrevented).toBe(false);
+      await expect.element(submenuInput).toBeVisible();
+    }
+
+    await userEvent.keyboard("{Backspace}");
+    await expect.element(rootInput).toHaveFocus();
+  });
+
   it("opens New thread in... with focus in the search input, not the Back button", async () => {
     setup();
     await using _screen = await render(<CommandPalette>{null}</CommandPalette>);
