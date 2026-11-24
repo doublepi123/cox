@@ -2001,8 +2001,9 @@ describe("AcpAdapterV2", () => {
           "the run keeps ingesting work that outlives the failed prompt",
         );
         const sessionId = providerThread.nativeThreadRef?.nativeId;
-        assert.isDefined(sessionId);
-        assert.isDefined(native.current);
+        if (sessionId == null || native.current === undefined) {
+          return assert.fail("expected the native ACP session");
+        }
         yield* native.current.request("_test/emit-update", {
           sessionId,
           update: {
