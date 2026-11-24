@@ -126,7 +126,10 @@ type HookResult = ReturnType<typeof useQueuedRunEdit>;
 type FixtureMessage = Pick<ThreadStructure["messages"][number], "id" | "text" | "context">;
 
 function projection(runs: ReadonlyArray<RunStatus>, messages: ReadonlyArray<FixtureMessage>) {
-  return { runs: runs.map((run) => ({ ...run, modelSelection: MODEL })), messages } as unknown as ThreadStructure;
+  return {
+    runs: runs.map((run) => ({ ...run, modelSelection: MODEL })),
+    messages,
+  } as unknown as ThreadStructure;
 }
 
 function setRuns(ref: ScopedThreadRef, status: string) {
