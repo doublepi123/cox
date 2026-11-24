@@ -1,5 +1,6 @@
 import type {
   GitRunStackedActionResult,
+  ScopedThreadRef,
   GitStackedAction,
   VcsStatusResult,
 } from "@t3tools/contracts";
@@ -18,6 +19,13 @@ export {
   type DefaultBranchConfirmableAction,
   type GitActionIconName,
 } from "@t3tools/client-runtime/state/vcs";
+
+export function gitActionCheckoutKey(
+  thread: ScopedThreadRef | null,
+  checkout: { key: string; cwd: string } | null | undefined,
+): string {
+  return JSON.stringify([thread?.environmentId, thread?.threadId, checkout?.key, checkout?.cwd]);
+}
 
 export interface GitActionMenuItem {
   id: "commit" | "push" | "pr";

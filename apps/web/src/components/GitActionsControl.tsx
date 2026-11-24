@@ -48,6 +48,7 @@ import { cn } from "~/lib/utils";
 import {
   buildMenuItems,
   formatGitActionElapsed,
+  gitActionCheckoutKey,
   GIT_ACTION_SUCCESS_VISIBLE_MS,
   type GitActionProgressPresentation,
   type GitActionIconName,
@@ -967,11 +968,7 @@ function PublishRepositoryDialog(props: PublishRepositoryDialogProps) {
 
 // Local state belongs to one checkout; a new key drops it when the target changes.
 export const GitActionsControl = memo(function GitActionsControl(props: GitActionsControlProps) {
-  const checkoutKey = JSON.stringify([
-    props.threadRef?.environmentId ?? null,
-    props.target?.key ?? null,
-    props.target?.cwd ?? null,
-  ]);
+  const checkoutKey = gitActionCheckoutKey(props.threadRef, props.target);
   return <CheckoutGitActionsControl key={checkoutKey} {...props} />;
 });
 

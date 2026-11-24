@@ -1,15 +1,30 @@
-import { SourceControlProviderKind, type VcsStatusResult } from "@t3tools/contracts";
+import {
+  EnvironmentId,
+  SourceControlProviderKind,
+  ThreadId,
+  type VcsStatusResult,
+} from "@t3tools/contracts";
 import { sourceControlClients } from "@t3tools/client-runtime/source-control-clients";
 import { resolveAutoFeatureBranchName } from "@t3tools/shared/git";
 import { assert, describe, it } from "vite-plus/test";
 import {
   buildMenuItems,
+  gitActionCheckoutKey,
   requiresDefaultBranchConfirmation,
   resolveChangesTotals,
   resolveDefaultBranchActionDialogCopy,
   resolveLiveThreadBranchUpdate,
   resolveQuickAction,
 } from "./GitActionsControl.logic";
+
+it("gives threads sharing a checkout separate Git result state", () => {
+  const environmentId = EnvironmentId.make("local");
+  const checkout = { key: "checkout", cwd: "/repo" };
+  const first = { environmentId, threadId: ThreadId.make("first") };
+  const second = { environmentId, threadId: ThreadId.make("second") };
+  assert.notEqual(gitActionCheckoutKey(first, checkout), gitActionCheckoutKey(second, checkout));
+  assert.equal(gitActionCheckoutKey(first, checkout), gitActionCheckoutKey({ ...first }, checkout));
+});
 
 function status(overrides: Partial<VcsStatusResult> = {}): VcsStatusResult {
   return {
