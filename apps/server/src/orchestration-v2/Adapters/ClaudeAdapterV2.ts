@@ -85,6 +85,7 @@ import {
 } from "@t3tools/shared/mcpApp";
 import { AgentScope } from "@t3tools/shared/AgentScope";
 import * as HostProcess from "@t3tools/shared/HostProcess";
+import { windowsSystem32Path } from "@t3tools/shared/windowsSystem";
 import { applyClaudePromptEffortPrefix } from "@t3tools/shared/model";
 import {
   CLAUDE_RESUME_COMPACTION_COMPACT_ANSWER,
@@ -423,6 +424,40 @@ export function spawnClaudeProcessGroup(
   });
   // Node's typings make stdin and stdout nullable once stdio has a fourth entry; both are pipes.
   return child as ClaudeSpawnedProcess;
+}
+
+export function spawnClaudeWindowsProcess(
+  options: ClaudeSpawnOptions,
+  environment: NodeJS.ProcessEnv,
+  onStderr?: (text: string) => void,
+) {
+  const child = NodeChildProcess.spawn(options.command, options.args, {
+    cwd: options.cwd,
+    env: options.env,
+    signal: options.signal,
+    windowsHide: true,
+    stdio: ["pipe", "pipe", "pipe"],
+  });
+  child.stderr.setEncoding("utf8").on("data", (text: string) => onStderr?.(text));
+  const kill = child.kill.bind(child);
+  let killingTree = false;
+  child.kill = (signal) => {
+    if (child.pid === undefined || signal === 0) return kill(signal);
+    if (child.exitCode !== null || child.signalCode !== null) return false;
+    if (!killingTree) {
+      killingTree = true;
+      NodeChildProcess.execFile(
+        windowsSystem32Path(environment, "taskkill.exe"),
+        ["/pid", String(child.pid), "/t", "/f"],
+        { windowsHide: true },
+        (error) => {
+          if (error && child.exitCode === null && child.signalCode === null) kill(signal);
+        },
+      );
+    }
+    return true;
+  };
+  return child;
 }
 
 export const ClaudeProviderCapabilitiesV2 = {
@@ -1290,6 +1325,7 @@ export const layerQueryRunner: Layer.Layer<
     const { native: nativeEventLogger } = yield* ProviderEventLoggers.ProviderEventLoggers;
     const agentScope = yield* AgentScope;
     const platform = yield* HostProcess.Platform;
+    const environment = yield* HostProcess.Environment;
     const runFork = Effect.runForkWith(yield* Effect.context<never>());
     const hostEnvironment = yield* HostProcess.Environment;
     const portDiscovery = yield* PortScanner.PortDiscovery;
@@ -1368,17 +1404,7 @@ export const layerQueryRunner: Layer.Layer<
                 stderrClosed = new Promise((resolve) => (stderrDone = resolve));
                 return spawnClaudeProcessGroup(spawnOptions, stopScope, appendStderr, stderrDone);
               }
-              const child = NodeChildProcess.spawn(spawnOptions.command, spawnOptions.args, {
-                cwd: spawnOptions.cwd,
-                env: spawnOptions.env,
-                signal: spawnOptions.signal,
-                windowsHide: true,
-                stdio: ["pipe", "pipe", "pipe"],
-              });
-              child.stderr
-                .setEncoding("utf8")
-                .on("data", (chunk: string) => options.stderr?.(chunk));
-              return child;
+              return spawnClaudeWindowsProcess(spawnOptions, environment, options.stderr);
             });
           let spawnedProcess: ClaudeSpawnedProcess | undefined;
           let processExited = false;

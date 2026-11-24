@@ -32,9 +32,48 @@ import {
   type ClaudeAgentSdkQueryOpenInput,
   layerQueryRunner,
   spawnClaudeProcessGroup,
+  spawnClaudeWindowsProcess,
 } from "./ClaudeAdapterV2.ts";
 
 vi.mock("@anthropic-ai/claude-agent-sdk", { spy: true });
+
+it.live.runIf(HostProcess.Platform.defaultValue() === "win32")(
+  "ends a detached grandchild when terminating the Windows Claude CLI",
+  () =>
+    Effect.gen(function* () {
+      const signal = yield* Effect.abortSignal;
+      const child = spawnClaudeWindowsProcess(
+        {
+          command: process.execPath,
+          args: [
+            "-e",
+            "const c=require('child_process').spawn(process.execPath,['-e','setInterval(()=>{},1e3)'],{detached:true,stdio:'ignore'});process.stdout.write(String(c.pid));process.stdin.resume()",
+          ],
+          env: process.env,
+          signal,
+        },
+        process.env,
+      );
+      const grandchild = yield* Effect.promise(
+        () =>
+          new Promise<number>((resolve) =>
+            child.stdout.once("data", (pid) => resolve(Number(String(pid)))),
+          ),
+      );
+      const exited = new Promise((resolve) => child.once("exit", resolve));
+      child.kill();
+      yield* Effect.promise(() => exited);
+      const survived = (() => {
+        try {
+          return process.kill(grandchild, 0);
+        } catch {
+          return false;
+        }
+      })();
+      if (survived) process.kill(grandchild);
+      assert.isFalse(survived);
+    }),
+);
 
 const FORK_SESSION_ID = "11111111-1111-4111-8111-111111111111";
 
