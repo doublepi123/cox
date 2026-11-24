@@ -7,7 +7,9 @@ import * as Effect from "effect/Effect";
 import * as Result from "effect/Result";
 import * as Predicate from "effect/Predicate";
 import * as Schema from "effect/Schema";
+import * as HttpServerResponse from "effect/http/HttpServerResponse";
 import * as HttpApiBuilder from "effect/http-api/HttpApiBuilder";
+import { HttpApiSchemaError } from "effect/http-api/HttpApiError";
 import * as SqlClient from "effect/sql/SqlClient";
 
 import {
@@ -32,6 +34,7 @@ import * as ThreadManagementService from "./ThreadManagementService.ts";
 import * as ProjectStore from "./ProjectStore.ts";
 import { loadSubscriberShellSnapshot } from "./ShellStream.ts";
 import { boundedSnapshotResponseFields } from "./ThreadStream.ts";
+import { encodeThreadSnapshotBody } from "./threadSnapshotBody.ts";
 import { projectThreadProjectionForWire } from "./WireProjection.ts";
 
 const isThreadTranscriptTooLargeError = Schema.is(
@@ -182,10 +185,13 @@ export const layer = HttpApiBuilder.group(
             args.params.threadId,
             "orchestration_thread_snapshot_failed",
           );
-          return {
+          const body = yield* encodeThreadSnapshotBody({
             snapshotSequence: snapshot.snapshotSequence,
             projection: snapshot.projection,
-          };
+          }).pipe(
+            Effect.catch((cause) => Effect.die(new HttpApiSchemaError({ kind: "Body", cause }))),
+          );
+          return HttpServerResponse.stream(body, { contentType: "application/json" });
         }),
       )
       .handle(
