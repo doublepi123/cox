@@ -3,6 +3,8 @@ import { useComposerTypingGuard } from "./useComposerTypingGuard";
 import { insertAttachmentReferencesForDraft } from "./composerAttachmentReferences";
 import type { ComposerAttachmentInsertion } from "../composerAttachmentInsertion";
 import { BackgroundThreadContext } from "./backgroundThread";
+import { useLocation } from "@tanstack/react-router";
+import { isAppModalPage } from "../sidebar/mainAppLocation";
 import {
   draftSupportedRuntimeModes,
   resolveCompatibleRuntimeMode,
@@ -2319,7 +2321,9 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   const composerControlsCollapsed = isComposerCollapsedMobile;
   // The collapsed mobile web composer keeps a second controls row inside the card.
   const showInlineRestingControls = isComposerCollapsedMobile;
-  const composerControlsHidden = showInlineRestingControls && !restingControlsVisible;
+  const appModalOpen = useLocation({ select: (location) => isAppModalPage(location.pathname) });
+  const composerControlsHidden =
+    appModalOpen || (showInlineRestingControls && !restingControlsVisible);
   if (composerControlsHidden && isComposerModelPickerOpen) {
     setIsComposerModelPickerOpen(false);
   }
