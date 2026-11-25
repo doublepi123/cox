@@ -1415,9 +1415,9 @@ function ProviderInstanceRow({
               readOnly={readOnly}
               onEnable={() => actions.enableInstance(instanceId, { ...instance, enabled: true })}
             />
-          ) : mode === "editor" && (driver === "pi" || driver === "omp") ? (
+          ) : mode === "editor" && (driver === "pi" || driver === "omp" || driver === "dsh") ? (
             <PiSetupSection
-              runtime={driver === "omp" ? "omp" : "pi"}
+              runtime={driver === "omp" ? "omp" : driver === "dsh" ? "dsh" : "pi"}
               environmentId={environmentId}
               instanceId={instanceId}
               provider={liveProvider}

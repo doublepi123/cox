@@ -10,6 +10,7 @@ import { makeProviderClientRegistry } from "@t3tools/provider-core/client";
 import { modelShortName } from "@t3tools/provider-core/modelShortName";
 import { cursorClient } from "@t3tools/provider-cursor/client";
 import { cursorCliClient } from "@t3tools/provider-cursor-cli/client";
+import { dshClient } from "@t3tools/provider-dsh/client";
 import { fxClient } from "@t3tools/provider-fx/client";
 import { grokClient } from "@t3tools/provider-grok/client";
 import { museClient } from "@t3tools/provider-muse/client";
@@ -36,6 +37,7 @@ export const providerClients = makeProviderClientRegistry([
   },
   cursorClient,
   cursorCliClient,
+  dshClient,
   grokClient,
   fxClient,
   openCodeClient,

@@ -4637,4 +4637,31 @@ export const en = {
   "Thread unavailable": "Thread unavailable",
   "This thread is on an environment this app is not connected to.":
     "This thread is on an environment this app is not connected to.",
+  "Preparing DeepSeek Harness setup…": "Preparing DeepSeek Harness setup…",
+  "DeepSeek Harness setup": "DeepSeek Harness setup",
+  "DeepSeek Harness": "DeepSeek Harness",
+  "Installing DeepSeek Harness…": "Installing DeepSeek Harness…",
+  "DeepSeek Harness {version} is installed.": "DeepSeek Harness {version} is installed.",
+  "Install DeepSeek Harness with the dsh-acp-plus bridge for plans, commands, modes, forks and forms.":
+    "Install DeepSeek Harness with the dsh-acp-plus bridge for plans, commands, modes, forks and forms.",
+  "Enable DeepSeek Harness": "Enable DeepSeek Harness",
+  "Update DeepSeek Harness": "Update DeepSeek Harness",
+  "Install DeepSeek Harness": "Install DeepSeek Harness",
+  "Uses the custom DeepSeek Harness runtime below.":
+    "Uses the custom DeepSeek Harness runtime below.",
+  "Using your existing DeepSeek Harness.": "Using your existing DeepSeek Harness.",
+  "Cox installs DeepSeek Harness and its ACP bridge in its own tools directory.":
+    "Cox installs DeepSeek Harness and its ACP bridge in its own tools directory.",
+  "DeepSeek Harness model access": "DeepSeek Harness model access",
+  "Set DEEPSEEK_API_KEY below, or keep the models and keys saved in your DeepSeek Harness home. Installing does not start an agent turn.":
+    "Set DEEPSEEK_API_KEY below, or keep the models and keys saved in your DeepSeek Harness home. Installing does not start an agent turn.",
+  "DeepSeek API key": "DeepSeek API key",
+  "Optional. Overrides the key stored in the DeepSeek Harness home.":
+    "Optional. Overrides the key stored in the DeepSeek Harness home.",
+  "DeepSeek API endpoint": "DeepSeek API endpoint",
+  "Optional. A DeepSeek-compatible Anthropic Messages endpoint.":
+    "Optional. A DeepSeek-compatible Anthropic Messages endpoint.",
+  "DeepSeek Harness home": "DeepSeek Harness home",
+  "Optional. Settings, credentials and sessions directory. Defaults to ~/.dsh.":
+    "Optional. Settings, credentials and sessions directory. Defaults to ~/.dsh.",
 } as const;

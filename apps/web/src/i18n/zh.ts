@@ -4477,4 +4477,30 @@ export const zh = {
   "Thread unavailable": "会话不可用",
   "This thread is on an environment this app is not connected to.":
     "此会话位于当前应用未连接的环境。",
+  "Preparing DeepSeek Harness setup…": "正在准备 DeepSeek Harness 设置…",
+  "DeepSeek Harness setup": "DeepSeek Harness 设置",
+  "DeepSeek Harness": "DeepSeek Harness",
+  "Installing DeepSeek Harness…": "正在安装 DeepSeek Harness…",
+  "DeepSeek Harness {version} is installed.": "已安装 DeepSeek Harness {version}。",
+  "Install DeepSeek Harness with the dsh-acp-plus bridge for plans, commands, modes, forks and forms.":
+    "安装 DeepSeek Harness 及 dsh-acp-plus 桥接，支持计划、命令、模式、分叉和表单。",
+  "Enable DeepSeek Harness": "启用 DeepSeek Harness",
+  "Update DeepSeek Harness": "更新 DeepSeek Harness",
+  "Install DeepSeek Harness": "安装 DeepSeek Harness",
+  "Uses the custom DeepSeek Harness runtime below.": "使用下方自定义的 DeepSeek Harness 运行时。",
+  "Using your existing DeepSeek Harness.": "正在使用你现有的 DeepSeek Harness。",
+  "Cox installs DeepSeek Harness and its ACP bridge in its own tools directory.":
+    "Cox 会把 DeepSeek Harness 及其 ACP 桥接安装到自己的工具目录。",
+  "DeepSeek Harness model access": "DeepSeek Harness 模型访问",
+  "Set DEEPSEEK_API_KEY below, or keep the models and keys saved in your DeepSeek Harness home. Installing does not start an agent turn.":
+    "在下方设置 DEEPSEEK_API_KEY，或继续使用 DeepSeek Harness 主目录中保存的模型和密钥。安装不会启动智能体回合。",
+  "DeepSeek API key": "DeepSeek API 密钥",
+  "Optional. Overrides the key stored in the DeepSeek Harness home.":
+    "可选。覆盖 DeepSeek Harness 主目录中保存的密钥。",
+  "DeepSeek API endpoint": "DeepSeek API 端点",
+  "Optional. A DeepSeek-compatible Anthropic Messages endpoint.":
+    "可选。兼容 DeepSeek 的 Anthropic Messages 端点。",
+  "DeepSeek Harness home": "DeepSeek Harness 主目录",
+  "Optional. Settings, credentials and sessions directory. Defaults to ~/.dsh.":
+    "可选。设置、凭据和会话所在目录，默认 ~/.dsh。",
 } as const;

@@ -13,6 +13,7 @@ import {
 import * as Schema from "effect/Schema";
 import { acpRegistryClient } from "@t3tools/provider-acp-registry/client";
 import { cursorClient } from "@t3tools/provider-cursor/client";
+import { dshClient } from "@t3tools/provider-dsh/client";
 import { grokClient } from "@t3tools/provider-grok/client";
 import { museClient } from "@t3tools/provider-muse/client";
 import { openCodeClient } from "@t3tools/provider-opencode/client";
@@ -34,6 +35,7 @@ const providerSecretFields = new Map([
   ["antigravity", secretSettingsFields(AntigravitySettings)],
   ...[
     cursorClient,
+    dshClient,
     grokClient,
     museClient,
     openCodeClient,

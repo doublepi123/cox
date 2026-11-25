@@ -196,9 +196,10 @@ const shouldRetainMissingProviderModels = (provider: ServerProvider): boolean =>
 
   if (
     provider.driver === ProviderDriverKind.make("grok") ||
-    provider.driver === ProviderDriverKind.make("cursorCli")
+    provider.driver === ProviderDriverKind.make("cursorCli") ||
+    provider.driver === ProviderDriverKind.make("dsh")
   ) {
-    // Grok and Cursor CLI report ready only after they discover a model list; the pending,
+    // Grok, Cursor CLI and DeepSeek Harness report ready only after they discover a model list; the pending,
     // ACP-failed, empty-inventory, and logged-out probes are warning/error.
     return !(provider.installed && provider.status === "ready");
   }

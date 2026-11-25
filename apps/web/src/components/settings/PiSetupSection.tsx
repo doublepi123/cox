@@ -70,6 +70,26 @@ const SETUP_COPY = {
     access:
       "Bind a model service above, or configure independent Oh My Pi credentials below. Installing does not start an agent turn.",
   },
+  dsh: {
+    title: "DeepSeek Harness",
+    preparing: "Preparing DeepSeek Harness setup…",
+    region: "DeepSeek Harness setup",
+    runtime: "DeepSeek Harness",
+    installing: "Installing DeepSeek Harness…",
+    installed: "DeepSeek Harness {version} is installed.",
+    description:
+      "Install DeepSeek Harness with the dsh-acp-plus bridge for plans, commands, modes, forks and forms.",
+    enable: "Enable DeepSeek Harness",
+    update: "Update DeepSeek Harness",
+    install: "Install DeepSeek Harness",
+    docs: "https://github.com/deepseek-ai/deepseek-harness",
+    custom: "Uses the custom DeepSeek Harness runtime below.",
+    local: "Using your existing DeepSeek Harness.",
+    managed: "Cox installs DeepSeek Harness and its ACP bridge in its own tools directory.",
+    credentials: "DeepSeek Harness model access",
+    access:
+      "Set DEEPSEEK_API_KEY below, or keep the models and keys saved in your DeepSeek Harness home. Installing does not start an agent turn.",
+  },
 } as const;
 
 export function PiSetupSection(props: {
