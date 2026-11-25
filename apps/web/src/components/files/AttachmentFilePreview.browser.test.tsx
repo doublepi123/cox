@@ -3304,6 +3304,31 @@ it.each(["odt", "odp"] as const)("preserves rendered %s spaces and tabs", async 
   }
 });
 
+it("renders GB18030 text in the RTF attachment preview", async () => {
+  const file = new Blob([
+    String.raw`{\rtf1\ansi\ansicpg54936 Quarterly notes: \'d6\'d0\'ce\'c4 \'95\'32\'82\'36 \'82\'35\'8f\'33 \uc2\u20320\'c4\'e3 done\par}`,
+  ]);
+  await using screen = await render(
+    <div style={{ display: "flex", height: 400, width: 600 }}>
+      <AttachmentFilePreview
+        name="notes.rtf"
+        mimeType="application/rtf"
+        sizeBytes={file.size}
+        file={file}
+      />
+    </div>,
+  );
+  await vi.waitFor(
+    () => {
+      const html = screen.container.querySelector("iframe")?.srcdoc ?? "";
+      expect(new DOMParser().parseFromString(html, "text/html").body.textContent).toBe(
+        "Quarterly notes: 中文 𠀀 龦 你 done",
+      );
+    },
+    { timeout: 10_000 },
+  );
+});
+
 it.each(["rtf", "epub", "ods"] as const)(
   "preserves %s document text through the worker and attachment viewer",
   async (kind) => {
