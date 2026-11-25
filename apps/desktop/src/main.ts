@@ -716,11 +716,13 @@ async function applySoftwareUpdates(clientOnly = false) {
 async function finishQuit() {
   if (stoppingBackend) return;
   stoppingBackend = true;
+  let backendStopped = false;
   try {
     if (!updateAfterQuit) {
       await closeDesktopUpdates([updates, clientUpdates], reportUpdateCleanup);
     }
     await backend?.stop();
+    backendStopped = true;
     if (updateAfterQuit) {
       await clientUpdates?.apply();
       await closeDesktopUpdates([updates, clientUpdates], reportUpdateCleanup);
@@ -746,7 +748,7 @@ async function finishQuit() {
     stoppingBackend = false;
     if (updateAfterQuit || failedRelaunch) {
       updateAfterQuit = false;
-      if (localOrigin)
+      if (localOrigin && backendStopped)
         try {
           await recoverBackend?.();
         } catch (recoveryError) {

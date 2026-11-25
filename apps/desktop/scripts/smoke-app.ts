@@ -325,7 +325,7 @@ try {
         state.errors++;
       };
       process.argv.push("--cox-update-transaction=completed-smoke-transaction");
-      app.relaunch = (options) => {
+      const recordRelaunch = (args?: readonly string[]) => {
         writeFileSync(
           paths.marker,
           JSON.stringify({
@@ -333,10 +333,28 @@ try {
             confirmations: state.confirmations,
             errors: state.errors,
             cleanupCalls: state.cleanupCalls,
-            args: options?.args,
+            args,
           }),
         );
       };
+      if (process.platform === "darwin") {
+        const childProcess = process.getBuiltinModule("child_process");
+        childProcess.spawn = new Proxy(childProcess.spawn, {
+          apply(original, receiver, call) {
+            const [command, args, options] = call;
+            if (command === "/bin/sh" && args?.[2] === "cox-relaunch") {
+              if (args[4] !== "/usr/bin/open" || args[5] !== join(process.resourcesPath, "../.."))
+                throw new Error("Unexpected macOS relaunch command.");
+              recordRelaunch(args.slice(6));
+              return original("/usr/bin/true", [], options);
+            }
+            return Reflect.apply(original, receiver, call);
+          },
+        });
+        process.getBuiltinModule("module").syncBuiltinESMExports();
+      } else {
+        app.relaunch = (options) => recordRelaunch(options?.args);
+      }
     },
     { runtime: runtimePath, marker: relaunchMarker },
   );
