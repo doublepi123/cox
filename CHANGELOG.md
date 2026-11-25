@@ -2,6 +2,31 @@
 
 ## Unreleased
 
+## 0.2.39 — 2026-11-25
+
+- Computer control input tools accept `delivery: "background" | "foreground"`. When an app has
+  several windows, keystrokes and shortcuts work in the foreground after the user allows it once
+  per window and thread.
+- Computer control failures carry specific codes (`not-found`, `stale-frame`, `stale-ref`,
+  `ax-not-found`, `ax-unsupported`, `ax-action-failed`, `capture-failed`, `user-intervened` and
+  more) with recovery steps that match the available tools; Labs settings are suggested only for
+  settings problems.
+- `computer_screenshot` reports a missing window as a structured tool error instead of
+  `Internal error`, and an unavailable engine reports its state and error message.
+- `computer_windows` returns bundle ids and matches the app filter against the localized name,
+  bundle id or English bundle name.
+
+## Desktop 0.2.42 — 2026-11-25
+
+- The computer control engine starts on demand, restarts after an unexpected exit and is
+  started again by Re-check, so an enabled switch no longer leaves the engine silently stopped.
+- Labs shows the engine state and its error when the engine is not running.
+- Foreground delivery requested by an input tool shows the same confirmation as
+  `computer_foreground`; the window list settles briefly on macOS so recently closed windows
+  drop out.
+- A computer request whose desktop handler fails is answered with an error instead of waiting
+  for the two-minute timeout.
+
 ## 0.2.38 — 2026-11-25
 
 - Let CoCode on Android release its wake lock while the local Cox runtime is idle. Agent turns and terminal processes wait for Android to confirm the lock before starting. Enabled schedules with a pending run keep the device awake so they can run on time.
