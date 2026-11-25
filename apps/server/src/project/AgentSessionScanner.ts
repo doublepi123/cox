@@ -749,6 +749,11 @@ function extractCwd(parsed: unknown, source: AgentSessionSource): string | null 
   if (typeof parsed !== "object" || parsed === null) return null;
 
   const record = parsed as Record<string, unknown>;
+  if (source === "pi") {
+    return record.type === "session" && typeof record.cwd === "string"
+      ? record.cwd.trim() || null
+      : null;
+  }
   if (typeof record.cwd === "string" && record.cwd.trim().length > 0) {
     return record.cwd;
   }
@@ -1085,11 +1090,14 @@ export const make = Effect.gen(function* () {
               }
             };
             // Claude writes cwd before message, so a record with a large image need not be read to its end.
+            // Pi uses a small header, which must be complete before its cwd is trusted.
             let topLevelCwd: string | null = null;
             const createReader = () =>
               createTranscriptJsonReader(reserveSelected, selectCwdPath, {
                 onTopLevelString: (key, value) => {
-                  if (key === "cwd" && value.trim().length > 0) topLevelCwd ??= value;
+                  if (source !== "pi" && key === "cwd" && value.trim().length > 0) {
+                    topLevelCwd ??= value;
+                  }
                 },
               });
             let reader = createReader();
@@ -1227,12 +1235,17 @@ export const make = Effect.gen(function* () {
               recordCount += 1;
               if (recordCount > MAX_IMPORT_RECORDS) return false;
               const value = reader.finish();
+              if (source === "pi" && Option.isNone(cwd)) {
+                cwd = Option.fromNullOr(extractCwd(value, source) || null);
+              }
               const decoded = decodeTranscriptValue(value);
               if (Option.isNone(decoded) && source === "pi") {
                 // Pi accepts messages this schema rejects, such as null content; keep their tree links.
                 records.push(...Option.toArray(decodePiEntryLinks(value)));
               } else if (Option.isSome(decoded)) {
-                if (Option.isNone(cwd)) cwd = Option.fromNullOr(extractDecodedCwd(decoded.value));
+                if (source !== "pi" && Option.isNone(cwd)) {
+                  cwd = Option.fromNullOr(extractDecodedCwd(decoded.value));
+                }
                 if (source === "claudeAgent") {
                   claudeFields = foldClaudeFields(claudeFields, decoded.value);
                 }
