@@ -10,6 +10,7 @@ import {
   WINDOW_SETTLE_MS,
 } from "./executor.ts";
 import {
+  ComputerEngineExitError,
   computerEngineAsset,
   computerStopChord,
   EngineClient,
@@ -197,6 +198,38 @@ describe("desktop computer host", () => {
     expect(opened.capabilities).toEqual({ showCursor: false });
     expect(opened.resumeToken).toBe("token");
     await opened.client.close();
+  });
+  it("reports the engine's launch refusal and logs its stderr", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "cox-computer-engine-"));
+    directories.push(directory);
+    const source = join(directory, "engine.cjs");
+    await writeFile(
+      source,
+      `process.stderr.write('SENPI_DESKTOP_LAUNCH_REFUSED {"version":1,"reason":"self-responsible"}\\n');process.stderr.write('senpi-desktop-engine: refusing to run as its own responsible process (pid 7)\\n');process.exitCode=1;`,
+    );
+    const logged: string[] = [];
+    const failure = await openEngine(process.execPath, [source], {
+      onStderr: (line) => logged.push(line),
+    }).catch((error: unknown) => error);
+    expect(failure).toBeInstanceOf(ComputerEngineExitError);
+    expect(failure).toMatchObject({
+      launchRefusal: "self-responsible",
+      message:
+        "Computer engine refused to start (self-responsible): senpi-desktop-engine: refusing to run as its own responsible process (pid 7)",
+    });
+    expect(logged).toEqual([
+      'SENPI_DESKTOP_LAUNCH_REFUSED {"version":1,"reason":"self-responsible"}',
+      "senpi-desktop-engine: refusing to run as its own responsible process (pid 7)",
+    ]);
+  });
+  it("keeps the engine's last stderr line when it exits without a launch refusal", async () => {
+    const client = await fakeEngine(
+      `process.stderr.write('engine: capture backend failed\\n');process.exitCode=3;`,
+    );
+    const closed = new Promise<Error>((resolve) => client.onClose(resolve));
+    expect((await closed).message).toBe(
+      "Computer engine exited (3): engine: capture backend failed",
+    );
   });
   it("traces element action, role, delivery and key window without typed text", async () => {
     const client = await fakeEngine(

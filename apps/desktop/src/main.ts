@@ -59,6 +59,7 @@ import { desktopConnectionError, desktopText } from "./native-text.ts";
 import {
   acquireComputerEngine,
   COMPUTER_ENGINE_RELEASE,
+  ComputerEngineExitError,
   computerStopChord,
   engineCachePaths,
   findEngine,
@@ -94,6 +95,7 @@ import {
   windowsRelaunchCommand,
 } from "./instance-title.ts";
 import { clearStaleGpuCaches } from "./gpu-cache.ts";
+import { relaunchMacApplication } from "./mac-relaunch.ts";
 
 if (process.versions.electron) process.stderr.write("cox: boot\n");
 
@@ -723,19 +725,26 @@ async function finishQuit() {
       await clientUpdates?.apply();
       await closeDesktopUpdates([updates, clientUpdates], reportUpdateCleanup);
     }
-    if (restartAfterQuit)
-      app.relaunch({
-        args: process.argv
-          .slice(1)
-          .filter((argument) => !argument.startsWith("--cox-update-transaction=")),
-      });
+    if (restartAfterQuit) {
+      const args = process.argv
+        .slice(1)
+        .filter((argument) => !argument.startsWith("--cox-update-transaction="));
+      if (process.platform === "darwin" && app.isPackaged)
+        await relaunchMacApplication({
+          application: resolve(process.resourcesPath, "../.."),
+          logPath: join(home, "logs", "desktop.log"),
+          args,
+        });
+      else app.relaunch({ args });
+    }
     approvedQuit = true;
     app.quit();
   } catch (error) {
+    const failedRelaunch = restartAfterQuit;
     restartAfterQuit = false;
     quitPending = false;
     stoppingBackend = false;
-    if (updateAfterQuit) {
+    if (updateAfterQuit || failedRelaunch) {
       updateAfterQuit = false;
       if (localOrigin)
         try {
@@ -955,6 +964,7 @@ async function start() {
   };
   let computerEngine: Awaited<ReturnType<typeof openEngine>> | undefined;
   let computerExecutor: ComputerExecutor | undefined;
+  let computerLaunchRefused = false;
   const launchScreen =
     process.platform === "darwin"
       ? (systemPreferences?.getMediaAccessStatus("screen") ?? "unknown")
@@ -1068,7 +1078,8 @@ async function start() {
         ...computerState,
         restartRequired:
           process.platform === "darwin" &&
-          ((launchScreen === "denied" && refreshedPermissions.screenRecording === "granted") ||
+          (computerLaunchRefused ||
+            (launchScreen === "denied" && refreshedPermissions.screenRecording === "granted") ||
             (launchInputDenied && refreshedPermissions.input === "granted")),
       };
     } else if (process.platform !== "darwin") {
@@ -1106,7 +1117,9 @@ async function start() {
           computerState.macosVersion,
         ),
         engineMessage: computerState.engineMessage,
-        restartRequired: launchScreen === "denied" && permissions.screenRecording === "granted",
+        restartRequired:
+          computerLaunchRefused ||
+          (launchScreen === "denied" && permissions.screenRecording === "granted"),
       };
     }
     publishComputerState();
@@ -1172,7 +1185,10 @@ async function start() {
       const paths = engineCachePaths(home, COMPUTER_ENGINE_RELEASE, process.platform, engineArch);
       let binary = await findEngine(paths);
       if (!binary) binary = await acquireComputerEngine(paths[0]!, process.platform, engineArch);
-      const engine = await openEngine(binary);
+      const engine = await openEngine(binary, [], {
+        onStderr: (line) => log.write(`computer engine: ${line}\n`),
+      });
+      computerLaunchRefused = false;
       if (!computerUseEnabled) {
         await engine.client.close();
         return computerState;
@@ -1258,10 +1274,16 @@ async function start() {
       if (computerEngine !== engine) computerExecutor = undefined;
       else await refreshComputerState();
     } catch (error) {
+      computerLaunchRefused =
+        process.platform === "darwin" &&
+        error instanceof ComputerEngineExitError &&
+        error.launchRefusal !== undefined;
+      log.write(`Computer control engine could not start: ${String(error)}\n`);
       computerState = {
         ...computerState,
         engine: "error",
         engineMessage: String(error),
+        restartRequired: computerState.restartRequired || computerLaunchRefused,
         ready: false,
       };
     }
@@ -2324,8 +2346,9 @@ async function start() {
                   message: `Computer control is turned on, but its engine is not running (engine: ${computerState.engine})${computerState.engineMessage ? `: ${computerState.engineMessage}` : "."}`,
                   engine: computerState.engine,
                   engineMessage: computerState.engineMessage,
-                  recovery:
-                    "Ask the user to choose Re-check in Cox Settings → Labs → Computer control, or to restart Cox.",
+                  recovery: computerLaunchRefused
+                    ? "Ask the user to quit Cox completely (Command-Q) and open it again from the Dock or Finder; macOS only lets the computer engine start in a Cox opened that way."
+                    : "Ask the user to choose Re-check in Cox Settings → Labs → Computer control, or to restart Cox.",
                 }
               : {
                   code: "disabled",

@@ -243,6 +243,31 @@ describe("computer control settings", () => {
     expect(bridge.restartForComputerUse).toHaveBeenCalledOnce();
   });
 
+  it("asks to reopen Cox when macOS refuses to start the engine", async () => {
+    using _language = englishLanguage();
+    const { bridge } = computerBridge(
+      computerState({
+        enabled: true,
+        engine: "error",
+        engineMessage:
+          "Error: Computer engine refused to start (self-responsible): senpi-desktop-engine: refusing to run as its own responsible process (pid 7)",
+        restartRequired: true,
+      }),
+    );
+    using _bridge = stubGlobal("coxDesktop", bridge);
+    await using screen = await render(<ComputerControlSettingsSection />);
+    await expect
+      .element(
+        screen.getByText("Quit and reopen Cox to start the computer control engine.", {
+          exact: true,
+        }),
+      )
+      .toBeVisible();
+    await expect.element(screen.getByText(/refused to start \(self-responsible\)/)).toBeVisible();
+    await screen.getByRole("button", { name: "Restart Cox", exact: true }).click();
+    expect(bridge.restartForComputerUse).toHaveBeenCalledOnce();
+  });
+
   it("resumes a stopped computer only after an explicit click", async () => {
     using _language = englishLanguage();
     const { bridge } = computerBridge(

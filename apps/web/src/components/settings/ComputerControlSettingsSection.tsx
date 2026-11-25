@@ -179,6 +179,7 @@ export function ComputerControlSettingsSection() {
     />
   );
   const hasSecondaryAction = state.stopped || (state.enabled && !state.ready);
+  const launchRefused = !isWindows && state.engine === "error" && state.restartRequired;
   return (
     <>
       <SettingsSection title={t("Computer control")}>
@@ -208,6 +209,11 @@ export function ComputerControlSettingsSection() {
                 {state.engineMessage ? (
                   <p className="wrap-anywhere">{state.engineMessage}</p>
                 ) : null}
+                {launchRefused ? (
+                  <p className="text-warning-foreground">
+                    {t("Quit and reopen Cox to start the computer control engine.")}
+                  </p>
+                ) : null}
               </div>
             ) : state.enabled ? (
               <div className="space-y-0.5">
@@ -228,6 +234,10 @@ export function ComputerControlSettingsSection() {
                 {state.stopped ? (
                   <Button size="sm" variant="outline" onClick={() => void computer.resume()}>
                     {t("Resume")}
+                  </Button>
+                ) : launchRefused && window.coxDesktop.restartForComputerUse ? (
+                  <Button size="sm" variant="outline" onClick={() => void computer.restart()}>
+                    {t("Restart Cox")}
                   </Button>
                 ) : (
                   <Button size="sm" variant="outline" onClick={() => setGuideOpen(true)}>
@@ -267,7 +277,9 @@ export function ComputerControlSettingsSection() {
             {!isWindows && state.restartRequired ? (
               <div className="flex flex-col gap-3 rounded-lg bg-warning-surface p-3 text-warning-foreground sm:flex-row sm:items-center sm:justify-between">
                 <p className="text-xs leading-relaxed" role="alert">
-                  {t("macOS requires quitting and reopening Cox for the grant to take effect.")}
+                  {launchRefused
+                    ? t("Quit and reopen Cox to start the computer control engine.")
+                    : t("macOS requires quitting and reopening Cox for the grant to take effect.")}
                 </p>
                 {window.coxDesktop.restartForComputerUse ? (
                   <Button

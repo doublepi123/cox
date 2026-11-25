@@ -4190,6 +4190,8 @@ export const zh = {
   "Authorize {appName} for {permission}": "为 {appName} 授予{permission}权限",
   "macOS requires quitting and reopening Cox for the grant to take effect.":
     "macOS 需要退出并重新打开 Cox，授权才会生效。",
+  "Quit and reopen Cox to start the computer control engine.":
+    "退出并重新打开 Cox 后，电脑操控引擎才能启动。",
   "Restart Cox": "重新启动 Cox",
   "Computer control engine is missing.": "电脑操控引擎缺失。",
   "Downloading the computer control engine…": "正在下载电脑操控引擎…",

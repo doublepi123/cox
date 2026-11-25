@@ -423,6 +423,8 @@ export const en = {
   "Authorize {appName} for {permission}": "Authorize {appName} for {permission}",
   "macOS requires quitting and reopening Cox for the grant to take effect.":
     "macOS requires quitting and reopening Cox for the grant to take effect.",
+  "Quit and reopen Cox to start the computer control engine.":
+    "Quit and reopen Cox to start the computer control engine.",
   "Restart Cox": "Restart Cox",
   "Computer control engine is missing.": "Computer control engine is missing.",
   "Downloading the computer control engine…": "Downloading the computer control engine…",

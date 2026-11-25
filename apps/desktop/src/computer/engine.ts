@@ -92,6 +92,41 @@ type RpcMessage = {
   result?: unknown;
   error?: { code: number; message: string; data?: unknown };
 };
+
+const LAUNCH_REFUSED = "SENPI_DESKTOP_LAUNCH_REFUSED ";
+
+function launchRefusalReason(line: string) {
+  if (!line.startsWith(LAUNCH_REFUSED)) return undefined;
+  let record: unknown;
+  try {
+    record = JSON.parse(line.slice(LAUNCH_REFUSED.length));
+  } catch {
+    return "unknown";
+  }
+  return typeof record === "object" &&
+    record !== null &&
+    "reason" in record &&
+    typeof record.reason === "string"
+    ? record.reason
+    : "unknown";
+}
+
+export class ComputerEngineExitError extends Error {
+  readonly launchRefusal: string | undefined;
+  constructor(status: string, launchRefusal: string | undefined, detail: string | undefined) {
+    super(
+      launchRefusal === undefined
+        ? `Computer engine exited (${status})${detail ? `: ${detail}` : "."}`
+        : `Computer engine refused to start (${launchRefusal})${detail ? `: ${detail}` : "."}`,
+    );
+    this.launchRefusal = launchRefusal;
+  }
+}
+
+export type EngineClientOptions = {
+  readonly onStderr?: (line: string) => void;
+};
+
 export class EngineClient {
   private readonly child: ChildProcess;
   private nextId = 0;
@@ -107,7 +142,7 @@ export class EngineClient {
   private readonly listeners = new Set<(method: string, params: unknown) => void>();
   private readonly closeListeners = new Set<(error: Error) => void>();
   private closed = false;
-  constructor(path: string, args: readonly string[] = []) {
+  constructor(path: string, args: readonly string[] = [], options: EngineClientOptions = {}) {
     this.child = spawn(path, [...args, "--stdio"], {
       stdio: ["pipe", "pipe", "pipe"],
       windowsHide: true,
@@ -123,12 +158,24 @@ export class EngineClient {
       }
       if (typeof message === "object" && message !== null) this.receive(message as RpcMessage);
     });
-    this.child.stderr?.on("data", (chunk) =>
-      process.stderr.write(`computer engine: ${String(chunk)}`),
-    );
-    this.child.once("exit", (code, signal) =>
-      this.failAll(new Error(`Computer engine exited (${code ?? signal ?? "unknown"}).`)),
-    );
+    let launchRefusal: string | undefined;
+    let detail: string | undefined;
+    const stderr = createInterface({ input: this.child.stderr! });
+    const stderrClosed = new Promise<void>((resolve) => stderr.once("close", resolve));
+    stderr.on("line", (line) => {
+      if (options.onStderr) options.onStderr(line);
+      else process.stderr.write(`computer engine: ${line}\n`);
+      const refusal = launchRefusalReason(line);
+      if (refusal !== undefined) launchRefusal = refusal;
+      else if (line.trim()) detail = line.trim().slice(0, 500);
+    });
+    this.child.once("exit", (code, signal) => {
+      const status = String(code ?? signal ?? "unknown");
+      void Promise.race([
+        stderrClosed,
+        new Promise<void>((resolve) => setTimeout(resolve, 1_000).unref()),
+      ]).then(() => this.failAll(new ComputerEngineExitError(status, launchRefusal, detail)));
+    });
     this.child.once("error", (error) => this.failAll(error));
   }
   onNotification(listener: (method: string, params: unknown) => void) {
@@ -213,8 +260,9 @@ export class EngineClient {
 export async function openEngine(
   path: string,
   args: readonly string[] = [],
+  options: EngineClientOptions = {},
 ): Promise<{ client: EngineClient; resumeToken: string; capabilities: Record<string, unknown> }> {
-  const client = new EngineClient(path, args);
+  const client = new EngineClient(path, args, options);
   try {
     const hello = await client.request<{ abi: string; protocolVersion: string }>("engine.hello");
     if (hello.abi !== "senpi-desktop/1" || hello.protocolVersion !== "1")
