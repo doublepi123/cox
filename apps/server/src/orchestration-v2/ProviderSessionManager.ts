@@ -87,6 +87,9 @@ export const PROVIDER_INTERRUPT_TIMEOUT_MS = 15 * 1000;
 const busyTurnPrefix = (providerThreadId: ProviderThreadId) => `${providerThreadId}#`;
 const busyTurnKey = (providerThreadId: ProviderThreadId, runOrdinal: number) =>
   `${busyTurnPrefix(providerThreadId)}${runOrdinal}`;
+const waitsOnOmoBackgroundWork = (runtime: ProviderAdapter.ProviderAdapterV2SessionRuntime) =>
+  runtime.providerSession.extensionStatuses?.some((status) => status.key === "cox-omo-wait") ===
+  true;
 const UNLOAD_THREAD_TIMEOUT_MS = 10 * 1000;
 const PROVIDER_RETRY_STALL_TIMEOUT = Duration.minutes(15);
 type ProviderErrorItem = Extract<OrchestrationV2TurnItem, { readonly type: "error" }>;
@@ -1577,11 +1580,12 @@ export const layerWithOptions = (
           // Capture runtime identity before yielding; replacements can reuse the session id.
           const probedRuntime = entry.runtime;
           const hasPendingWork =
-            probedRuntime.hasPendingBackgroundWork === undefined
+            waitsOnOmoBackgroundWork(probedRuntime) ||
+            (probedRuntime.hasPendingBackgroundWork === undefined
               ? false
               : yield* probedRuntime.hasPendingBackgroundWork.pipe(
                   Effect.catchCause(() => Effect.succeed(false)),
-                );
+                ));
           if (hasPendingWork) {
             const now = yield* Clock.currentTimeMillis;
             const pinnedSinceMs = entry.pinnedSinceMs ?? now;
@@ -2978,11 +2982,7 @@ export const layerWithOptions = (
                           : yield* candidate.runtime.hasPendingBackgroundWork.pipe(
                               Effect.catchCause(() => Effect.succeed(false)),
                             );
-                      const hasOmoIdleWait =
-                        candidate.runtime.providerSession.extensionStatuses?.some(
-                          (status) => status.key === "cox-omo-wait",
-                        ) === true;
-                      if (hasPendingWork || hasOmoIdleWait) return;
+                      if (hasPendingWork || waitsOnOmoBackgroundWork(candidate.runtime)) return;
                       const providerSessionId = candidate.runtime.providerSessionId;
                       yield* sessionOpen.withLock(
                         providerSessionId,

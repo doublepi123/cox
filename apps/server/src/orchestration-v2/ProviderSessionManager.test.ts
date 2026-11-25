@@ -2062,6 +2062,51 @@ it.effect("keeps a compaction session alive past its idle timeout", () =>
   }),
 );
 
+it.effect(
+  "ProviderSessionManagerV2 keeps an OMO session that waits on background work past its idle timeout",
+  () =>
+    Effect.gen(function* () {
+      const state = yield* Ref.make(emptyState);
+      yield* Effect.gen(function* () {
+        const eventSink = yield* EventSink.EventSinkV2;
+        const idAllocator = yield* IdAllocator.IdAllocatorV2;
+        const manager = yield* ProviderSessionManager.ProviderSessionManagerV2;
+        const threadId = ThreadId.make("thread-omo-background-wait");
+        const providerSessionId = yield* idAllocator.allocate.providerSession({
+          providerInstanceId: modelSelection.instanceId,
+          threadId,
+        });
+        yield* eventSink.write({
+          events: [
+            yield* makeThreadCreatedEvent({ idAllocator, threadId, now: yield* DateTime.now }),
+          ],
+        });
+        yield* manager.open({ threadId, providerSessionId, modelSelection, runtimePolicy });
+        yield* TestClock.adjust("20 minutes");
+        assert.isTrue(yield* manager.isLive(providerSessionId));
+        yield* TestClock.adjust("12 minutes");
+        assert.isFalse(yield* manager.isLive(providerSessionId));
+      }).pipe(
+        Effect.provide(
+          layerTest({
+            state,
+            capabilities: {
+              ...CodexCapabilities,
+              threads: { ...CodexCapabilities.threads, exposesNativeThreadId: true },
+            },
+            maxIdlePinMs: 30 * 60_000,
+            extensionStatuses: [
+              {
+                key: "cox-omo-wait",
+                text: "Waiting for background work: background terminal sessions.",
+              },
+            ],
+          }),
+        ),
+      );
+    }),
+);
+
 it.effect.each(["session metadata", "session status changes", "provider work"] as const)(
   "ProviderSessionManagerV2 expires idle sessions according to %s",
   (activity) =>
