@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+## 0.2.41 — 2026-11-25
+
+- OMO sessions that wait on a background terminal or monitor are no longer stopped after two idle minutes, which also killed the terminals and servers they were waiting on. Cox keeps such a session for up to four hours.
+
 ## 0.2.40 — 2026-11-25
 
 - New DeepSeek Harness provider. Cox installs DeepSeek Harness 0.2.2-rc.5 with the pinned
