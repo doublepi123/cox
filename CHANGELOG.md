@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+## 0.2.42 — 2026-11-26
+
+- Cox Desktop on macOS now restores computer control after restarting to apply a backend update or grant permissions. Settings show the engine startup error and offer a restart when recovery is needed.
+
 ## 0.2.41 — 2026-11-25
 
 - OMO sessions that wait on a background terminal or monitor are no longer stopped after two idle minutes, which also killed the terminals and servers they were waiting on. Cox keeps such a session for up to four hours.
