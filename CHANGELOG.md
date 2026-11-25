@@ -2,6 +2,18 @@
 
 ## Unreleased
 
+## 0.2.40 — 2026-11-25
+
+- New DeepSeek Harness provider. Cox installs DeepSeek Harness 0.2.2-rc.5 with the pinned
+  dsh-acp-plus ACP bridge in its tools directory, and each instance takes a DeepSeek API key,
+  endpoint and harness home.
+- DeepSeek Harness threads show plan cards, todo lists, command output, dsh slash commands
+  (`/compact`, `/goal`, `/permission`, `/plan`, `/feedback`), plan mode and `ask_user_question`
+  forms with free-text answers, and generate titles with the harness.
+- Supervised, auto-accept-edits and full-access map to the harness's read-only,
+  workspace-write and danger-full-access permission presets, so supervised threads ask before
+  every change. Sessions resume with `session/load` after a server restart.
+
 ## 0.2.39 — 2026-11-25
 
 - Computer control input tools accept `delivery: "background" | "foreground"`. When an app has
