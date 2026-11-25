@@ -1353,6 +1353,141 @@ describe("AcpAdapterV2", () => {
       assert.equal(promptOrdinal, 2, "continuation turn must not dispatch session/prompt");
     }).pipe(Effect.provide(layerTest), Effect.scoped),
   );
+
+  it.live("pairs responses to concurrent same-method requests in request order", () =>
+    Effect.gen(function* () {
+      const fileSystem = yield* FileSystem.FileSystem;
+      const path = yield* Path.Path;
+      const directory = yield* fileSystem.makeTempDirectoryScoped({ prefix: "cox-acp-fifo-" });
+      const statusPath = path.join(directory, "status.json");
+      const sessionId = "concurrent-session";
+      const update = (sessionUpdate: Record<string, unknown>) => ({
+        type: "emit_inbound",
+        frame: {
+          kind: "notification",
+          method: "session/update",
+          params: { sessionId, update: sessionUpdate },
+        },
+      });
+      // A prompt steer is a second session/prompt while the first still runs, so two
+      // same-method client requests are open at once when the first response arrives.
+      const transcript = yield* decodeAcpReplayTranscript(
+        {
+          provider: ACP_TEST_DRIVER,
+          protocol: "acp.ndjson-jsonrpc",
+          version: "1",
+          scenario: "concurrent-prompts",
+          entries: [
+            {
+              type: "expect_outbound",
+              frame: { kind: "request", method: "initialize", params: "<any>" },
+            },
+            {
+              type: "emit_inbound",
+              frame: {
+                kind: "response",
+                method: "initialize",
+                result: {
+                  protocolVersion: 1,
+                  agentCapabilities: { sessionCapabilities: { close: {} } },
+                  authMethods: [],
+                },
+              },
+            },
+            {
+              type: "expect_outbound",
+              frame: { kind: "request", method: "session/new", params: "<any>" },
+            },
+            {
+              type: "emit_inbound",
+              frame: { kind: "response", method: "session/new", result: { sessionId } },
+            },
+            {
+              type: "expect_outbound",
+              frame: { kind: "request", method: "session/prompt", params: "<any>" },
+            },
+            update({ sessionUpdate: "session_info_update", title: "before steer" }),
+            {
+              type: "expect_outbound",
+              frame: { kind: "request", method: "session/prompt", params: "<any>" },
+            },
+            // In request order this cancelled response settles the original prompt, which
+            // the steer already superseded. Mis-paired onto the steer, it would end the
+            // turn as cancelled instead.
+            {
+              type: "emit_inbound",
+              frame: {
+                kind: "response",
+                method: "session/prompt",
+                result: { stopReason: "cancelled" },
+              },
+            },
+            update({
+              sessionUpdate: "agent_message_chunk",
+              messageId: "reply",
+              content: { type: "text", text: "after the steer" },
+            }),
+            update({ sessionUpdate: "session_info_update", title: "steer output" }),
+            {
+              type: "emit_inbound",
+              frame: {
+                kind: "response",
+                method: "session/prompt",
+                result: { stopReason: "end_turn" },
+              },
+            },
+            {
+              type: "expect_outbound",
+              frame: { kind: "request", method: "session/close", params: "<any>" },
+            },
+            {
+              type: "emit_inbound",
+              frame: { kind: "response", method: "session/close", result: {} },
+            },
+          ],
+        } as never,
+        ACP_TEST_DRIVER,
+      );
+      const runtimePolicy = ProviderAdapter.ProviderAdapterV2RuntimePolicy.make({
+        runtimeMode: "full-access",
+        interactionMode: "default",
+        cwd: directory,
+      });
+      const runtime = yield* makeAcpReplayRuntime({
+        transcript,
+        statusPath,
+        fileSystem,
+        scriptPath: yield* path.fromFileUrl(
+          new URL("../../../scripts/acp-replay-agent.ts", import.meta.url),
+        ),
+        childProcessSpawner: yield* ChildProcessSpawner.ChildProcessSpawner,
+      })({
+        cwd: directory,
+        runtimePolicy,
+        mcpServers: [],
+        clientCapabilities: {},
+        clientInfo: { name: "cox-test", version: "0" },
+        protocolLogging: {},
+        onTermination: () => Effect.void,
+      });
+      yield* runtime.start();
+      const sent = yield* Deferred.make<void>();
+      const released = yield* Deferred.make<void>();
+      const first = yield* runtime
+        .prompt({ prompt: [{ type: "text", text: "first" }] }, { dispatched: sent, released })
+        .pipe(Effect.forkChild);
+      yield* Deferred.await(sent);
+      yield* Deferred.succeed(released, undefined);
+      const second = yield* runtime
+        .prompt({ prompt: [{ type: "text", text: "second" }] })
+        .pipe(Effect.forkChild);
+      assert.equal((yield* Fiber.join(first)).stopReason, "cancelled");
+      assert.equal((yield* Fiber.join(second)).stopReason, "end_turn");
+      yield* runtime.closeSession();
+      yield* makeAcpReplayCompletenessAssertion(fileSystem, statusPath, transcript);
+    }).pipe(Effect.provide(layerTest), Effect.scoped),
+  );
+
   it.live("retains returned usage when Stop finalizes before the prompt callback", () =>
     Effect.gen(function* () {
       const path = yield* Path.Path;
