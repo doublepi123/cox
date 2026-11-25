@@ -49,6 +49,9 @@ export type DesktopComputerOperationState = typeof DesktopComputerOperationState
 
 const WindowId = Schema.String;
 
+export const DesktopComputerDelivery = Schema.Literals(["background", "foreground"]);
+export type DesktopComputerDelivery = typeof DesktopComputerDelivery.Type;
+
 export const DesktopComputerAction = Schema.Union([
   Schema.Struct({ kind: Schema.Literal("status") }),
   Schema.Struct({
@@ -73,12 +76,19 @@ export const DesktopComputerAction = Schema.Union([
     frameId: Schema.optional(Schema.String),
     button: Schema.optional(Schema.Literals(["left", "right", "middle"])),
     count: Schema.optional(Schema.Number),
+    delivery: Schema.optional(DesktopComputerDelivery),
   }),
-  Schema.Struct({ kind: Schema.Literal("type"), windowId: WindowId, text: Schema.String }),
+  Schema.Struct({
+    kind: Schema.Literal("type"),
+    windowId: WindowId,
+    text: Schema.String,
+    delivery: Schema.optional(DesktopComputerDelivery),
+  }),
   Schema.Struct({
     kind: Schema.Literal("press"),
     windowId: WindowId,
     keys: Schema.Array(Schema.String),
+    delivery: Schema.optional(DesktopComputerDelivery),
   }),
   Schema.Struct({
     kind: Schema.Literal("scroll"),
@@ -88,6 +98,7 @@ export const DesktopComputerAction = Schema.Union([
     dx: Schema.Number,
     dy: Schema.Number,
     frameId: Schema.optional(Schema.String),
+    delivery: Schema.optional(DesktopComputerDelivery),
   }),
   Schema.Struct({
     kind: Schema.Literal("element"),
@@ -111,6 +122,20 @@ export const DesktopComputerErrorCode = Schema.Literals([
   "cancelled",
   "declined",
   "background-unavailable",
+  "control-required",
+  "busy",
+  "user-intervened",
+  "screen-locked",
+  "protected",
+  "not-found",
+  "stale-frame",
+  "stale-ref",
+  "ax-not-found",
+  "ax-unsupported",
+  "ax-action-failed",
+  "capture-failed",
+  "input-failed",
+  "timeout",
   "invalid",
   "engine",
 ]);
@@ -121,6 +146,8 @@ export const DesktopComputerError = Schema.Struct({
   message: Schema.String,
   missing: Schema.optional(Schema.Array(DesktopComputerPermission)),
   recovery: Schema.optional(Schema.String),
+  engine: Schema.optional(DesktopComputerEngineStatus),
+  engineMessage: Schema.optional(Schema.NullOr(Schema.String)),
 });
 export type DesktopComputerError = typeof DesktopComputerError.Type;
 
@@ -131,6 +158,8 @@ export class DesktopComputerToolFailure extends Schema.TaggedError<DesktopComput
     message: Schema.String,
     missing: Schema.optional(Schema.Array(DesktopComputerPermission)),
     recovery: Schema.optional(Schema.String),
+    engine: Schema.optional(DesktopComputerEngineStatus),
+    engineMessage: Schema.optional(Schema.NullOr(Schema.String)),
   },
 ) {}
 

@@ -47,7 +47,7 @@ import {
 } from "./remote.ts";
 import { trustedWindowAccess, type WindowAccess } from "./window-access.ts";
 import type { DesktopBackendUpdateState, DesktopClientUpdateState } from "@t3tools/contracts";
-import type { DesktopComputerUseState, DesktopComputerPermission } from "@t3tools/contracts";
+import type { DesktopComputerError, DesktopComputerUseState } from "@t3tools/contracts";
 import {
   backendEnvironment,
   isBackendNavigation,
@@ -70,6 +70,7 @@ import {
   initialComputerState,
   permissionState,
 } from "./computer/executor.ts";
+import { macAppIdentityResolver } from "./computer/app-identity.ts";
 import { createComputerOverlayPage, type ComputerOverlayState } from "./computer/overlay-page.ts";
 import { createDesktopMenuTemplate } from "./native-menu.ts";
 import {
@@ -1071,14 +1072,17 @@ async function start() {
             (launchInputDenied && refreshedPermissions.input === "granted")),
       };
     } else if (process.platform !== "darwin") {
-      computerState = initialComputerState(
-        computerSupported,
-        computerUseEnabled,
-        computerState.engine,
-        { screenRecording: "unknown", accessibility: "unknown", input: "unknown" },
-        computerState.appPath,
-        computerState.macosVersion,
-      );
+      computerState = {
+        ...initialComputerState(
+          computerSupported,
+          computerUseEnabled,
+          computerState.engine,
+          { screenRecording: "unknown", accessibility: "unknown", input: "unknown" },
+          computerState.appPath,
+          computerState.macosVersion,
+        ),
+        engineMessage: computerState.engineMessage,
+      };
     } else {
       const screenStatus = systemPreferences?.getMediaAccessStatus("screen") ?? "unknown";
       const accessibility = systemPreferences?.isTrustedAccessibilityClient(false) ?? false;
@@ -1101,6 +1105,7 @@ async function start() {
           computerState.appPath,
           computerState.macosVersion,
         ),
+        engineMessage: computerState.engineMessage,
         restartRequired: launchScreen === "denied" && permissions.screenRecording === "granted",
       };
     }
@@ -1113,108 +1118,165 @@ async function start() {
     writeFileSync(staged, JSON.stringify(enabled) + "\n", { mode: 0o600, flag: "wx" });
     renameSync(staged, computerUsePreference);
     if (!enabled) {
-      await computerEngine?.client.close();
+      await computerEngineStart;
+      const engine = computerEngine;
       computerEngine = undefined;
       computerExecutor = undefined;
-      computerState = { ...computerState, enabled: false, ready: false, engine: "missing" };
-    } else {
+      await engine?.client.close();
       computerState = {
         ...computerState,
-        enabled: true,
-        engine: "downloading",
-        engineMessage: null,
+        enabled: false,
         ready: false,
+        stopped: false,
+        engine: "missing",
+        engineMessage: null,
       };
       publishComputerState();
-      try {
-        const engineArch = process.arch === "arm64" ? "arm64" : "x64";
-        const paths = engineCachePaths(home, COMPUTER_ENGINE_RELEASE, process.platform, engineArch);
-        let binary = await findEngine(paths);
-        if (!binary) binary = await acquireComputerEngine(paths[0]!, process.platform, engineArch);
-        computerEngine = await openEngine(binary);
-        computerEngine.client.onClose((error) => {
-          computerState = {
-            ...computerState,
-            engine: "error",
-            engineMessage: error.message,
-            ready: false,
-          };
-          publishComputerState();
-        });
-        await computerEngine.client
-          .request("stopPath.start", { chord: computerStopChord(process.platform) })
-          .catch((error: unknown) => {
-            process.stderr.write(
-              `Computer control stop shortcut is unavailable: ${String(error)}\n`,
-            );
-          });
-        computerEngine.client.onNotification((method, params) => {
-          if (
-            method === "stopPath.changed" &&
-            typeof params === "object" &&
-            params !== null &&
-            "suspended" in params &&
-            params.suspended === true
-          ) {
-            computerExecutor?.latchFromEngine();
-            computerState = { ...computerState, stopped: true, ready: false };
-            if (computerOverlayState)
-              publishComputerOverlay({ ...computerOverlayState, state: "stopped" });
-            publishComputerState();
-          }
-        });
-        computerExecutor = new ComputerExecutor(computerEngine.client, computerEngine.resumeToken, {
-          state: () => computerState,
-          confirmForeground: async ({ agent, threadTitle, windowId, reason }) =>
-            (
-              await dialog.showMessageBox(window!, {
-                type: "question",
-                message: text("Allow foreground computer control?"),
-                detail: `${agent} · ${threadTitle} · ${windowId}\n${reason}`,
-                buttons: [text("Cancel"), text("Allow")],
-                cancelId: 0,
-                defaultId: 0,
-              })
-            ).response === 1,
-          showOperation: (input) => {
-            const meta = computerThreadMeta.get(input.threadId) ?? computerOverlayState;
-            if (meta)
-              publishComputerOverlay({
-                ...meta,
-                threadId: input.threadId || computerOverlayState?.threadId || "",
-                step: input.step,
-                state: input.state as ComputerOverlayState["state"],
-              });
-          },
-          refreshState: refreshComputerState,
-          userIdleMs: () => powerMonitor.getSystemIdleTime() * 1000,
-          trace: (entry) => {
-            const tracePath = join(dirname(logPath), "computer-trace.jsonl");
-            try {
-              if (existsSync(tracePath) && statSync(tracePath).size > 5_000_000)
-                renameSync(tracePath, tracePath + ".1");
-              appendFileSync(tracePath, JSON.stringify(entry) + "\n", { mode: 0o600 });
-            } catch (error) {
-              process.stderr.write(`Computer control trace failed: ${String(error)}\n`);
-            }
-          },
-        });
-        await refreshComputerState();
-      } catch (error) {
+      return computerState;
+    }
+    return startComputerEngine();
+  };
+  let computerEngineStart: Promise<DesktopComputerUseState> | undefined;
+  let computerEngineRestartedAt = Number.NEGATIVE_INFINITY;
+  const computerAppIdentity = process.platform === "darwin" ? macAppIdentityResolver() : undefined;
+  const startComputerEngine = () => {
+    if (computerEngine || !computerUseEnabled) return Promise.resolve(computerState);
+    computerEngineStart ??= openComputerEngine()
+      .catch((error: unknown) => {
         computerState = {
           ...computerState,
           engine: "error",
           engineMessage: String(error),
           ready: false,
         };
+        publishComputerState();
+        return computerState;
+      })
+      .finally(() => {
+        computerEngineStart = undefined;
+      });
+    return computerEngineStart;
+  };
+  const openComputerEngine = async () => {
+    const stopped = computerState.stopped;
+    computerState = {
+      ...computerState,
+      enabled: true,
+      engine: "downloading",
+      engineMessage: null,
+      ready: false,
+    };
+    publishComputerState();
+    try {
+      const engineArch = process.arch === "arm64" ? "arm64" : "x64";
+      const paths = engineCachePaths(home, COMPUTER_ENGINE_RELEASE, process.platform, engineArch);
+      let binary = await findEngine(paths);
+      if (!binary) binary = await acquireComputerEngine(paths[0]!, process.platform, engineArch);
+      const engine = await openEngine(binary);
+      if (!computerUseEnabled) {
+        await engine.client.close();
+        return computerState;
       }
+      computerEngine = engine;
+      engine.client.onClose((error) => {
+        if (computerEngine !== engine) return;
+        computerEngine = undefined;
+        computerExecutor = undefined;
+        computerState = {
+          ...computerState,
+          engine: "error",
+          engineMessage: error.message,
+          ready: false,
+        };
+        publishComputerState();
+        log.write(`Computer control engine stopped: ${error.message}\n`);
+        if (performance.now() - computerEngineRestartedAt < 60_000) return;
+        computerEngineRestartedAt = performance.now();
+        void startComputerEngine();
+      });
+      await engine.client
+        .request("stopPath.start", { chord: computerStopChord(process.platform) })
+        .catch((error: unknown) => {
+          process.stderr.write(`Computer control stop shortcut is unavailable: ${String(error)}\n`);
+        });
+      engine.client.onNotification((method, params) => {
+        if (
+          method === "stopPath.changed" &&
+          typeof params === "object" &&
+          params !== null &&
+          "suspended" in params &&
+          params.suspended === true
+        ) {
+          computerExecutor?.latchFromEngine();
+          computerState = { ...computerState, stopped: true, ready: false };
+          if (computerOverlayState)
+            publishComputerOverlay({ ...computerOverlayState, state: "stopped" });
+          publishComputerState();
+        }
+      });
+      computerExecutor = new ComputerExecutor(engine.client, engine.resumeToken, {
+        state: () => computerState,
+        confirmForeground: async ({ agent, threadTitle, windowId, reason }) =>
+          (
+            await dialog.showMessageBox(window!, {
+              type: "question",
+              message: text("Allow foreground computer control?"),
+              detail: `${agent} · ${threadTitle} · ${windowId}\n${reason}`,
+              buttons: [text("Cancel"), text("Allow")],
+              cancelId: 0,
+              defaultId: 0,
+            })
+          ).response === 1,
+        showOperation: (input) => {
+          const meta = computerThreadMeta.get(input.threadId) ?? computerOverlayState;
+          if (meta)
+            publishComputerOverlay({
+              ...meta,
+              threadId: input.threadId || computerOverlayState?.threadId || "",
+              step: input.step,
+              state: input.state as ComputerOverlayState["state"],
+            });
+        },
+        refreshState: refreshComputerState,
+        userIdleMs: () => powerMonitor.getSystemIdleTime() * 1000,
+        ...(computerAppIdentity ? { appIdentity: computerAppIdentity } : {}),
+        trace: (entry) => {
+          const tracePath = join(dirname(logPath), "computer-trace.jsonl");
+          try {
+            if (existsSync(tracePath) && statSync(tracePath).size > 5_000_000)
+              renameSync(tracePath, tracePath + ".1");
+            appendFileSync(tracePath, JSON.stringify(entry) + "\n", { mode: 0o600 });
+          } catch (error) {
+            process.stderr.write(`Computer control trace failed: ${String(error)}\n`);
+          }
+        },
+      });
+      if (stopped) {
+        await engine.client.request("stopPath.stop", { source: "host-relay" });
+        computerExecutor.latchFromEngine();
+      }
+      if (computerEngine !== engine) computerExecutor = undefined;
+      else await refreshComputerState();
+    } catch (error) {
+      computerState = {
+        ...computerState,
+        engine: "error",
+        engineMessage: String(error),
+        ready: false,
+      };
     }
     publishComputerState();
     return computerState;
   };
   for (const [channel, action] of [
     ["cox:computer-use-state", async () => computerState],
-    ["cox:computer-use-recheck", refreshComputerState],
+    [
+      "cox:computer-use-recheck",
+      async () => {
+        await startComputerEngine();
+        return refreshComputerState();
+      },
+    ],
     [
       "cox:computer-use-resume",
       async () => (computerExecutor ? computerExecutor.resume() : computerState),
@@ -2237,28 +2299,39 @@ async function start() {
       homeDirectory: home,
       cwd: homedir(),
       environment,
-      computerAvailability: {
+      computerAvailability: () => ({
         enabled: computerState.enabled,
         ready: computerState.ready,
         missing: Object.entries(computerState.permissions)
           .filter(([, status]) => status !== "granted")
           .map(([permission]) => permission),
-      },
+      }),
       onComputerRequest: async (request) => {
         computerThreadMeta.set(request.threadId, {
           environmentId: request.environmentId,
           threadTitle: request.threadTitle,
           agent: request.agent,
         });
+        if (!computerExecutor) await startComputerEngine();
         if (!computerExecutor)
           return {
             type: "cox:computer-reply",
             id: request.id,
             ok: false,
-            error: {
-              code: computerState.enabled ? "unavailable" : "disabled",
-              message: "Computer control is unavailable.",
-            },
+            error: computerUseEnabled
+              ? {
+                  code: "unavailable",
+                  message: `Computer control is turned on, but its engine is not running (engine: ${computerState.engine})${computerState.engineMessage ? `: ${computerState.engineMessage}` : "."}`,
+                  engine: computerState.engine,
+                  engineMessage: computerState.engineMessage,
+                  recovery:
+                    "Ask the user to choose Re-check in Cox Settings → Labs → Computer control, or to restart Cox.",
+                }
+              : {
+                  code: "disabled",
+                  message: "Computer control is turned off on this Cox Desktop.",
+                  recovery: "Ask the user to turn it on in Cox Settings → Labs → Computer control.",
+                },
           };
         try {
           const result = await computerExecutor.execute(request);
@@ -2311,14 +2384,9 @@ async function start() {
             };
           return { type: "cox:computer-reply", id: request.id, ok: true, result };
         } catch (error) {
-          const detail =
+          const detail: Partial<DesktopComputerError> =
             typeof error === "object" && error !== null
-              ? (error as {
-                  code?: string;
-                  message?: string;
-                  missing?: DesktopComputerPermission[];
-                  recovery?: string;
-                })
+              ? (error as Partial<DesktopComputerError>)
               : {};
           publishComputerOverlay({
             threadId: request.threadId,
@@ -2333,20 +2401,7 @@ async function start() {
             id: request.id,
             ok: false,
             error: {
-              code: (detail.code &&
-              [
-                "disabled",
-                "unavailable",
-                "permission",
-                "stopped",
-                "cancelled",
-                "declined",
-                "background-unavailable",
-                "invalid",
-                "engine",
-              ].includes(detail.code)
-                ? detail.code
-                : "engine") as "engine",
+              code: detail.code ?? "engine",
               message: detail.message ?? String(error),
               ...(detail.missing ? { missing: detail.missing } : {}),
               ...(detail.recovery ? { recovery: detail.recovery } : {}),
@@ -2401,6 +2456,7 @@ async function start() {
     origin = await startBackend(runningBackendDirectory);
     localOrigin = origin;
     connectionMode = "local";
+    void startComputerEngine();
     await window?.loadURL(origin + mainPath);
     for (const [target, page] of pageWindows) {
       if (page.owner !== window || page.access.kind !== "local" || target.isDestroyed()) continue;
@@ -2554,16 +2610,7 @@ async function start() {
         );
       connectionMode = "local";
       showWindow();
-      if (computerUseEnabled && !computerEngine)
-        void enableComputerUse(true).catch((error) => {
-          computerState = {
-            ...computerState,
-            engine: "error",
-            engineMessage: String(error),
-            ready: false,
-          };
-          publishComputerState();
-        });
+      void startComputerEngine();
       if (localOrigin) {
         origin = localOrigin;
         startingBackend = false;

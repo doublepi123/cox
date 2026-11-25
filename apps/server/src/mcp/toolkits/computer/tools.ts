@@ -36,7 +36,13 @@ const Point = {
   ),
 };
 const BACKGROUND =
-  "Input uses background delivery and leaves the user's frontmost app, focus and keyboard alone. A `stopped` failure means the user stopped computer control: stop and tell the user; never retry around it.";
+  'Input uses background delivery by default and leaves the user\'s frontmost app, focus and keyboard alone. When a `background-unavailable` failure says background input cannot reach the window (for example an app with several windows), retry with delivery:"foreground": Cox asks the user once per window and thread, then raises the window and sends the input in the foreground. A `stopped` failure means the user stopped computer control: stop and tell the user; never retry around it.';
+const Delivery = Schema.optional(
+  Schema.Literals(["background", "foreground"]).annotate({
+    description:
+      "background (default) leaves the user's focus alone; foreground asks the user once, then raises the window first. Use foreground when background input is unavailable.",
+  }),
+);
 
 const StatusTool = Tool.make("computer_status", {
   ...shared,
@@ -52,7 +58,7 @@ const StatusTool = Tool.make("computer_status", {
 const WindowsTool = Tool.make("computer_windows", {
   ...shared,
   description:
-    "List windows on the user's Mac (id, app, title, bounds, focused). Filter by case-insensitive app or title substring.",
+    "List windows on the user's computer (id, app, bundleId, bundleName, title, bounds, focused). Filter by case-insensitive substring: app matches the localized app name, the bundle id or the bundle's English name.",
   parameters: Schema.Struct({
     app: Schema.optional(Schema.String),
     title: Schema.optional(Schema.String),
@@ -108,6 +114,7 @@ const ClickTool = Tool.make("computer_click", {
     ...Point,
     button: Schema.optional(Schema.Literals(["left", "right", "middle"])),
     count: Schema.optional(Schema.Number),
+    delivery: Delivery,
   }),
   success: Result,
 })
@@ -117,7 +124,7 @@ const ClickTool = Tool.make("computer_click", {
 const TypeTool = Tool.make("computer_type", {
   ...shared,
   description: `Type text into a window. ${BACKGROUND}`,
-  parameters: Schema.Struct({ window_id: WindowId, text: Schema.String }),
+  parameters: Schema.Struct({ window_id: WindowId, text: Schema.String, delivery: Delivery }),
   success: Result,
 })
   .annotate(Tool.Destructive, true)
@@ -125,8 +132,12 @@ const TypeTool = Tool.make("computer_type", {
 
 const PressTool = Tool.make("computer_press", {
   ...shared,
-  description: `Press a key chord in a window, for example ["cmd", "s"]. ${BACKGROUND}`,
-  parameters: Schema.Struct({ window_id: WindowId, keys: Schema.Array(Schema.String) }),
+  description: `Press a key chord in a window, for example ["cmd", "s"] or ["escape"]. ${BACKGROUND}`,
+  parameters: Schema.Struct({
+    window_id: WindowId,
+    keys: Schema.Array(Schema.String),
+    delivery: Delivery,
+  }),
   success: Result,
 })
   .annotate(Tool.Destructive, true)
@@ -135,7 +146,7 @@ const PressTool = Tool.make("computer_press", {
 const ScrollTool = Tool.make("computer_scroll", {
   ...shared,
   description: `Scroll at a point in a window; dx and dy are pixels and positive dy scrolls toward the end. ${BACKGROUND}`,
-  parameters: Schema.Struct({ ...Point, dx: Schema.Number, dy: Schema.Number }),
+  parameters: Schema.Struct({ ...Point, dx: Schema.Number, dy: Schema.Number, delivery: Delivery }),
   success: Result,
 })
   .annotate(Tool.Destructive, true)
@@ -143,7 +154,7 @@ const ScrollTool = Tool.make("computer_scroll", {
 
 const ElementTool = Tool.make("computer_element", {
   ...shared,
-  description: `Act on an accessibility element ref from computer_ui_tree: press, click, focus, setValue or typeText. ${BACKGROUND}`,
+  description: `Act on an accessibility element ref from computer_ui_tree: press, click, focus, setValue or typeText. Accessibility actions work in background even when the app has several windows. A \`stopped\` failure means the user stopped computer control: stop and tell the user; never retry around it.`,
   parameters: Schema.Struct({
     ref: Schema.String,
     action: Schema.Literals(["press", "click", "focus", "setValue", "typeText"]),
@@ -157,7 +168,7 @@ const ElementTool = Tool.make("computer_element", {
 const ForegroundTool = Tool.make("computer_foreground", {
   ...shared,
   description:
-    "Ask the user to allow foreground control of a window when background input is unavailable. Explain why in reason. Cox shows the request and waits for the user's decision; `declined` means do not continue in the foreground.",
+    'Ask the user to allow foreground control of a window ahead of time. Explain why in reason. Cox shows the request and waits for the user\'s decision; `declined` means do not continue in the foreground. Input tools with delivery:"foreground" ask the same question themselves.',
   parameters: Schema.Struct({ window_id: WindowId, reason: Schema.String }),
   success: Result,
 })

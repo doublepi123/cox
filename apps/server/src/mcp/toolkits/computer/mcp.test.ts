@@ -53,21 +53,32 @@ const channel: DesktopComputerLink.DesktopComputerChannel = {
     queueMicrotask(() => {
       for (const listener of listeners)
         listener(
-          request.action.kind === "screenshot"
+          "windowId" in request.action && request.action.windowId === "gone"
             ? {
                 type: "cox:computer-reply",
                 id: request.id,
-                ok: true,
-                result: { frameId: "f1", width: 2, height: 1 },
-                image: {
-                  mimeType: "image/png",
-                  data: Buffer.from("png").toString("base64"),
-                  width: 2,
-                  height: 1,
-                  frameId: "f1",
+                ok: false,
+                error: {
+                  code: "not-found",
+                  message: "window 'gone' was not found; it may be closed",
+                  recovery: "Call computer_windows for current window ids.",
                 },
               }
-            : { type: "cox:computer-reply", id: request.id, ok: true, result: "typed" },
+            : request.action.kind === "screenshot"
+              ? {
+                  type: "cox:computer-reply",
+                  id: request.id,
+                  ok: true,
+                  result: { frameId: "f1", width: 2, height: 1 },
+                  image: {
+                    mimeType: "image/png",
+                    data: Buffer.from("png").toString("base64"),
+                    width: 2,
+                    height: 1,
+                    frameId: "f1",
+                  },
+                }
+              : { type: "cox:computer-reply", id: request.id, ok: true, result: "typed" },
         );
     });
     return true;
@@ -131,5 +142,39 @@ it.effect("serves computer tools over MCP only while the desktop enables them", 
     const shot = yield* call("computer_screenshot", { window_id: "42" });
     expect(shot.isError).not.toBe(true);
     expect(shot.content.map((part) => part.type)).toEqual(["text", "image"]);
+  }).pipe(Effect.provide(layerTest)),
+);
+
+it.effect("marks computer failures as tool errors with their structured failure", () =>
+  Effect.gen(function* () {
+    for (const listener of listeners)
+      listener({ type: "cox:computer-availability", enabled: true, ready: true, missing: [] });
+    const pressed = yield* call("computer_press", {
+      window_id: "gone",
+      keys: ["cmd", "w"],
+      delivery: "foreground",
+    });
+    expect(sent).toContainEqual(
+      expect.objectContaining({
+        action: { kind: "press", windowId: "gone", keys: ["cmd", "w"], delivery: "foreground" },
+      }),
+    );
+    expect(pressed.isError).toBe(true);
+    const pressedText = pressed.content.find((part) => part.type === "text");
+    expect(JSON.parse(pressedText?.type === "text" ? pressedText.text : "{}")).toMatchObject({
+      _tag: "DesktopComputerToolFailure",
+      code: "not-found",
+      recovery: "Call computer_windows for current window ids.",
+    });
+    const shot = yield* call("computer_screenshot", { window_id: "gone" });
+    expect(shot.isError).toBe(true);
+    const shotText = shot.content.find((part) => part.type === "text");
+    expect(JSON.parse(shotText?.type === "text" ? shotText.text : "{}")).toEqual({
+      _tag: "DesktopComputerToolFailure",
+      code: "not-found",
+      message: "window 'gone' was not found; it may be closed",
+      recovery: "Call computer_windows for current window ids.",
+    });
+    expect(shot.structuredContent).toMatchObject({ error: { code: "not-found" } });
   }).pipe(Effect.provide(layerTest)),
 );

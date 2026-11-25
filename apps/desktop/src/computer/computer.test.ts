@@ -3,7 +3,12 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vite-plus/test";
 import type { DesktopComputerUseState } from "@t3tools/contracts";
-import { ComputerExecutor, permissionState, USER_PAUSE_LIMIT_MS } from "./executor.ts";
+import {
+  ComputerExecutor,
+  permissionState,
+  USER_PAUSE_LIMIT_MS,
+  WINDOW_SETTLE_MS,
+} from "./executor.ts";
 import {
   computerEngineAsset,
   computerStopChord,
@@ -235,6 +240,7 @@ describe("desktop computer host", () => {
       confirmForeground: async () => true,
       showOperation: (input) => steps.push(input.step),
       refreshState: async () => state(),
+      platform: "linux",
       userIdleMs: () => idle,
       wait: async () => {
         waits += 1;
@@ -310,6 +316,172 @@ describe("desktop computer host", () => {
     await expect(first).rejects.toMatchObject({ code: "cancelled" });
     await expect(second).rejects.toMatchObject({ code: "cancelled" });
     await expect(other).resolves.toBeNull();
+    await client.close();
+  });
+  it("asks once, raises the window and sends foreground input when a call requests it", async () => {
+    const client = await fakeEngine(
+      `const rl=require('node:readline').createInterface({input:process.stdin});rl.on('line',line=>{const m=JSON.parse(line);if(m.id!==undefined)process.stdout.write(JSON.stringify({jsonrpc:'2.0',id:m.id,result:{method:m.method,params:m.params}})+'\\n')});`,
+    );
+    const confirmations: string[] = [];
+    const executor = new ComputerExecutor(client, "resume", {
+      state: () => state(),
+      confirmForeground: async ({ windowId }) => {
+        confirmations.push(windowId);
+        return windowId !== "refused";
+      },
+      showOperation: () => {},
+      refreshState: async () => state(),
+    });
+    const run = (action: Parameters<ComputerExecutor["execute"]>[0]["action"]) =>
+      executor.execute({ threadId: "t", threadTitle: "Thread", agent: "Agent", action });
+    await expect(
+      run({ kind: "press", windowId: "w", keys: ["cmd", "s"], delivery: "foreground" }),
+    ).resolves.toEqual({
+      method: "keyChord",
+      params: { target: "w", keys: ["cmd", "s"], opts: { deliveryMode: "foreground" } },
+    });
+    await expect(
+      run({ kind: "type", windowId: "w", text: "x", delivery: "foreground" }),
+    ).resolves.toMatchObject({ params: { opts: { deliveryMode: "foreground" } } });
+    expect(confirmations).toEqual(["w"]);
+    await expect(
+      run({ kind: "type", windowId: "w", text: "x", delivery: "background" }),
+    ).resolves.toMatchObject({ params: { opts: { deliveryMode: "background" } } });
+    await expect(
+      run({ kind: "press", windowId: "refused", keys: ["escape"], delivery: "foreground" }),
+    ).rejects.toMatchObject({ code: "declined" });
+    expect(confirmations).toEqual(["w", "refused"]);
+    await client.close();
+  });
+  it("revokes every thread's foreground windows with the shared engine grant", async () => {
+    const client = await fakeEngine(
+      `const rl=require('node:readline').createInterface({input:process.stdin});rl.on('line',line=>{const m=JSON.parse(line);if(m.id!==undefined)process.stdout.write(JSON.stringify({jsonrpc:'2.0',id:m.id,result:{method:m.method,params:m.params}})+'\\n')});`,
+    );
+    const executor = new ComputerExecutor(client, "resume", {
+      state: () => state(),
+      confirmForeground: async () => true,
+      showOperation: () => {},
+      refreshState: async () => state(),
+    });
+    const run = (threadId: string, action: Parameters<ComputerExecutor["execute"]>[0]["action"]) =>
+      executor.execute({ threadId, threadTitle: "Thread", agent: "Agent", action });
+    await run("a", { kind: "foreground", windowId: "w", reason: "Needs keys" });
+    await executor.threadEvent("b", "completed");
+    await expect(run("a", { kind: "type", windowId: "w", text: "x" })).resolves.toMatchObject({
+      params: { opts: { deliveryMode: "background" } },
+    });
+    await client.close();
+  });
+  it.each([
+    [
+      -32003,
+      'window 56556 is one of 2 windows in its application; macOS delivers background keystrokes to whichever window the application treats as key, so retry with delivery:"foreground" or use ax actions',
+      "background-unavailable",
+      'delivery:"foreground"',
+    ],
+    [-32004, "window '999999' was not found; it may be closed", "not-found", "computer_windows"],
+    [-32007, "frame f1 is stale", "stale-frame", "computer_screenshot"],
+    [-32008, "ref e4 is stale", "stale-ref", "computer_ui_tree"],
+    [
+      -32010,
+      "accessibility window for native window 56582 ('') was not found",
+      "ax-not-found",
+      "computer_click",
+    ],
+    [-32010, "AXPress failed", "ax-action-failed", "computer_ui_tree"],
+    [-32009, "AXPress is not supported", "ax-unsupported", "computer_press"],
+    [-32024, "the user was typing", "user-intervened", "never repeat"],
+  ] as const)(
+    "reports engine error %i as a specific failure with its own recovery",
+    async (engineCode, message, code, recovery) => {
+      const client = await fakeEngine(
+        `const rl=require('node:readline').createInterface({input:process.stdin});rl.on('line',line=>{const m=JSON.parse(line);if(m.id!==undefined)process.stdout.write(JSON.stringify({jsonrpc:'2.0',id:m.id,error:{code:${engineCode},message:${JSON.stringify(message)}}})+'\\n')});`,
+      );
+      const executor = new ComputerExecutor(client, "resume", {
+        state: () => state(),
+        confirmForeground: async () => true,
+        showOperation: () => {},
+        refreshState: async () => state(),
+      });
+      const failure = executor.execute({
+        threadId: "t",
+        threadTitle: "Thread",
+        agent: "Agent",
+        action: { kind: "press", windowId: "w", keys: ["escape"] },
+      });
+      await expect(failure).rejects.toMatchObject({ code, message });
+      await expect(failure).rejects.toMatchObject({
+        recovery: expect.stringContaining(recovery),
+      });
+      await expect(failure).rejects.not.toMatchObject({
+        recovery: expect.stringContaining("Labs"),
+      });
+      await client.close();
+    },
+  );
+  it("names the engine state when computer control is not ready without missing permissions", async () => {
+    const client = await fakeEngine(
+      `const rl=require('node:readline').createInterface({input:process.stdin});rl.on('line',()=>{});`,
+    );
+    const executor = new ComputerExecutor(client, "resume", {
+      state: () => ({ ...state(), engine: "error", ready: false }),
+      confirmForeground: async () => true,
+      showOperation: () => {},
+      refreshState: async () => state(),
+    });
+    await expect(
+      executor.execute({
+        threadId: "t",
+        threadTitle: "Thread",
+        agent: "Agent",
+        action: { kind: "type", windowId: "w", text: "x" },
+      }),
+    ).rejects.toMatchObject({
+      code: "unavailable",
+      message: expect.stringContaining("engine: error"),
+      recovery: expect.stringContaining("Re-check"),
+    });
+    await client.close();
+  });
+  it("lets settled macOS windows be filtered by bundle id or English bundle name", async () => {
+    const client = await fakeEngine(
+      `const rl=require('node:readline').createInterface({input:process.stdin});rl.on('line',line=>{const m=JSON.parse(line);if(m.id===undefined)return;process.stdout.write(JSON.stringify({jsonrpc:'2.0',id:m.id,result:[{id:'1',app:'\u6587\u672c\u7f16\u8f91',pid:10,title:'Notes'},{id:'2',app:'\u8ba1\u7b97\u5668',pid:20,title:''}]})+'\\n')});`,
+    );
+    const waits: number[] = [];
+    const executor = new ComputerExecutor(client, "resume", {
+      state: () => state(),
+      confirmForeground: async () => true,
+      showOperation: () => {},
+      refreshState: async () => state(),
+      platform: "darwin",
+      wait: async (ms) => {
+        waits.push(ms);
+      },
+      appIdentity: async (pid) =>
+        pid === 10
+          ? { bundleId: "com.apple.TextEdit", name: "TextEdit" }
+          : { bundleId: "com.apple.calculator", name: "Calculator" },
+    });
+    const windows = (app: string) =>
+      executor.execute({
+        threadId: "t",
+        threadTitle: "Thread",
+        agent: "Agent",
+        action: { kind: "windows", app },
+      });
+    await expect(windows("TextEdit")).resolves.toEqual([
+      {
+        id: "1",
+        app: "\u6587\u672c\u7f16\u8f91",
+        pid: 10,
+        title: "Notes",
+        bundleId: "com.apple.TextEdit",
+        bundleName: "TextEdit",
+      },
+    ]);
+    await expect(windows("com.apple.calc")).resolves.toMatchObject([{ id: "2" }]);
+    await expect(windows("\u6587\u672c")).resolves.toMatchObject([{ id: "1" }]);
+    expect(waits).toEqual([WINDOW_SETTLE_MS, WINDOW_SETTLE_MS, WINDOW_SETTLE_MS]);
     await client.close();
   });
   it("returns declined when foreground confirmation is rejected", async () => {

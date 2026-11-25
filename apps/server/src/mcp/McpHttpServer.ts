@@ -17,6 +17,7 @@ import { AiError, McpProtocol, McpSchema, McpServer, Tool, Toolkit } from "effec
 import { HttpBody, HttpRouter, HttpServerRequest, HttpServerResponse } from "effect/http";
 import {
   AuthSessionId,
+  DesktopComputerToolFailure,
   OrchestratorMcpFailure,
   PreviewAutomationError,
   ProviderInteractionMode,
@@ -642,7 +643,12 @@ interface ImageToolResult {
 
 /** Expose only undescribed failures' tags; remote messages may contain renderer or device output. */
 const imageToolFailure =
-  <E>(toolName: string, operation: string, failureText: string | ((error: E) => string)) =>
+  <E>(
+    toolName: string,
+    operation: string,
+    failureText: string | ((error: E) => string),
+    failureDetail?: (error: E) => Readonly<Record<string, unknown>> | undefined,
+  ) =>
   (cause: Cause.Cause<E>) => {
     if (Cause.hasInterrupts(cause) || cause.reasons.some(Cause.isDieReason)) {
       return Effect.failCause(cause).pipe(Effect.orDie);
@@ -660,6 +666,7 @@ const imageToolFailure =
       typeof failureText === "string" || failures[0] === undefined
         ? undefined
         : failureText(failures[0].error);
+    const detail = failures[0] === undefined ? undefined : failureDetail?.(failures[0].error);
     const result = new McpSchema.CallToolResult({
       isError: true,
       structuredContent: {
@@ -668,13 +675,19 @@ const imageToolFailure =
           operation,
           failureCount: failures.length,
           ...(message === undefined ? {} : { message }),
+          ...detail,
         },
       },
       // Some clients show only the text content and others only structuredContent, so both carry it.
       content: [
         {
           type: "text",
-          text: typeof failureText === "string" ? failureText : (message ?? `${toolName} failed.`),
+          text:
+            detail !== undefined
+              ? JSON.stringify({ _tag: errorTag, ...detail })
+              : typeof failureText === "string"
+                ? failureText
+                : (message ?? `${toolName} failed.`),
         },
       ],
     });
@@ -705,6 +718,7 @@ const registerImageTool = Effect.fn("McpHttpServer.registerImageTool")(function*
   >,
   operation: string,
   failureText: string | ((error: E) => string),
+  failureDetail?: (error: E) => Readonly<Record<string, unknown>> | undefined,
 ) {
   const server = yield* McpServer.McpServer;
   yield* server.addTool({
@@ -733,7 +747,7 @@ const registerImageTool = Effect.fn("McpHttpServer.registerImageTool")(function*
         return provide(handle(payload as Tool.Parameters<T>)).pipe(
           Effect.provideService(McpInvocationContext.McpInvocationContext, invocation),
           Effect.matchCauseEffect({
-            onFailure: imageToolFailure(tool.name, operation, failureText),
+            onFailure: imageToolFailure(tool.name, operation, failureText, failureDetail),
             onSuccess: ({ encodedResult }) => {
               const { screenshot, ...rest } = encodedResult as ImageToolResult;
               const includeImage =
@@ -773,6 +787,7 @@ const registerImageTool = Effect.fn("McpHttpServer.registerImageTool")(function*
 });
 
 const isOrchestratorMcpFailure = Schema.is(OrchestratorMcpFailure);
+const isDesktopComputerToolFailure = Schema.is(DesktopComputerToolFailure);
 
 const registerHtmlPreview = Effect.fn("McpHttpServer.registerHtmlPreview")(function* () {
   const htmlRender = yield* HtmlRender.HtmlRender;
@@ -811,9 +826,15 @@ const registerComputerScreenshot = Effect.fn("McpHttpServer.registerComputerScre
     yield* registerImageTool(
       ComputerScreenshotTool,
       (payload) =>
-        built
-          .handle("computer_screenshot", payload)
-          .pipe(Stream.unwrap, Stream.run(Sink.last()), Effect.flatMap(Effect.fromOption)),
+        built.handle("computer_screenshot", payload).pipe(
+          Stream.unwrap,
+          Stream.run(Sink.last()),
+          Effect.flatMap(Effect.fromOption),
+          Effect.filterOrFail(
+            (output) => !output.isFailure,
+            (output) => output.result,
+          ),
+        ),
       (effect) =>
         effect.pipe(
           Effect.provideService(DesktopComputerLink.DesktopComputerLink, link),
@@ -824,6 +845,19 @@ const registerComputerScreenshot = Effect.fn("McpHttpServer.registerComputerScre
         typeof error === "object" && error !== null && "message" in error
           ? String(error.message)
           : "Computer screenshot failed.",
+      (error) =>
+        isDesktopComputerToolFailure(error)
+          ? Object.fromEntries(
+              Object.entries({
+                code: error.code,
+                message: error.message,
+                missing: error.missing,
+                recovery: error.recovery,
+                engine: error.engine,
+                engineMessage: error.engineMessage,
+              }).filter(([, value]) => value !== undefined),
+            )
+          : undefined,
     );
   },
 );

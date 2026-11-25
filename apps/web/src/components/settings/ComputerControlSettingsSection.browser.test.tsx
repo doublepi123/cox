@@ -276,9 +276,13 @@ describe("computer control settings", () => {
     );
     using _bridge = stubGlobal("coxDesktop", bridge);
     await using screen = await render(<ComputerControlSettingsSection />);
+    await expect.element(screen.getByText(label, { exact: true })).toBeVisible();
+    await expect.element(screen.getByText("Engine detail", { exact: true })).toBeVisible();
+    expect(screen.container.textContent).not.toContain("Enabled, waiting for permission");
     await screen.getByRole("button", { name: "Set up permissions", exact: true }).click();
-    await expect.element(page.getByText(label, { exact: true })).toBeVisible();
-    await expect.element(page.getByText("Engine detail", { exact: true })).toBeVisible();
+    const dialog = page.getByRole("dialog");
+    await expect.element(dialog.getByText(label, { exact: true })).toBeVisible();
+    await expect.element(dialog.getByText("Engine detail", { exact: true })).toBeVisible();
   });
 
   it("renders nothing without the computer-use bridge", async () => {

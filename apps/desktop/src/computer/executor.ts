@@ -1,6 +1,8 @@
 import { randomUUID } from "node:crypto";
 import type {
   DesktopComputerAction,
+  DesktopComputerDelivery,
+  DesktopComputerError,
   DesktopComputerPermission,
   DesktopComputerUseState,
 } from "@t3tools/contracts";
@@ -26,6 +28,8 @@ export function permissionState(capabilities: Record<string, unknown>, globalLiv
   };
 }
 
+export type ComputerAppIdentity = { bundleId: string | null; name: string | null };
+
 export type ComputerExecutorOptions = {
   state(): DesktopComputerUseState;
   confirmForeground(input: {
@@ -46,10 +50,12 @@ export type ComputerExecutorOptions = {
   trace?(entry: ComputerTraceEntry): void;
   userIdleMs?(): number;
   wait?(ms: number): Promise<void>;
+  appIdentity?(pid: number): Promise<ComputerAppIdentity | null>;
 };
 
 export const USER_PAUSE_MS = 1_000;
 export const USER_PAUSE_LIMIT_MS = 30_000;
+export const WINDOW_SETTLE_MS = 200;
 const USER_PAUSE_POLL_MS = 250;
 const backgroundInput = new Set(["click", "type", "press", "scroll", "element"]);
 
@@ -93,6 +99,99 @@ const ELEVATED_TARGET_RECOVERY =
 
 const readOnly = new Set(["status", "windows", "screenshot", "uiTree"]);
 const PERMISSION_RECOVERY = "Open Cox Settings → Labs → Computer control";
+const FOREGROUND_RECOVERY =
+  'Retry the same call with delivery:"foreground" (Cox asks the user once per window and thread), or use computer_element.';
+const AX_WINDOW_MISSING = /accessibility window for native window .* was not found/;
+
+type ComputerFailure = Pick<DesktopComputerError, "code" | "message" | "missing" | "recovery">;
+
+const ENGINE_FAILURES: Partial<Record<number, Pick<ComputerFailure, "code" | "recovery">>> = {
+  [-32001]: {
+    code: "capture-failed",
+    recovery:
+      "Call computer_windows again; the window may be minimized, on another Space or closed.",
+  },
+  [-32002]: {
+    code: "input-failed",
+    recovery:
+      "Part of the input may have landed. Take a screenshot or read the UI tree before retrying.",
+  },
+  [-32003]: { code: "background-unavailable", recovery: FOREGROUND_RECOVERY },
+  [-32004]: {
+    code: "not-found",
+    recovery: "The window is closed or minimized. Call computer_windows for current window ids.",
+  },
+  [-32005]: { code: "invalid", recovery: "Use a window id from computer_windows." },
+  [-32006]: {
+    code: "invalid",
+    recovery:
+      "Use key names such as cmd, ctrl, alt, shift, enter, escape, tab or a single character.",
+  },
+  [-32007]: {
+    code: "stale-frame",
+    recovery:
+      "Take a new computer_screenshot of this window and use its frame_id and pixel coordinates.",
+  },
+  [-32008]: {
+    code: "stale-ref",
+    recovery: "Read computer_ui_tree again and use a fresh ref.",
+  },
+  [-32009]: {
+    code: "ax-unsupported",
+    recovery:
+      "The element does not support that action. Try another element action, computer_click on a screenshot, or computer_press.",
+  },
+  [-32010]: {
+    code: "ax-action-failed",
+    recovery:
+      "Read computer_ui_tree again, then retry with a fresh ref or use computer_click on a screenshot.",
+  },
+  [-32011]: {
+    code: "timeout",
+    recovery: "The app did not respond in time. Read the window again before retrying.",
+  },
+  [-32016]: { code: "screen-locked", recovery: "Ask the user to unlock the computer." },
+  [-32021]: {
+    code: "busy",
+    recovery: "Another thread holds foreground control. Retry after it finishes.",
+  },
+  [-32022]: {
+    code: "control-required",
+    recovery:
+      'Retry with delivery:"foreground" so Cox can ask the user for foreground control again.',
+  },
+  [-32023]: {
+    code: "capture-failed",
+    recovery:
+      "The window cannot be captured right now (for example minimized or on another Space).",
+  },
+  [-32024]: {
+    code: "user-intervened",
+    recovery:
+      "The user was using that app. Read the window again once they pause; never repeat the action blindly.",
+  },
+  [-32025]: {
+    code: "ax-action-failed",
+    recovery: "The app did not confirm the action. Read the element back before any retry.",
+  },
+  [-32028]: { code: "invalid", recovery: "Name one specific window or element." },
+  [-32030]: {
+    code: "protected",
+    recovery: "Cox never sends input to this protected app. Ask the user to do this step.",
+  },
+};
+
+export function engineFailure(error: EngineRpcError): ComputerFailure | undefined {
+  if (error.code === -32010 && AX_WINDOW_MISSING.test(error.message))
+    return {
+      code: "ax-not-found",
+      message: error.message,
+      recovery:
+        'This window exposes no accessibility tree (common for untitled tips, popovers and panels). Use computer_screenshot with computer_click, or computer_press with delivery:"foreground" (for example ["escape"]) to dismiss it.',
+    };
+  const known = ENGINE_FAILURES[error.code];
+  return known ? { ...known, message: error.message } : undefined;
+}
 
 type CaptureFrame = {
   readonly frameId: string | null;
@@ -125,9 +224,11 @@ export function missingPermissions(state: DesktopComputerUseState) {
     .map(([permission]) => permission);
 }
 
-const matches = (value: unknown, filter: string | undefined) =>
+const matches = (values: ReadonlyArray<unknown>, filter: string | undefined) =>
   filter === undefined ||
-  (typeof value === "string" && value.toLowerCase().includes(filter.toLowerCase()));
+  values.some(
+    (value) => typeof value === "string" && value.toLowerCase().includes(filter.toLowerCase()),
+  );
 export class ComputerExecutor {
   private stopped = false;
   private tail: Promise<void> = Promise.resolve();
@@ -178,11 +279,20 @@ export class ComputerExecutor {
   async threadEvent(threadId: string, state: string) {
     if (state === "cancelled" || state === "stopped") this.cancelThread(threadId);
     if (state === "waiting-model") return;
-    if (this.foregroundWindows.delete(threadId) || state === "completed" || state === "failed")
+    if (this.foregroundWindows.delete(threadId) || state === "completed" || state === "failed") {
+      this.foregroundWindows.clear();
       await this.client.request("control.revoke", {}).catch(() => undefined);
+    }
   }
-  private delivery(threadId: string, windowId: string) {
-    return this.foregroundWindows.get(threadId)?.has(windowId) ? "foreground" : "background";
+  private delivery(
+    threadId: string,
+    windowId: string,
+    requested?: DesktopComputerDelivery,
+  ): DesktopComputerDelivery {
+    return (
+      requested ??
+      (this.foregroundWindows.get(threadId)?.has(windowId) ? "foreground" : "background")
+    );
   }
   execute(request: {
     threadId: string;
@@ -223,7 +333,12 @@ export class ComputerExecutor {
                   missing,
                   recovery: PERMISSION_RECOVERY,
                 }
-              : { code: "unavailable", message: "Computer control is not ready." },
+              : {
+                  code: "unavailable",
+                  message: `Computer control is not ready (engine: ${this.options.state().engine}).`,
+                  recovery:
+                    "Ask the user to choose Re-check in Cox Settings → Labs → Computer control, or to restart Cox.",
+                },
           );
           return;
         }
@@ -236,6 +351,7 @@ export class ComputerExecutor {
                 code: "background-unavailable",
                 message:
                   "The user is actively using the computer, so background input was held back to avoid interrupting them. Nothing was sent; try again after they pause.",
+                recovery: "Wait until the user pauses, then retry the same call.",
               });
             else if (paused === "stopped")
               reject({
@@ -272,6 +388,7 @@ export class ComputerExecutor {
             reject({ ...known, message: known.message ?? known.code });
             return;
           }
+          const mapped = error instanceof EngineRpcError ? engineFailure(error) : undefined;
           if (
             error instanceof EngineRpcError &&
             error.code === -32000 &&
@@ -307,8 +424,9 @@ export class ComputerExecutor {
               message: "The user stopped computer control.",
               recovery: "Resume computer control in Cox Settings → Labs.",
             });
-          } else if (error instanceof EngineRpcError && error.code === -32003) {
-            reject({ code: "background-unavailable", message: error.message });
+          } else if (mapped) {
+            if (mapped.code === "control-required") this.foregroundWindows.delete(request.threadId);
+            reject(mapped);
           } else
             reject({
               code: "engine",
@@ -406,7 +524,7 @@ export class ComputerExecutor {
       action.kind === "type" ||
       action.kind === "press" ||
       action.kind === "scroll"
-        ? this.delivery(request.threadId, action.windowId)
+        ? this.delivery(request.threadId, action.windowId, action.delivery)
         : undefined;
     const finish = async (outcome: string) =>
       trace({
@@ -436,6 +554,80 @@ export class ComputerExecutor {
       throw error;
     }
   }
+  private async grantForeground(
+    request: { threadId: string; threadTitle: string; agent: string },
+    windowId: string,
+    reason: string,
+  ) {
+    this.options.showOperation({
+      threadId: request.threadId,
+      threadTitle: request.threadTitle,
+      agent: request.agent,
+      state: "waiting-confirmation",
+      step: reason,
+    });
+    const allowed = await this.options.confirmForeground({
+      agent: request.agent,
+      threadTitle: request.threadTitle,
+      windowId,
+      reason,
+    });
+    if (!allowed)
+      throw {
+        code: "declined",
+        message: "Foreground control was declined.",
+        recovery: "Do not continue in the foreground; use computer_element or ask the user.",
+      };
+    await this.rpc(request.threadId, "control.grant", {
+      reason,
+      confirmationId: randomUUID(),
+    });
+    const granted = this.foregroundWindows.get(request.threadId) ?? new Set<string>();
+    granted.add(windowId);
+    this.foregroundWindows.set(request.threadId, granted);
+    return this.rpc(request.threadId, "raiseWindow", { windowId });
+  }
+  private async inputDelivery(
+    request: { threadId: string; threadTitle: string; agent: string },
+    action: Extract<DesktopComputerAction, { kind: "click" | "type" | "press" | "scroll" }>,
+  ) {
+    const delivery = this.delivery(request.threadId, action.windowId, action.delivery);
+    if (
+      delivery === "foreground" &&
+      !this.foregroundWindows.get(request.threadId)?.has(action.windowId)
+    )
+      await this.grantForeground(
+        request,
+        action.windowId,
+        `The agent asked to ${action.kind === "press" ? "press keys" : action.kind} in the foreground because background input cannot reach this window.`,
+      );
+    return delivery;
+  }
+  private async windows(threadId: string) {
+    if ((this.options.platform ?? process.platform) === "darwin")
+      await (
+        this.options.wait ??
+        ((ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms)))
+      )(WINDOW_SETTLE_MS);
+    const windows = await this.rpc<unknown[]>(threadId, "windows", {});
+    const identify = this.options.appIdentity;
+    if (!identify) return windows;
+    return Promise.all(
+      windows.map(async (window) => {
+        if (
+          typeof window !== "object" ||
+          window === null ||
+          !("pid" in window) ||
+          typeof window.pid !== "number"
+        )
+          return window;
+        const identity = await identify(window.pid).catch(() => null);
+        return identity
+          ? { ...window, bundleId: identity.bundleId, bundleName: identity.name }
+          : window;
+      }),
+    );
+  }
   private async perform(request: {
     threadId: string;
     threadTitle: string;
@@ -445,14 +637,20 @@ export class ComputerExecutor {
     const action = request.action;
     if (action.kind === "status") return { state: this.options.state() };
     if (action.kind === "windows") {
-      const windows = await this.rpc<unknown[]>(request.threadId, "windows", {});
-      return windows.filter(
-        (window) =>
-          typeof window === "object" &&
-          window !== null &&
-          matches((window as { app?: unknown }).app, action.app) &&
-          matches((window as { title?: unknown }).title, action.title),
-      );
+      const windows = await this.windows(request.threadId);
+      return windows.filter((window) => {
+        if (typeof window !== "object" || window === null) return false;
+        const fields = window as {
+          app?: unknown;
+          title?: unknown;
+          bundleId?: unknown;
+          bundleName?: unknown;
+        };
+        return (
+          matches([fields.app, fields.bundleId, fields.bundleName], action.app) &&
+          matches([fields.title], action.title)
+        );
+      });
     }
     if (action.kind === "screenshot") {
       const result = await this.rpc(request.threadId, "capture", { target: action.windowId });
@@ -476,30 +674,8 @@ export class ComputerExecutor {
       this.rememberRoles(nodes);
       return nodes;
     }
-    if (action.kind === "foreground") {
-      this.options.showOperation({
-        threadId: request.threadId,
-        threadTitle: request.threadTitle,
-        agent: request.agent,
-        state: "waiting-confirmation",
-        step: action.reason,
-      });
-      const allowed = await this.options.confirmForeground({
-        agent: request.agent,
-        threadTitle: request.threadTitle,
-        windowId: action.windowId,
-        reason: action.reason,
-      });
-      if (!allowed) throw { code: "declined", message: "Foreground control was declined." };
-      await this.rpc(request.threadId, "control.grant", {
-        reason: action.reason,
-        confirmationId: randomUUID(),
-      });
-      const granted = this.foregroundWindows.get(request.threadId) ?? new Set<string>();
-      granted.add(action.windowId);
-      this.foregroundWindows.set(request.threadId, granted);
-      return this.rpc(request.threadId, "raiseWindow", { windowId: action.windowId });
-    }
+    if (action.kind === "foreground")
+      return this.grantForeground(request, action.windowId, action.reason);
     const target = action.kind === "element" ? undefined : action.windowId;
     switch (action.kind) {
       case "click":
@@ -509,7 +685,7 @@ export class ComputerExecutor {
           y: action.y,
           frameId: action.frameId,
           opts: {
-            deliveryMode: this.delivery(request.threadId, action.windowId),
+            deliveryMode: await this.inputDelivery(request, action),
             ...(action.button ? { button: action.button } : {}),
             ...(action.count ? { count: action.count } : {}),
           },
@@ -518,13 +694,13 @@ export class ComputerExecutor {
         return this.rpc(request.threadId, "typeText", {
           target,
           text: action.text,
-          opts: { deliveryMode: this.delivery(request.threadId, action.windowId) },
+          opts: { deliveryMode: await this.inputDelivery(request, action) },
         });
       case "press":
         return this.rpc(request.threadId, "keyChord", {
           target,
           keys: action.keys,
-          opts: { deliveryMode: this.delivery(request.threadId, action.windowId) },
+          opts: { deliveryMode: await this.inputDelivery(request, action) },
         });
       case "scroll":
         return this.rpc(request.threadId, "scroll", {
@@ -534,7 +710,7 @@ export class ComputerExecutor {
           dx: action.dx,
           dy: action.dy,
           frameId: action.frameId,
-          opts: { deliveryMode: this.delivery(request.threadId, action.windowId) },
+          opts: { deliveryMode: await this.inputDelivery(request, action) },
         });
       case "element": {
         const method =

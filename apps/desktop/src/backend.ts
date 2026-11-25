@@ -63,7 +63,7 @@ export interface BackendOptions {
   readonly stopTimeoutMs?: number;
   readonly onComputerRequest?: (request: DesktopComputerRequest) => Promise<DesktopComputerReply>;
   readonly onComputerThread?: (event: DesktopComputerThreadEvent) => void;
-  readonly computerAvailability?: {
+  readonly computerAvailability?: () => {
     readonly enabled: boolean;
     readonly ready: boolean;
     readonly missing: readonly string[];
@@ -145,7 +145,7 @@ export class BackendProcess {
     child.on("message", (message: unknown) => {
       if (message === "cox:backend-ready-to-start" && child.connected && !this.stopping) {
         child.send("cox:backend-start", () => {});
-        const availability = this.options.computerAvailability;
+        const availability = this.options.computerAvailability?.();
         if (availability)
           child.send({ type: "cox:computer-availability", ...availability }, () => {});
         return;
@@ -170,11 +170,24 @@ export class BackendProcess {
               error: { code: "unavailable", message: "Computer control is unavailable." },
             } as const)
           )
-            .then((reply) => {
-              const decoded = validateComputerReply(reply);
-              if (child.connected) child.send(decoded, () => {});
+            .then(validateComputerReply)
+            .catch((error: unknown) => {
+              this.options.onLog(
+                `Computer control request ${request.id} failed: ${String(error)}\n`,
+              );
+              return {
+                type: "cox:computer-reply",
+                id: request.id,
+                ok: false,
+                error: {
+                  code: "engine",
+                  message: `Cox Desktop could not complete the computer control request: ${String(error)}`,
+                },
+              } as const;
             })
-            .catch(() => {});
+            .then((reply) => {
+              if (child.connected) child.send(reply, () => {});
+            });
         } else if (message.type === "cox:computer-thread") {
           this.options.onComputerThread?.(validateComputerThreadEvent(message));
         }
@@ -252,7 +265,7 @@ export class BackendProcess {
           this.ready = true;
           settled = true;
           clearTimeout(timeout);
-          const availability = this.options.computerAvailability;
+          const availability = this.options.computerAvailability?.();
           if (availability && child.connected)
             child.send({ type: "cox:computer-availability", ...availability }, () => {});
           resolve(origin);

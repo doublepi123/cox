@@ -196,6 +196,19 @@ export function ComputerControlSettingsSection() {
               <p className="text-warning-foreground">{t("Computer control was stopped")}</p>
             ) : state.ready ? (
               <p className="text-success-foreground">{t("Ready to use computer control")}</p>
+            ) : state.enabled && engineMessage ? (
+              <div className="space-y-0.5">
+                <p
+                  className={
+                    state.engine === "error" ? "text-destructive" : "text-warning-foreground"
+                  }
+                >
+                  {engineMessage}
+                </p>
+                {state.engineMessage ? (
+                  <p className="wrap-anywhere">{state.engineMessage}</p>
+                ) : null}
+              </div>
             ) : state.enabled ? (
               <div className="space-y-0.5">
                 <p className="text-warning-foreground">

@@ -231,3 +231,40 @@ it("describes computer control gaps in each platform's own terms", () => {
   expect(elevated.missing).toBeUndefined();
   expect(elevated.message).toContain("administrator");
 });
+
+it("passes engine state through and keeps Labs recovery to settings problems", () => {
+  const stopped = ComputerHandlers.replyFailure({
+    type: "cox:computer-reply",
+    id: "r",
+    ok: false,
+    error: {
+      code: "unavailable",
+      message: "Computer control is turned on, but its engine is not running.",
+      engine: "error",
+      engineMessage: "Computer engine exited (9).",
+      recovery: "Choose Re-check or restart Cox.",
+    },
+  });
+  expect(stopped).toMatchObject({
+    code: "unavailable",
+    engine: "error",
+    engineMessage: "Computer engine exited (9).",
+    recovery: "Choose Re-check or restart Cox.",
+  });
+  const stale = ComputerHandlers.replyFailure({
+    type: "cox:computer-reply",
+    id: "r",
+    ok: false,
+    error: { code: "stale-frame", message: "frame f1 is stale" },
+  });
+  expect(stale.code).toBe("stale-frame");
+  expect(stale.recovery).toBeUndefined();
+  expect(
+    ComputerHandlers.replyFailure({
+      type: "cox:computer-reply",
+      id: "r",
+      ok: false,
+      error: { code: "disabled", message: "Computer control is turned off." },
+    }).recovery,
+  ).toBe(ComputerHandlers.COMPUTER_RECOVERY);
+});

@@ -26,6 +26,8 @@ const WINDOWS_CAPABILITY_NAMES: Record<DesktopComputerPermission, string> = {
 
 export const COMPUTER_RECOVERY = "Cox Settings → Labs → Computer control";
 
+const SETTINGS_CODES: ReadonlySet<string> = new Set(["disabled", "permission", "unavailable"]);
+
 export const describeMissing = (
   missing: ReadonlyArray<DesktopComputerPermission>,
   platform: NodeJS.Platform = process.platform,
@@ -41,21 +43,26 @@ export const replyFailure = (
   platform: NodeJS.Platform = process.platform,
 ): DesktopComputerToolFailure => {
   const missing = reply.error.missing ?? [];
-  const recovery = reply.error.recovery ?? COMPUTER_RECOVERY;
+  const recovery =
+    reply.error.recovery ?? (SETTINGS_CODES.has(reply.error.code) ? COMPUTER_RECOVERY : undefined);
   return new DesktopComputerToolFailure({
     code: reply.error.code,
     message: [
       reply.error.message,
       missing.length > 0
         ? platform === "win32"
-          ? `Not ready on this PC: ${describeMissing(missing, platform)}. Ask the user to check ${recovery}.`
-          : `Missing macOS permission: ${describeMissing(missing, platform)}. Ask the user to grant it in ${recovery}.`
+          ? `Not ready on this PC: ${describeMissing(missing, platform)}. Ask the user to check ${COMPUTER_RECOVERY}.`
+          : `Missing macOS permission: ${describeMissing(missing, platform)}. Ask the user to grant it in ${COMPUTER_RECOVERY}.`
         : undefined,
     ]
       .filter((part) => part !== undefined)
       .join(" "),
     ...(missing.length > 0 ? { missing } : {}),
-    recovery,
+    ...(recovery === undefined ? {} : { recovery }),
+    ...(reply.error.engine === undefined ? {} : { engine: reply.error.engine }),
+    ...(reply.error.engineMessage === undefined
+      ? {}
+      : { engineMessage: reply.error.engineMessage }),
   });
 };
 
@@ -123,13 +130,24 @@ export const layer = McpToolAccess.toLayer(ComputerToolkit, {
       ...(input.frame_id === undefined ? {} : { frameId: input.frame_id }),
       ...(input.button === undefined ? {} : { button: input.button }),
       ...(input.count === undefined ? {} : { count: input.count }),
+      ...(input.delivery === undefined ? {} : { delivery: input.delivery }),
     }),
   ),
   computer_type: McpToolAccess.actsAsCaller((input) =>
-    result({ kind: "type", windowId: input.window_id, text: input.text }),
+    result({
+      kind: "type",
+      windowId: input.window_id,
+      text: input.text,
+      ...(input.delivery === undefined ? {} : { delivery: input.delivery }),
+    }),
   ),
   computer_press: McpToolAccess.actsAsCaller((input) =>
-    result({ kind: "press", windowId: input.window_id, keys: input.keys }),
+    result({
+      kind: "press",
+      windowId: input.window_id,
+      keys: input.keys,
+      ...(input.delivery === undefined ? {} : { delivery: input.delivery }),
+    }),
   ),
   computer_scroll: McpToolAccess.actsAsCaller((input) =>
     result({
@@ -140,6 +158,7 @@ export const layer = McpToolAccess.toLayer(ComputerToolkit, {
       dx: input.dx,
       dy: input.dy,
       ...(input.frame_id === undefined ? {} : { frameId: input.frame_id }),
+      ...(input.delivery === undefined ? {} : { delivery: input.delivery }),
     }),
   ),
   computer_element: McpToolAccess.actsAsCaller((input) =>
@@ -161,9 +180,10 @@ export const layerScreenshot = McpToolAccess.toLayer(ComputerScreenshotToolkit, 
       const reply = yield* run({ kind: "screenshot", windowId: input.window_id });
       if (reply.image === undefined)
         return yield* new DesktopComputerToolFailure({
-          code: "engine",
+          code: "capture-failed",
           message: "The window could not be captured.",
-          recovery: COMPUTER_RECOVERY,
+          recovery:
+            "Call computer_windows again; the window may be minimized, on another Space or closed.",
         });
       return {
         frameId: reply.image.frameId,

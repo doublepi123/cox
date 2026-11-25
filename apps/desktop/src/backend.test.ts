@@ -86,7 +86,7 @@ async function createBackend(
     cwd: home,
     environment: { ...process.env, FIXTURE_MODE: mode },
     ...options,
-    computerAvailability: { enabled: true, ready: false, missing: ["input"] },
+    computerAvailability: () => ({ enabled: true, ready: false, missing: ["input"] }),
     onLog,
     onUnexpectedExit,
     stopTimeoutMs: 100,
@@ -154,6 +154,33 @@ describe("desktop backend supervisor", () => {
       result: { threadId: "thread" },
     });
     expect(availability).toMatchObject({ enabled: true, ready: false, missing: ["input"] });
+  });
+
+  it("answers a computer request whose handler fails instead of leaving the server waiting", async () => {
+    const { backend, home, onLog } = await createBackend("computer-ipc", {
+      onComputerRequest: async () => {
+        throw new Error("desktop host broke");
+      },
+    });
+    const received = Promise.withResolvers<void>();
+    const watcher = watch(home, (_event, filename) => {
+      if (String(filename) === "computer-reply") received.resolve();
+    });
+    watcher.on("error", received.reject);
+    try {
+      await backend.start();
+      await received.promise;
+    } finally {
+      watcher.close();
+    }
+    const reply = JSON.parse(await readFile(join(home, "computer-reply"), "utf8")) as unknown;
+    expect(reply).toMatchObject({
+      type: "cox:computer-reply",
+      id: "req",
+      ok: false,
+      error: { code: "engine", message: expect.stringContaining("desktop host broke") },
+    });
+    expect(onLog).toHaveBeenCalledWith(expect.stringContaining("desktop host broke"));
   });
 
   it("reports early startup failures without attaching to another service", async () => {
