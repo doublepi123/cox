@@ -151,12 +151,14 @@ it("typesets Words inline and display equations in chat", async () => {
 
   await expect.element(screen.getByRole("group", { name: "Inline equation" })).toBeVisible();
   await expect.element(screen.getByRole("group", { name: "Display equation" })).toBeVisible();
-  await vi.waitFor(() => {
-    expect(screen.container.querySelector('[data-markdown-math="inline"] .katex')).not.toBeNull();
-    expect(
-      screen.container.querySelector('[data-markdown-math="display"] .katex-display'),
-    ).not.toBeNull();
-  });
+  await expect
+    .element(screen.locator.getByRole("group", { name: "Inline equation" }).locator(".katex"))
+    .toBeInTheDocument();
+  await expect
+    .element(
+      screen.locator.getByRole("group", { name: "Display equation" }).locator(".katex-display"),
+    )
+    .toBeInTheDocument();
 });
 
 it("explains why a host video cannot be played when file access is missing", async () => {
