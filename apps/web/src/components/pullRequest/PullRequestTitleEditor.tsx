@@ -106,6 +106,7 @@ export function PullRequestTitleEditor({
             void saveTitle(titleDraft);
           } else if (event.key === "Escape") {
             event.preventDefault();
+            event.stopPropagation();
             setTitleScope(null);
           }
         }}
