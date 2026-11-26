@@ -336,20 +336,36 @@ async function openOnBrowserRouter() {
     loads,
     routerKey: window.history.state?.__TSR_key as string,
   };
+  const trigger = page.getByRole("button", { name: "Choose model" });
+  const sheet = page.elementLocator(document.body).locator("[data-model-picker-sheet]");
+  const entry = () => window.history.state?.coxBackDismiss;
+  const waitForEntry = async (previous: unknown) => {
+    await expect.poll(() => typeof entry() === "string" && entry() !== previous).toBe(true);
+  };
   const open = async () => {
-    await page.getByRole("button", { name: "Choose model" }).click();
+    const previous = entry();
+    await trigger.click();
     await expect.element(page.getByRole("dialog")).toBeInTheDocument();
-    await expect.poll(() => window.history.length).toBe(settled.length + 1);
+    await waitForEntry(previous);
+    expect(window.history.length).toBe(settled.length + 1);
   };
   const closed = async () => {
-    await expect.element(page.getByRole("dialog")).not.toBeInTheDocument();
-    await expect.poll(() => window.history.state?.coxBackDismiss).toBeUndefined();
+    await expect.element(sheet).not.toBeInTheDocument();
+    await expect.poll(entry).toBeUndefined();
     expect(window.location.href).toBe(startUrl);
     expect(window.history.state?.__TSR_key).toBe(settled.routerKey);
     expect(router.state.location.href).toBe(router.latestLocation.href);
     expect(loads).toBe(settled.loads);
   };
-  return { open, closed, settled, router, [Symbol.asyncDispose]: () => stack.disposeAsync() };
+  return {
+    open,
+    closed,
+    settled,
+    router,
+    entry,
+    waitForEntry,
+    [Symbol.asyncDispose]: () => stack.disposeAsync(),
+  };
 }
 
 it("closes the sheet on Back without leaving the route", async () => {
@@ -366,33 +382,39 @@ it("closes the sheet on Back without leaving the route", async () => {
   await app.closed();
 });
 
-it("pops its history entry once however the sheet closes", async () => {
+it.each([
+  ["Done", () => page.getByRole("button", { name: "Done" }).click()],
+  ["Escape", () => userEvent.keyboard("{Escape}")],
+  ["scrim", () => userEvent.click(document.body, { position: { x: 200, y: 40 } })],
+  ["Back", () => window.history.back()],
+] as const)("pops its history entry once when the sheet closes by %s", async (_, close) => {
   await using app = await openOnBrowserRouter();
-  const closers = [
-    () => page.getByRole("button", { name: "Done" }).click(),
-    () => userEvent.keyboard("{Escape}"),
-    () => userEvent.click(document.body, { position: { x: 200, y: 40 } }),
-    () => window.history.back(),
-  ];
   for (let cycle = 0; cycle < 3; cycle++) {
-    for (const close of closers) {
-      await app.open();
-      await close();
-      await app.closed();
-    }
+    await app.open();
+    await close();
+    await app.closed();
   }
-  // Each open replaced the one forward entry the previous close left, so nothing piled up.
   expect(window.history.length).toBe(app.settled.length + 1);
 });
 
 it("keeps history straight through a rapid close and reopen", async () => {
   await using app = await openOnBrowserRouter();
   await app.open();
-  await page.getByRole("button", { name: "Done" }).click();
-  // Reopen before our own Back has landed.
-  await page.getByRole("button", { name: "Choose model" }).click();
-  await expect.element(page.getByRole("dialog")).toBeInTheDocument();
-  await expect.poll(() => typeof window.history.state?.coxBackDismiss).toBe("string");
+  const oldEntry = app.entry();
+  const go = window.history.go.bind(window.history);
+  using delayed = vi.spyOn(window.history, "go").mockImplementation(() => {});
+  try {
+    await page.getByRole("button", { name: "Done" }).click();
+    await expect.poll(() => delayed.mock.calls).toEqual([[-1]]);
+    await page.getByRole("button", { name: "Choose model" }).click();
+    await expect.element(page.getByRole("dialog")).toBeInTheDocument();
+    expect(app.entry()).toBe(oldEntry);
+  } finally {
+    delayed.mockRestore();
+    if (app.entry() === oldEntry) go(-1);
+  }
+  await app.waitForEntry(oldEntry);
+  expect(window.history.length).toBe(app.settled.length + 1);
   window.history.back();
   await app.closed();
 });
