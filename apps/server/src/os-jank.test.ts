@@ -197,6 +197,40 @@ effectIt.effect(
     ),
 );
 
+effectIt.effect("re-reading an fnm login shell does not pile up its multishell folders", () =>
+  Effect.acquireUseRelease(
+    Effect.sync(() => {
+      const env: NodeJS.ProcessEnv = { SHELL: "/bin/bash", PATH: "/usr/bin" };
+      let count = 0;
+      const probe = vi.spyOn(NodeChildProcess, "execFileSync").mockImplementation(() => {
+        const next = "/run/user/1000/fnm_multishells/" + ++count;
+        return (
+          [
+            "__T3CODE_ENV_PATH_START__",
+            next + "/bin:" + env.PATH,
+            "__T3CODE_ENV_PATH_END__",
+            "__T3CODE_ENV_FNM_MULTISHELL_PATH_START__",
+            next,
+            "__T3CODE_ENV_FNM_MULTISHELL_PATH_END__",
+          ].join("\n") + "\n"
+        );
+      });
+      return { env, probe };
+    }),
+    ({ env, probe }) =>
+      Effect.gen(function* () {
+        for (let read = 0; read < 3; read++) yield* fixPath();
+        assert.equal(probe.mock.calls.length, 3);
+        assert.equal(env.PATH, "/run/user/1000/fnm_multishells/3/bin:/usr/bin");
+      }).pipe(
+        Effect.provideService(HostProcess.Platform, "linux"),
+        Effect.provideService(HostProcess.Environment, env),
+        Effect.provide(NodeServices.layer),
+      ),
+    ({ probe }) => Effect.sync(() => probe.mockRestore()),
+  ),
+);
+
 effectIt.effect("replaces a Path-spelled Windows PATH instead of adding a second key", () =>
   Effect.gen(function* () {
     const env: NodeJS.ProcessEnv = { Path: "C:\\Windows" };
