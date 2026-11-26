@@ -548,6 +548,7 @@ function PoolWindowCard({
   readonly description?: string | undefined;
 }) {
   const nextRefill = pool.resets.find((reset) => reset.at > now && reset.restoresPercent > 0);
+  const { t } = useTranslation();
   return (
     <div className="grid items-center gap-x-6 gap-y-3 rounded-lg border border-border/60 p-4 md:grid-cols-[11rem_minmax(0,1fr)]">
       <div className="flex flex-col gap-1">
@@ -563,8 +564,10 @@ function PoolWindowCard({
         </span>
         {nextRefill && pool.columns.length > 1 ? (
           <span className="text-xs text-muted-foreground tabular-nums">
-            <span className="font-medium text-foreground">↻ +{nextRefill.restoresPercent}%</span> in{" "}
-            {formatDuration(nextRefill.at - now)}
+            {t("↻ +{percent}% in {duration}", {
+              percent: nextRefill.restoresPercent,
+              duration: formatDuration(nextRefill.at - now),
+            })}
           </span>
         ) : null}
       </div>

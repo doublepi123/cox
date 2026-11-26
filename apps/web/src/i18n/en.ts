@@ -3298,6 +3298,7 @@ export const en = {
   "Message send options": "Message send options",
   "Steer now": "Steer now",
   "Remaining allowance unavailable": "Remaining allowance unavailable",
+  "↻ +{percent}% in {duration}": "↻ +{percent}% in {duration}",
   "ChatGPT usage": "ChatGPT usage",
   "Cursor usage": "Cursor usage",
   "View usage in ChatGPT with your connected account.":
