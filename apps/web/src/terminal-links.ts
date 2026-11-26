@@ -50,6 +50,7 @@ const QUOTED_FILE_PATH_PATTERN =
   /(["'`])(?<path>(?:~[\\/]|\.{1,2}[\\/]|\/|[A-Za-z]:[\\/]|\\\\|[\p{L}\p{M}\p{N}._ -]+[\\/])[^\r\n]*?|[\p{L}\p{M}\p{N}._ -]+\.[\p{L}\p{M}\p{N}_-]+(?::\d+){0,2})\1(?<position>(?::\d+){0,2})/gu;
 const POSITION_BEFORE_TEXT_PATTERN = /^.+?(?::\d+){1,2}(?=:)/u;
 const POSITIONS_ONLY_PATTERN = /^(?::\d+)+$/u;
+const PARENTHESIZED_POSITION_PATTERN = /(?<![\\/])\((\d+)(?:,(\d+))?\)$/u;
 const TRAILING_PUNCTUATION_PATTERN = /[.,;!?]+$/;
 // Paths also drop a trailing colon: compilers end `file:line:col:` with one.
 const TRAILING_PATH_PUNCTUATION_PATTERN = /[.,;:!?]+$/;
@@ -114,15 +115,23 @@ function collectMatches(
       cut !== undefined && !POSITIONS_ONLY_PATTERN.test(trimmed.slice(cut.length))
         ? cut
         : undefined;
+    const located =
+      kind === "path" && quotedPath === undefined
+        ? trimmed.replace(PARENTHESIZED_POSITION_PATTERN, (_, row: string, column?: string) =>
+            column === undefined ? `:${row}` : `:${row}:${column}`,
+          )
+        : trimmed;
     const candidate: TerminalLinkMatch = {
       kind,
       text: trimmed,
       start,
       // A position outside quotes spans the closing quote in the terminal buffer.
       end: start + trimmed.length + (rawMatch.groups?.position ? 1 : 0),
-      ...(fallback === undefined
-        ? {}
-        : { fallback: { text: fallback, end: start + fallback.length } }),
+      ...(fallback !== undefined
+        ? { fallback: { text: fallback, end: start + fallback.length } }
+        : located !== trimmed
+          ? { fallback: { text: located, end: start + trimmed.length } }
+          : {}),
     };
 
     const collides = [...existing, ...matches].some((other) => overlaps(candidate, other));
