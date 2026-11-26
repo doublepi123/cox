@@ -317,6 +317,7 @@ const resolveCanonicalWorkspaceFile = Effect.fn("AssetAccess.resolveCanonicalWor
     readonly workspaceRoot: string;
     readonly relativePath: string;
     readonly previewBaseRelativePath?: string;
+    readonly previewEntry?: boolean;
   }) {
     const fileSystem = yield* FileSystem.FileSystem;
     const workspacePaths = yield* WorkspacePaths.WorkspacePaths;
@@ -344,9 +345,10 @@ const resolveCanonicalWorkspaceFile = Effect.fn("AssetAccess.resolveCanonicalWor
       const belowBase = Option.isSome(canonicalBase)
         ? path.relative(canonicalBase.value, canonicalFile.value)
         : "..";
-      const dependency =
-        belowBase.startsWith("..") || path.isAbsolute(belowBase) ? relative : belowBase;
-      if (!isPreviewDependencyPath(dependency, path)) return null;
+      const outsideBase =
+        belowBase === ".." || belowBase.startsWith(".." + path.sep) || path.isAbsolute(belowBase);
+      if (outsideBase && input.previewEntry !== true) return null;
+      if (!isPreviewDependencyPath(outsideBase ? relative : belowBase, path)) return null;
     }
 
     const info = yield* ProjectFaviconResolver.optionOnNotFound(
@@ -362,6 +364,7 @@ const resolveCanonicalWorkspaceFileForRequest = (input: {
   readonly workspaceRoot: string;
   readonly relativePath: string;
   readonly previewBaseRelativePath?: string;
+  readonly previewEntry?: boolean;
 }) =>
   resolveCanonicalWorkspaceFile(input).pipe(
     Effect.tapError((cause) =>
@@ -1111,6 +1114,7 @@ export const resolveAsset = Effect.fn("AssetAccess.resolveAsset")(function* (
     workspaceRoot: claims.workspaceRoot,
     relativePath: joinedRelativePath,
     previewBaseRelativePath: claims.baseRelativePath,
+    previewEntry: decodedPath === claims.entryFileName,
   });
   return workspaceFile ? ({ kind: "file", path: workspaceFile } satisfies ResolvedAsset) : null;
 });
