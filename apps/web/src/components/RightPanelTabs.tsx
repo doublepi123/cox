@@ -905,29 +905,7 @@ export function RightPanelTabs(props: RightPanelTabsProps) {
     canScrollLeft: false,
     canScrollRight: false,
   });
-  if (props.open === false && addSurfaceMenuOpen) setAddSurfaceMenuOpen(false);
-  const onNewSurfaceKeyDown = useEffectEvent((event: KeyboardEvent) => {
-    if (event.defaultPrevented || event.isComposing) return;
-    if (
-      resolveShortcutCommand(event, props.keybindings, {
-        context: { ...props.getShortcutContext(), rightPanelOpen: true },
-      }) !== "rightPanel.new"
-    )
-      return;
-    if (!addSurfaceMenuOpen && document.querySelector(LAUNCHER_SHORTCUT_BLOCKING_LAYERS)) return;
-    event.preventDefault();
-    event.stopPropagation();
-    if (!event.repeat) {
-      addSurfaceTriggerRef.current?.focus();
-      setAddSurfaceMenuOpen(true);
-    }
-  });
-  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- subscribes a document keydown listener for the new surface shortcut while the panel is open
-  useEffect(() => {
-    if (props.open === false) return;
-    document.addEventListener("keydown", onNewSurfaceKeyDown, true);
-    return () => document.removeEventListener("keydown", onNewSurfaceKeyDown, true);
-  }, [props.open]);
+
   const updateTabScrollState = (viewport: HTMLDivElement) => {
     const hasOverflow = viewport.scrollWidth - viewport.clientWidth > TAB_SCROLL_EDGE_TOLERANCE;
     const canScrollLeft = hasOverflow && viewport.scrollLeft > TAB_SCROLL_EDGE_TOLERANCE;
@@ -1016,6 +994,31 @@ export function RightPanelTabs(props: RightPanelTabsProps) {
         ]
       : []),
   ] as const;
+  const canAddSurface = addSurfaceActions.some((action) => action.available);
+  if ((props.open === false || !canAddSurface) && addSurfaceMenuOpen) setAddSurfaceMenuOpen(false);
+  const onNewSurfaceKeyDown = useEffectEvent((event: KeyboardEvent) => {
+    if (event.defaultPrevented || event.isComposing) return;
+    if (
+      resolveShortcutCommand(event, props.keybindings, {
+        context: { ...props.getShortcutContext(), rightPanelOpen: true },
+      }) !== "rightPanel.new"
+    )
+      return;
+    if (!addSurfaceMenuOpen && document.querySelector(LAUNCHER_SHORTCUT_BLOCKING_LAYERS)) return;
+    event.preventDefault();
+    event.stopPropagation();
+    if (!event.repeat) {
+      addSurfaceTriggerRef.current?.focus();
+      setAddSurfaceMenuOpen(true);
+    }
+  });
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- subscribes a document keydown listener for the new surface shortcut while the panel is open
+  useEffect(() => {
+    if (props.open === false || !canAddSurface) return;
+    document.addEventListener("keydown", onNewSurfaceKeyDown, true);
+    return () => document.removeEventListener("keydown", onNewSurfaceKeyDown, true);
+  }, [props.open, canAddSurface]);
+
   const handleAddSurfaceMenuKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
     const action = surfaceShortcutActionForKey(addSurfaceActions, event.nativeEvent);
     if (!action) return;
@@ -1210,7 +1213,7 @@ export function RightPanelTabs(props: RightPanelTabsProps) {
                 );
               })}
             </SortableTabList>
-            {props.open !== false ? (
+            {props.open !== false && canAddSurface ? (
               <Menu open={addSurfaceMenuOpen} onOpenChange={setAddSurfaceMenuOpen}>
                 <MenuTrigger
                   ref={addSurfaceTriggerRef}
