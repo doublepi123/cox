@@ -60,7 +60,7 @@ function parseImageDimension(value: string | number | undefined): number {
  * would fill the row and `max-height` would squash it. Bound the width so the
  * frame stays 16:9 at the height cap.
  */
-function unavailableImageSizeStyle(maxHeightRem: number): CSSProperties | undefined {
+function unsizedImageFrameStyle(maxHeightRem: number): CSSProperties | undefined {
   if (maxHeightRem === 30) return undefined;
   return { maxWidth: `min(100%, 30rem, ${(maxHeightRem * 16) / 9}rem)` };
 }
@@ -184,6 +184,7 @@ export function ChatMarkdownImage(props: {
   readonly alt: string;
   readonly copyMarkdown: string | undefined;
   readonly standalone: boolean;
+  readonly frameStyle?: CSSProperties | undefined;
   readonly className?: string | undefined;
   readonly style?: CSSProperties | undefined;
   readonly imageProps?:
@@ -272,7 +273,7 @@ export function ChatMarkdownImage(props: {
           CHAT_MARKDOWN_IMAGE_FRAME_CLASS_NAME,
           "relative",
         )}
-        style={props.style}
+        style={props.frameStyle ?? props.style}
         {...(failed
           ? { role: "alert" as const }
           : { role: "status" as const, "aria-label": "Loading image" })}
@@ -349,6 +350,7 @@ export const ChatMarkdownAssetImage = memo(function ChatMarkdownAssetImage(props
     }
   >;
   readonly kind?: "image" | "video";
+  readonly pending?: boolean | undefined;
   readonly alt: string;
   readonly copyMarkdown?: string;
   readonly srcFragment?: string;
@@ -369,7 +371,7 @@ export const ChatMarkdownAssetImage = memo(function ChatMarkdownAssetImage(props
   const resource = props.resource;
   const assetUrl = useAssetUrlState(
     props.environmentId,
-    resource,
+    props.pending ? null : resource,
     props.workspaceMutationId !== undefined &&
       props.kind !== "video" &&
       (resource._tag === "media-file" || resource._tag === "workspace-file")
@@ -408,20 +410,21 @@ export const ChatMarkdownAssetImage = memo(function ChatMarkdownAssetImage(props
     props.style ??
     (knownSize
       ? authoredImageSizeStyle(knownSize.width, knownSize.height, maxHeightRem)
-      : unavailable
-        ? unavailableImageSizeStyle(maxHeightRem)
-        : maxHeightRem !== 30
-          ? { maxHeight: `${maxHeightRem}rem` }
-          : undefined);
+      : maxHeightRem !== 30
+        ? { maxHeight: `${maxHeightRem}rem` }
+        : undefined);
+  const frameStyle = props.style ?? (knownSize ? style : unsizedImageFrameStyle(maxHeightRem));
   const actionsSource: MediaActionSource = {
     kind: props.kind ?? "image",
     name: props.alt || (props.kind ?? "image"),
     src,
-    ...(fallbackSrc === undefined
+    ...(fallbackSrc === undefined && !props.pending
       ? { asset: { environmentId: props.environmentId, resource } }
       : {}),
     ...(reference ? { reference } : {}),
-    ...(relativePath && (resource._tag === "media-file" || resource._tag === "workspace-file")
+    ...(relativePath &&
+    !props.pending &&
+    (resource._tag === "media-file" || resource._tag === "workspace-file")
       ? {
           onOpenFile: () =>
             useRightPanelStore
@@ -465,6 +468,7 @@ export const ChatMarkdownAssetImage = memo(function ChatMarkdownAssetImage(props
         props.className,
       )}
       style={style}
+      frameStyle={frameStyle}
       imageProps={props.imageProps}
       actionsSource={actionsSource}
       originalUrl={props.originalUrl}
