@@ -121,6 +121,7 @@ const detail: PullRequestDetailView = {
 
 const tab = (value = detail) => (
   <PullRequestSummaryTab
+    observedAt={value.observedAt}
     scrollerRef={() => {}}
     environmentId={EnvironmentId.make("environment")}
     threadRef={null}

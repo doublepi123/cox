@@ -1,4 +1,5 @@
 import { WorkflowRunsAbout } from "../workflows/WorkflowRunsAbout";
+import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { useAtomValue } from "@effect/atom-react";
 import { useTranslation } from "../../i18n";
 import {
@@ -48,7 +49,7 @@ import {
   MenuTrigger,
 } from "../ui/menu";
 import { toastManager } from "../ui/toast";
-import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
+import { SharedTooltipTrigger } from "../ui/shared-tooltip";
 import {
   PullRequestActorLabel,
   PullRequestCheckStatusIcon,
@@ -125,30 +126,30 @@ function CommentIdentity({
         threadRef={threadRef}
         className="max-w-full"
       />
-      <Tooltip>
-        <TooltipTrigger
-          render={
-            comment.url ? (
-              <a
-                href={comment.url}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-muted-foreground hover:text-foreground hover:underline"
-              />
-            ) : (
-              <span className="text-muted-foreground" />
-            )
-          }
-        >
-          <time dateTime={comment.createdAt}>
-            <RelativeTime timestamp={comment.createdAt} />
-          </time>
-        </TooltipTrigger>
-        <TooltipPopup>
-          {formatFullTimestamp(comment.createdAt, timestampFormat)}
-          {comment.url ? " · Open comment on host" : ""}
-        </TooltipPopup>
-      </Tooltip>
+      <SharedTooltipTrigger
+        render={
+          comment.url ? (
+            <a
+              href={comment.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-muted-foreground hover:text-foreground hover:underline"
+            />
+          ) : (
+            <span className="text-muted-foreground" />
+          )
+        }
+        label={
+          <>
+            {formatFullTimestamp(comment.createdAt, timestampFormat)}
+            {comment.url ? " · Open comment on host" : ""}
+          </>
+        }
+      >
+        <time dateTime={comment.createdAt}>
+          <RelativeTime timestamp={comment.createdAt} />
+        </time>
+      </SharedTooltipTrigger>
     </h2>
   );
 }
@@ -166,10 +167,9 @@ function CommentLocation({
   const label = `${path}${thread?.line ? `:${thread.line}` : ""}`;
   return (
     <div className="mt-2 flex min-w-0 items-center gap-2 text-xs text-muted-foreground">
-      <Tooltip>
-        <TooltipTrigger render={<span className="truncate font-mono" />}>{label}</TooltipTrigger>
-        <TooltipPopup>{label}</TooltipPopup>
-      </Tooltip>
+      <SharedTooltipTrigger render={<span className="truncate font-mono" />} label={label}>
+        {label}
+      </SharedTooltipTrigger>
       {thread?.isOutdated ? <span className="shrink-0">{t("Outdated")}</span> : null}
     </div>
   );
@@ -476,6 +476,7 @@ export function PullRequestSummaryTab({
   threadRef,
   reference,
   detail,
+  observedAt,
   activityPending,
   checksStale = false,
   activityError,
@@ -492,6 +493,8 @@ export function PullRequestSummaryTab({
   threadRef: ScopedThreadRef | null;
   reference: PullRequestRef;
   detail: PullRequestDetailView;
+  /** When the detail was last read; the detail itself keeps its older stamp across refreshes. */
+  observedAt: number | undefined;
   activityPending: boolean;
   checksStale?: boolean;
   activityError: string | null;
@@ -613,11 +616,7 @@ export function PullRequestSummaryTab({
     readonly body: string;
   } | null>(null);
   const [descriptionDraft, setDescriptionDraft] = useState<DescriptionDraft | null>(null);
-  const descriptionDraftKept = descriptionDraftInForce(
-    descriptionDraft,
-    detail.url,
-    detail.observedAt,
-  );
+  const descriptionDraftKept = descriptionDraftInForce(descriptionDraft, detail.url, observedAt);
   if (descriptionDraftKept !== descriptionDraft) setDescriptionDraft(descriptionDraftKept);
   const description = descriptionDraftKept?.body ?? detail.body;
   const descriptionSaving = (descriptionDraftKept?.saves ?? 0) > 0;
@@ -758,7 +757,7 @@ export function PullRequestSummaryTab({
             <CommentLocation comment={comment} thread={thread} />
           </div>
         )}
-        {body === null && !commentEditing.canEdit(comment) ? null : (
+        {body === null && !canEditPullRequestComment(detail, comment) ? null : (
           <CommentBody className="px-3 py-3" comment={comment} editing={commentEditing} />
         )}
       </article>

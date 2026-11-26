@@ -28,7 +28,7 @@ import { cn } from "~/lib/utils";
 
 import { Badge } from "../ui/badge";
 import { InlineButton } from "../ui/button";
-import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
+import { SharedTooltipTrigger } from "../ui/shared-tooltip";
 import type { PullRequestReviewOutcome } from "./pullRequestDetail.logic";
 import { pullRequestLabelColor } from "./pullRequestList.logic";
 import {
@@ -93,13 +93,13 @@ export function PullRequestReviewDecisionGlyph({
 }) {
   const presentation = reviewDecisionPresentation(decision);
   return (
-    <Tooltip>
-      <TooltipTrigger render={<span className="inline-flex shrink-0" />}>
-        <presentation.Icon aria-hidden className={cn("size-3.5", presentation.toneClassName)} />
-        <span className="sr-only">{presentation.label}</span>
-      </TooltipTrigger>
-      <TooltipPopup>{presentation.label}</TooltipPopup>
-    </Tooltip>
+    <SharedTooltipTrigger
+      render={<span className="inline-flex shrink-0" />}
+      label={presentation.label}
+    >
+      <presentation.Icon aria-hidden className={cn("size-3.5", presentation.toneClassName)} />
+      <span className="sr-only">{presentation.label}</span>
+    </SharedTooltipTrigger>
   );
 }
 
@@ -144,16 +144,16 @@ export function PullRequestStateGlyph({
 }) {
   const presentation = resolvePullRequestState({ state, isDraft });
   return (
-    <Tooltip>
-      <TooltipTrigger render={<span className="inline-flex shrink-0" />}>
-        <presentation.Icon
-          role="img"
-          aria-label={presentation.label}
-          className={cn("size-4 shrink-0", presentation.toneClassName, className)}
-        />
-      </TooltipTrigger>
-      <TooltipPopup>{presentation.label}</TooltipPopup>
-    </Tooltip>
+    <SharedTooltipTrigger
+      render={<span className="inline-flex shrink-0" />}
+      label={presentation.label}
+    >
+      <presentation.Icon
+        role="img"
+        aria-label={presentation.label}
+        className={cn("size-4 shrink-0", presentation.toneClassName, className)}
+      />
+    </SharedTooltipTrigger>
   );
 }
 
@@ -178,16 +178,16 @@ export function PullRequestConflictGlyph({
   });
   if (presentation === null) return null;
   return (
-    <Tooltip>
-      <TooltipTrigger render={<span className="inline-flex shrink-0" />}>
-        <presentation.Icon
-          role="img"
-          aria-label={presentation.label}
-          className={cn("size-4 shrink-0", presentation.toneClassName, className)}
-        />
-      </TooltipTrigger>
-      <TooltipPopup>{presentation.label}</TooltipPopup>
-    </Tooltip>
+    <SharedTooltipTrigger
+      render={<span className="inline-flex shrink-0" />}
+      label={presentation.label}
+    >
+      <presentation.Icon
+        role="img"
+        aria-label={presentation.label}
+        className={cn("size-4 shrink-0", presentation.toneClassName, className)}
+      />
+    </SharedTooltipTrigger>
   );
 }
 
@@ -453,37 +453,38 @@ export function PullRequestActorLabel({
   const placement = cn("flex min-w-0 shrink", className);
   if (!tooltip) return <span className={placement}>{label}</span>;
   return (
-    <Tooltip>
-      <TooltipTrigger
-        render={
-          profileUrl ? (
-            <InlineButton
-              className={placement}
-              onClick={(event) => {
-                event.preventDefault();
-                void openLink(profileUrl, { event }).catch(console.error);
-              }}
-              render={
-                <a
-                  href={profileUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  aria-label={`Open ${login}'s profile`}
-                />
-              }
-            />
-          ) : (
-            <span className={placement} />
-          )
-        }
-      >
-        {label}
-      </TooltipTrigger>
-      <TooltipPopup side="top">
-        {actor?.name && actor.name !== login ? `${actor.name} (@${login})` : login}
-        {profileUrl ? " · Open profile" : ""}
-      </TooltipPopup>
-    </Tooltip>
+    <SharedTooltipTrigger
+      render={
+        profileUrl ? (
+          <InlineButton
+            className={placement}
+            onClick={(event) => {
+              event.preventDefault();
+              void openLink(profileUrl, { event }).catch(console.error);
+            }}
+            render={
+              <a
+                href={profileUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                aria-label={`Open ${login}'s profile`}
+              />
+            }
+          />
+        ) : (
+          <span className={placement} />
+        )
+      }
+      side="top"
+      label={
+        <>
+          {actor?.name && actor.name !== login ? `${actor.name} (@${login})` : login}
+          {profileUrl ? " · Open profile" : ""}
+        </>
+      }
+    >
+      {label}
+    </SharedTooltipTrigger>
   );
 }
 

@@ -6,7 +6,7 @@ import { cn } from "~/lib/utils";
 import { Button } from "../ui/button";
 import { MiddleTruncate } from "../ui/middle-truncate";
 import { Popover, PopoverPopup, PopoverTrigger } from "../ui/popover";
-import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
+import { SharedTooltipTrigger } from "../ui/shared-tooltip";
 import { PullRequestGlyph } from "./pullRequestIcons";
 
 interface BaseFreshness {
@@ -123,15 +123,12 @@ export function PullRequestBaseBranch({
     );
   }
   return (
-    <Tooltip>
-      <TooltipTrigger
-        render={
-          <span className="inline-flex min-w-0 max-w-[40%] shrink-0 items-center gap-1">
-            {label}
-          </span>
-        }
-      />
-      <TooltipPopup side="top">{stacked ? `Stacked on ${baseBranch}` : baseBranch}</TooltipPopup>
-    </Tooltip>
+    <SharedTooltipTrigger
+      render={
+        <span className="inline-flex min-w-0 max-w-[40%] shrink-0 items-center gap-1">{label}</span>
+      }
+      side="top"
+      label={stacked ? `Stacked on ${baseBranch}` : baseBranch}
+    />
   );
 }
