@@ -306,7 +306,7 @@ function FileViewedToggle({
             side="bottom"
             label={<>This file has been pushed to since you marked it viewed.</>}
           >
-              Changed
+            Changed
           </SharedTooltipTrigger>
         ) : (
           <span className="@max-xs:hidden">Viewed</span>
@@ -1180,10 +1180,10 @@ function PullRequestCodeTab({
                   <DropdownMenuRadioItem key={entry.oid} value={entry.oid} closeOnClick>
                     <span className="flex items-center gap-2">
                       <SharedTooltipTrigger
-                          render={<span className="min-w-0 truncate">{entry.messageHeadline}</span>}
+                        render={<span className="min-w-0 truncate">{entry.messageHeadline}</span>}
                         side="top"
                         label={entry.messageHeadline}
-                        />
+                      />
                       <span className="ml-auto shrink-0 font-mono text-xs text-muted-foreground">
                         {entry.oid.slice(0, 7)}
                       </span>
@@ -1246,10 +1246,10 @@ function PullRequestCodeTab({
                     </>
                   }
                 >
-                    <InfoIcon
-                      aria-label="These ticks are kept here, not on the host"
-                      className="text-muted-foreground size-3.5"
-                    />
+                  <InfoIcon
+                    aria-label="These ticks are kept here, not on the host"
+                    className="text-muted-foreground size-3.5"
+                  />
                 </SharedTooltipTrigger>
               ) : null}
               {filesViewed.error !== null ? (
@@ -1263,10 +1263,10 @@ function PullRequestCodeTab({
                     </>
                   }
                 >
-                    <TriangleAlertIcon
-                      aria-label="Your ticks could not be read"
-                      className="size-3.5 text-warning-foreground"
-                    />
+                  <TriangleAlertIcon
+                    aria-label="Your ticks could not be read"
+                    className="size-3.5 text-warning-foreground"
+                  />
                 </SharedTooltipTrigger>
               ) : null}
               {filesViewed.truncated ? (
@@ -1280,10 +1280,10 @@ function PullRequestCodeTab({
                     </>
                   }
                 >
-                    <TriangleAlertIcon
-                      aria-label="This count covers only part of the change"
-                      className="size-3.5 text-warning-foreground"
-                    />
+                  <TriangleAlertIcon
+                    aria-label="This count covers only part of the change"
+                    className="size-3.5 text-warning-foreground"
+                  />
                 </SharedTooltipTrigger>
               ) : null}
             </span>
@@ -1299,10 +1299,10 @@ function PullRequestCodeTab({
                 </>
               }
             >
-                <TriangleAlertIcon
-                  aria-label="Some of this diff was not shown"
-                  className="size-3.5 text-warning-foreground"
-                />
+              <TriangleAlertIcon
+                aria-label="Some of this diff was not shown"
+                className="size-3.5 text-warning-foreground"
+              />
             </SharedTooltipTrigger>
           ) : null}
           {commit !== null && review.inlineComment ? (
@@ -1315,10 +1315,10 @@ function PullRequestCodeTab({
                 </>
               }
             >
-                <MessageSquareOffIcon
-                  aria-label="Line comments are written from the whole change"
-                  className="size-3.5"
-                />
+              <MessageSquareOffIcon
+                aria-label="Line comments are written from the whole change"
+                className="size-3.5"
+              />
             </SharedTooltipTrigger>
           ) : null}
         </PullRequestMetaLine>
@@ -1373,23 +1373,23 @@ function PullRequestCodeTab({
         </DropdownMenu>
         <div className="hidden items-center gap-1 @lg:flex">
           <SharedTooltipTrigger
-              render={
-                <Toggle
-                  aria-label={
-                    ignoreWhitespace ? "Show whitespace changes" : t("Hide whitespace changes")
-                  }
-                  variant="ghost"
-                  size="sm"
-                  pressed={ignoreWhitespace}
-                  onPressedChange={(pressed) => changeIgnoreWhitespace(Boolean(pressed))}
-                />
-              }
+            render={
+              <Toggle
+                aria-label={
+                  ignoreWhitespace ? "Show whitespace changes" : t("Hide whitespace changes")
+                }
+                variant="ghost"
+                size="sm"
+                pressed={ignoreWhitespace}
+                onPressedChange={(pressed) => changeIgnoreWhitespace(Boolean(pressed))}
+              />
+            }
             side="top"
             label={
               <>{ignoreWhitespace ? "Show whitespace changes" : t("Hide whitespace changes")}</>
             }
-            >
-              <PilcrowIcon className="size-3.5" />
+          >
+            <PilcrowIcon className="size-3.5" />
           </SharedTooltipTrigger>
           <span className="inline-flex min-w-0 shrink-0">
             <ToggleGroup
@@ -1412,75 +1412,75 @@ function PullRequestCodeTab({
             </ToggleGroup>
           </span>
           <SharedTooltipTrigger
-              render={
-                <Toggle
-                  aria-label={wordWrap ? "Disable diff line wrapping" : "Enable diff line wrapping"}
-                  variant="ghost"
-                  size="sm"
-                  pressed={wordWrap}
-                  onPressedChange={(pressed) => {
-                    setWordWrap(Boolean(pressed));
-                  }}
-                />
-              }
+            render={
+              <Toggle
+                aria-label={wordWrap ? "Disable diff line wrapping" : "Enable diff line wrapping"}
+                variant="ghost"
+                size="sm"
+                pressed={wordWrap}
+                onPressedChange={(pressed) => {
+                  setWordWrap(Boolean(pressed));
+                }}
+              />
+            }
             side="top"
             label={<>{wordWrap ? "Disable line wrapping" : "Enable line wrapping"}</>}
-            >
-              <TextWrapIcon className="size-3.5" />
+          >
+            <TextWrapIcon className="size-3.5" />
           </SharedTooltipTrigger>
         </div>
         {fileKeys.length > 0 ? (
           <SharedTooltipTrigger
-              render={
-                <Button
-                  type="button"
-                  size="icon-sm"
-                  variant="ghost"
-                  aria-label={allFilesCollapsed ? "Expand all files" : "Collapse all files"}
-                  onClick={toggleAllFiles}
-                />
-              }
+            render={
+              <Button
+                type="button"
+                size="icon-sm"
+                variant="ghost"
+                aria-label={allFilesCollapsed ? "Expand all files" : "Collapse all files"}
+                onClick={toggleAllFiles}
+              />
+            }
             side="top"
             label={<>{allFilesCollapsed ? "Expand all files" : "Collapse all files"}</>}
-            >
-              <MorphIcon
-                className="size-3.5"
-                icon={allFilesCollapsed ? ChevronsUpDown : ChevronsDownUp}
-              />
+          >
+            <MorphIcon
+              className="size-3.5"
+              icon={allFilesCollapsed ? ChevronsUpDown : ChevronsDownUp}
+            />
           </SharedTooltipTrigger>
         ) : null}
         {testFileCount > 0 ? (
           <SharedTooltipTrigger
-              render={
-                <Toggle
-                  aria-label={t("Hide test files")}
-                  variant="ghost"
-                  size="sm"
-                  pressed={hideTestFiles}
-                  onPressedChange={(pressed) => setHideTestFiles(Boolean(pressed))}
-                />
-              }
+            render={
+              <Toggle
+                aria-label={t("Hide test files")}
+                variant="ghost"
+                size="sm"
+                pressed={hideTestFiles}
+                onPressedChange={(pressed) => setHideTestFiles(Boolean(pressed))}
+              />
+            }
             side="top"
             label={hideTestFiles ? t("Show test files") : t("Hide test files")}
-            >
-              <FlaskConicalOffIcon className="size-3.5" />
+          >
+            <FlaskConicalOffIcon className="size-3.5" />
           </SharedTooltipTrigger>
         ) : null}
         {fileKeys.length > 0 ? (
           <SharedTooltipTrigger
-              render={
-                <Toggle
-                  aria-label={fileTreeOpen ? "Hide file tree" : "Show file tree"}
-                  variant="ghost"
-                  size="sm"
-                  pressed={fileTreeOpen}
-                  onPressedChange={(pressed) => setFileTreeOpen(Boolean(pressed))}
-                />
-              }
+            render={
+              <Toggle
+                aria-label={fileTreeOpen ? "Hide file tree" : "Show file tree"}
+                variant="ghost"
+                size="sm"
+                pressed={fileTreeOpen}
+                onPressedChange={(pressed) => setFileTreeOpen(Boolean(pressed))}
+              />
+            }
             side="top"
             label={<>{fileTreeOpen ? "Hide file tree" : "Show file tree"}</>}
-            >
-              <FolderTreeIcon className="size-3.5" />
+          >
+            <FolderTreeIcon className="size-3.5" />
           </SharedTooltipTrigger>
         ) : null}
       </div>
@@ -1602,7 +1602,7 @@ function PullRequestCodeTab({
                       render={<p className="truncate px-3 text-xs text-muted-foreground">{path}</p>}
                       side="top"
                       label={path}
-                      />
+                    />
                     <div className="mt-1 space-y-2">
                       {threads.map((thread) => (
                         <div key={thread.id}>

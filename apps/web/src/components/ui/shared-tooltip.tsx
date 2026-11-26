@@ -367,12 +367,12 @@ export function SharedTooltipTrigger({
   const inactive = disabled === true || renderedDisabled(render);
   const tooltip = useSharedTooltip(
     {
-    render: () => label,
-    contentKey: label,
-    side,
+      render: () => label,
+      contentKey: label,
+      side,
       ...(align ? { align } : {}),
       ...(sideOffset === undefined ? {} : { sideOffset }),
-    ...(variant ? { variant } : {}),
+      ...(variant ? { variant } : {}),
       ...(className ? { className } : {}),
       ...(width ? { width } : {}),
       ...(textFormat ? { textFormat } : {}),

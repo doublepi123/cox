@@ -1522,15 +1522,15 @@ export function PullRequestDetailPanel({
                         aria-label="receives changes from"
                         className="size-3 shrink-0 opacity-60"
                       />
-                    <SharedTooltipTrigger
-                          render={
-                            <code className="flex min-w-0 flex-1">
-                              <MiddleTruncate value={detail.headBranch} showTitle={false} />
-                            </code>
-                          }
-                      side="top"
-                      label={detail.headBranch}
-                        />
+                      <SharedTooltipTrigger
+                        render={
+                          <code className="flex min-w-0 flex-1">
+                            <MiddleTruncate value={detail.headBranch} showTitle={false} />
+                          </code>
+                        }
+                        side="top"
+                        label={detail.headBranch}
+                      />
                     </span>
                     <span className="ml-auto inline-flex shrink-0 items-baseline justify-end gap-2 text-2xs">
                       <span

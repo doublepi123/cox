@@ -852,19 +852,19 @@ function RightPanelTab(
         />
       ) : (
         <SharedTooltipTrigger
-            render={
-              <button
-                type="button"
-                onDoubleClick={() => {}}
-                className="cursor-pointer flex min-w-0 items-center pointer-coarse:min-h-11 pointer-coarse:min-w-11 pointer-coarse:px-1"
-                aria-label={sideChatState === null ? undefined : `${title}, ${sideChatState}`}
-                onClick={() => onActivate(surface)}
-              >
-                <span className="truncate">{title}</span>
-              </button>
-            }
+          render={
+            <button
+              type="button"
+              onDoubleClick={() => {}}
+              className="cursor-pointer flex min-w-0 items-center pointer-coarse:min-h-11 pointer-coarse:min-w-11 pointer-coarse:px-1"
+              aria-label={sideChatState === null ? undefined : `${title}, ${sideChatState}`}
+              onClick={() => onActivate(surface)}
+            >
+              <span className="truncate">{title}</span>
+            </button>
+          }
           label={title}
-          />
+        />
       )}
     </>
   );
@@ -1290,37 +1290,37 @@ export function RightPanelTabs(props: RightPanelTabsProps) {
             aria-label="Scroll panel tabs"
           >
             <SharedTooltipTrigger
-                render={
-                  <span className="inline-flex">
-                    <Button
-                      aria-label="Scroll tabs left"
-                      disabled={!tabScrollState.canScrollLeft}
-                      onClick={() => scrollTabs(-1)}
-                      size="icon-xs"
-                      variant="ghost"
-                    >
-                      <ChevronLeft />
-                    </Button>
-                  </span>
-                }
+              render={
+                <span className="inline-flex">
+                  <Button
+                    aria-label="Scroll tabs left"
+                    disabled={!tabScrollState.canScrollLeft}
+                    onClick={() => scrollTabs(-1)}
+                    size="icon-xs"
+                    variant="ghost"
+                  >
+                    <ChevronLeft />
+                  </Button>
+                </span>
+              }
               label={"Scroll tabs left"}
-              />
+            />
             <SharedTooltipTrigger
-                render={
-                  <span className="inline-flex">
-                    <Button
-                      aria-label="Scroll tabs right"
-                      disabled={!tabScrollState.canScrollRight}
-                      onClick={() => scrollTabs(1)}
-                      size="icon-xs"
-                      variant="ghost"
-                    >
-                      <ChevronRight />
-                    </Button>
-                  </span>
-                }
+              render={
+                <span className="inline-flex">
+                  <Button
+                    aria-label="Scroll tabs right"
+                    disabled={!tabScrollState.canScrollRight}
+                    onClick={() => scrollTabs(1)}
+                    size="icon-xs"
+                    variant="ghost"
+                  >
+                    <ChevronRight />
+                  </Button>
+                </span>
+              }
               label={"Scroll tabs right"}
-              />
+            />
           </div>
         ) : null}
         {props.layoutControls}

@@ -854,16 +854,16 @@ export function PullRequestSummaryTab({
                     return (
                       <SharedTooltipTrigger
                         key={entry.key}
-                          render={
-                            <span
-                              className={cn(
-                                "relative rounded-full hover:z-10",
-                                entry.outcome
+                        render={
+                          <span
+                            className={cn(
+                              "relative rounded-full hover:z-10",
+                              entry.outcome
                                 ? pullRequestReviewOutcomeRingClassName(entry.outcome, entry.stale)
-                                  : undefined,
-                              )}
-                            />
-                          }
+                                : undefined,
+                            )}
+                          />
+                        }
                         side="bottom"
                         label={
                           <>
@@ -876,25 +876,25 @@ export function PullRequestSummaryTab({
                               : named}
                           </>
                         }
-                        >
-                          <PullRequestActorLabel
-                            actor={entry.actor}
-                            tooltip={false}
-                            variant="avatar"
-                          />
-                          {entry.outcome ? (
-                            <>
-                              <PullRequestReviewOutcomeAvatarBadge
-                                outcome={entry.outcome}
-                                stale={entry.stale}
-                              />
-                              <span className="sr-only">
-                                {entry.stale
-                                  ? pullRequestReviewOutcomeStaleLabel(entry.outcome)
-                                  : pullRequestReviewOutcomeLabel(entry.outcome)}
-                              </span>
-                            </>
-                          ) : null}
+                      >
+                        <PullRequestActorLabel
+                          actor={entry.actor}
+                          tooltip={false}
+                          variant="avatar"
+                        />
+                        {entry.outcome ? (
+                          <>
+                            <PullRequestReviewOutcomeAvatarBadge
+                              outcome={entry.outcome}
+                              stale={entry.stale}
+                            />
+                            <span className="sr-only">
+                              {entry.stale
+                                ? pullRequestReviewOutcomeStaleLabel(entry.outcome)
+                                : pullRequestReviewOutcomeLabel(entry.outcome)}
+                            </span>
+                          </>
+                        ) : null}
                       </SharedTooltipTrigger>
                     );
                   })}

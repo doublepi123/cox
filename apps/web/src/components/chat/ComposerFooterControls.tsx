@@ -66,39 +66,39 @@ export const ComposerFooterModeControls = memo(function ComposerFooterModeContro
 
   const interactionModeToggle = props.showInteractionModeToggle ? (
     <SharedTooltipTrigger
-        render={
-          <ComposerControl
-            size={size}
-            className="shrink-0 whitespace-nowrap"
-            aria-pressed={props.interactionMode === "plan"}
-            type="button"
-            onClick={props.onToggleInteractionMode}
-            aria-label={interactionModeTooltip}
-          />
-        }
+      render={
+        <ComposerControl
+          size={size}
+          className="shrink-0 whitespace-nowrap"
+          aria-pressed={props.interactionMode === "plan"}
+          type="button"
+          onClick={props.onToggleInteractionMode}
+          aria-label={interactionModeTooltip}
+        />
+      }
       side="top"
       label={interactionModeTooltip}
+    >
+      {props.interactionMode === "plan" ? (
+        <ComposerControlIcon
+          icon={PencilRulerIcon}
+          size={size}
+          className="text-current opacity-100"
+        />
+      ) : (
+        <ComposerControlIcon
+          icon={BotIcon}
+          size={size}
+          opticalSize={size === "xs" ? "default" : "large"}
+        />
+      )}
+      {/* The compacted row (xs) keeps this icon-only, like the other controls there. */}
+      <span
+        data-composer-control-label
+        className={size === "xs" ? "sr-only" : "sr-only sm:not-sr-only"}
       >
-        {props.interactionMode === "plan" ? (
-          <ComposerControlIcon
-            icon={PencilRulerIcon}
-            size={size}
-            className="text-current opacity-100"
-          />
-        ) : (
-          <ComposerControlIcon
-            icon={BotIcon}
-            size={size}
-            opticalSize={size === "xs" ? "default" : "large"}
-          />
-        )}
-        {/* The compacted row (xs) keeps this icon-only, like the other controls there. */}
-        <span
-          data-composer-control-label
-          className={size === "xs" ? "sr-only" : "sr-only sm:not-sr-only"}
-        >
-          {props.interactionMode === "plan" ? t("Plan") : "Build"}
-        </span>
+        {props.interactionMode === "plan" ? t("Plan") : "Build"}
+      </span>
     </SharedTooltipTrigger>
   ) : null;
 
@@ -113,35 +113,35 @@ export const ComposerFooterModeControls = memo(function ComposerFooterModeContro
       }
     >
       <SharedTooltipTrigger
-          render={
-            <MenuTrigger
-              render={
-                <ComposerControl
-                  ref={permissionsChipRef}
-                  data-composer-shortcut="composer.mode"
-                  size={size}
-                  // Mirrors the model trigger's trailing pe-1 so the gaps on both sides of the chip match.
-                  className="ps-1.5"
-                  aria-label={`Permissions: ${runtimeModeOption.label}`}
-                />
-              }
-            />
-          }
+        render={
+          <MenuTrigger
+            render={
+              <ComposerControl
+                ref={permissionsChipRef}
+                data-composer-shortcut="composer.mode"
+                size={size}
+                // Mirrors the model trigger's trailing pe-1 so the gaps on both sides of the chip match.
+                className="ps-1.5"
+                aria-label={`Permissions: ${runtimeModeOption.label}`}
+              />
+            }
+          />
+        }
         side="top"
         label={permissionsTooltip}
+      >
+        <ComposerControlIcon
+          icon={RuntimeModeIcon}
+          size={size}
+          // Match the label, not full foreground: the chip's presence already marks the mode.
+          {...(props.emphasized ? { className: "text-current" } : {})}
+        />
+        <span
+          data-composer-control-label
+          className={accessDisplay === "icon" ? "sr-only" : undefined}
         >
-          <ComposerControlIcon
-            icon={RuntimeModeIcon}
-            size={size}
-            // Match the label, not full foreground: the chip's presence already marks the mode.
-            {...(props.emphasized ? { className: "text-current" } : {})}
-          />
-          <span
-            data-composer-control-label
-            className={accessDisplay === "icon" ? "sr-only" : undefined}
-          >
-            {runtimeModeOption.label}
-          </span>
+          {runtimeModeOption.label}
+        </span>
       </SharedTooltipTrigger>
       <MenuPopup align="start" {...composerFloatingLayerProps}>
         <ComposerPermissionsSection

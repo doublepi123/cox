@@ -210,32 +210,32 @@ export function PullRequestActionsMenu({
   return (
     <Menu>
       <SharedTooltipTrigger
-          render={
-            <MenuTrigger
-              render={
-                <Button
-                  aria-label={
-                    refreshing
-                      ? `Refreshing ${terminology.singular}`
-                      : `More ${terminology.singular} actions`
-                  }
-                  size="icon-xs"
-                  variant="ghost-muted"
-                />
-              }
-            >
-              {refreshing ? (
-                <RefreshIcon refreshing size="md" />
-              ) : (
-                <MoreHorizontalIcon className="size-4" />
-              )}
-            </MenuTrigger>
-          }
+        render={
+          <MenuTrigger
+            render={
+              <Button
+                aria-label={
+                  refreshing
+                    ? `Refreshing ${terminology.singular}`
+                    : `More ${terminology.singular} actions`
+                }
+                size="icon-xs"
+                variant="ghost-muted"
+              />
+            }
+          >
+            {refreshing ? (
+              <RefreshIcon refreshing size="md" />
+            ) : (
+              <MoreHorizontalIcon className="size-4" />
+            )}
+          </MenuTrigger>
+        }
         label={
           <>
-          {refreshing
-            ? `Refreshing ${terminology.singular}`
-            : `More ${terminology.singular} actions`}
+            {refreshing
+              ? `Refreshing ${terminology.singular}`
+              : `More ${terminology.singular} actions`}
           </>
         }
       />

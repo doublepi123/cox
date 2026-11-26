@@ -70,18 +70,18 @@ function treePath(entry: ProjectEntry): string {
 function RefreshFilesButton(props: { isPending: boolean; onRefresh: () => void }) {
   return (
     <SharedTooltipTrigger
-        render={
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon-xs"
-            aria-label="Refresh workspace files"
-            onClick={props.onRefresh}
-          />
-        }
+      render={
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon-xs"
+          aria-label="Refresh workspace files"
+          onClick={props.onRefresh}
+        />
+      }
       label={props.isPending ? "Refreshing…" : "Refresh files"}
-      >
-        <RefreshIcon refreshing={props.isPending} />
+    >
+      <RefreshIcon refreshing={props.isPending} />
     </SharedTooltipTrigger>
   );
 }
@@ -634,19 +634,19 @@ export default function FileBrowserPanel({
         />
         {directoryPaths.length > 0 && !hostFolder ? (
           <SharedTooltipTrigger
-              render={
-                <Button
-                  type="button"
-                  size="icon-xs"
-                  variant="ghost"
-                  aria-label={
-                    expandAll || allDirectoriesExpanded
-                      ? "Collapse all folders"
-                      : "Expand all folders"
-                  }
-                  onClick={toggleAllDirectories}
-                />
-              }
+            render={
+              <Button
+                type="button"
+                size="icon-xs"
+                variant="ghost"
+                aria-label={
+                  expandAll || allDirectoriesExpanded
+                    ? "Collapse all folders"
+                    : "Expand all folders"
+                }
+                onClick={toggleAllDirectories}
+              />
+            }
             label={
               <>
                 {expandAll || allDirectoriesExpanded
@@ -654,11 +654,11 @@ export default function FileBrowserPanel({
                   : "Expand all folders"}
               </>
             }
-            >
-              <MorphIcon
-                className="size-3.5"
-                icon={allDirectoriesExpanded ? ChevronsDownUp : ChevronsUpDown}
-              />
+          >
+            <MorphIcon
+              className="size-3.5"
+              icon={allDirectoriesExpanded ? ChevronsDownUp : ChevronsUpDown}
+            />
           </SharedTooltipTrigger>
         ) : null}
       </div>

@@ -281,28 +281,28 @@ function TimelineMinimapNavigationButton({
 
   return (
     <SharedTooltipTrigger
-        render={
-          <span
-            className={cn(
-              "absolute left-1 z-10 inline-flex -translate-x-1/2 opacity-0 transition-opacity duration-150 hover:opacity-100 focus-within:opacity-100",
-              interactive ? "pointer-events-auto" : "pointer-events-none",
-              previous ? "bottom-[calc(100%+6px)]" : "top-[calc(100%+6px)]",
-            )}
-          />
-        }
+      render={
+        <span
+          className={cn(
+            "absolute left-1 z-10 inline-flex -translate-x-1/2 opacity-0 transition-opacity duration-150 hover:opacity-100 focus-within:opacity-100",
+            interactive ? "pointer-events-auto" : "pointer-events-none",
+            previous ? "bottom-[calc(100%+6px)]" : "top-[calc(100%+6px)]",
+          )}
+        />
+      }
       side={previous ? "top" : "bottom"}
       label={label}
+    >
+      <Button
+        aria-label={label}
+        disabled={disabled}
+        onClick={onClick}
+        size="icon-micro"
+        type="button"
+        variant="ghost-muted"
       >
-        <Button
-          aria-label={label}
-          disabled={disabled}
-          onClick={onClick}
-          size="icon-micro"
-          type="button"
-          variant="ghost-muted"
-        >
-          <Icon className="size-4 text-foreground/90" />
-        </Button>
+        <Icon className="size-4 text-foreground/90" />
+      </Button>
     </SharedTooltipTrigger>
   );
 }

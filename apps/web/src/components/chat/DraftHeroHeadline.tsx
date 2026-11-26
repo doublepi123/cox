@@ -289,7 +289,7 @@ export function DraftHeroHeadline({
                   side="top"
                   label={item.label}
                 >
-                    <DraftProjectName value={item.label} />
+                  <DraftProjectName value={item.label} />
                 </SharedTooltipTrigger>
                 {entry && canPinProjectGroup(entry.group) ? (
                   <ProjectPinButton

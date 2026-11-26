@@ -94,11 +94,11 @@ function RootRouteView() {
   // must not unmount when the root switches branches (for example /welcome to the app shell).
   return (
     <SharedTooltipProvider>
-    <ToastProvider>
-      <AnchoredToastProvider>
-        <RootRouteBranch />
-      </AnchoredToastProvider>
-    </ToastProvider>
+      <ToastProvider>
+        <AnchoredToastProvider>
+          <RootRouteBranch />
+        </AnchoredToastProvider>
+      </ToastProvider>
     </SharedTooltipProvider>
   );
 }

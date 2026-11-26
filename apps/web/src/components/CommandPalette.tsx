@@ -999,23 +999,23 @@ function OpenCommandPaletteDialog(props: {
       const titleTrailingContent = readiness.ready ? undefined : (
         <span className="ml-auto">
           <SharedTooltipTrigger
-              render={
-                <Button
-                  variant="warning-outline"
-                  size="micro"
-                  onClick={() => {
-                    openSourceControlSettings();
-                  }}
-                >
-                  {t("Setup Required")}
-                </Button>
-              }
+            render={
+              <Button
+                variant="warning-outline"
+                size="micro"
+                onClick={() => {
+                  openSourceControlSettings();
+                }}
+              >
+                {t("Setup Required")}
+              </Button>
+            }
             align="end"
             side="left"
             label={
               <>{disabledHint ?? "Open Settings -> Source control to configure this provider."}</>
             }
-            />
+          />
         </span>
       );
 

@@ -487,19 +487,19 @@ export function BackgroundActivitySettingsRow() {
           </Select>
           {backgroundActivityProfileOption === "advanced" && isEnvironmentScope ? (
             <SharedTooltipTrigger
-                render={
-                  <Button
-                    size="icon-sm"
-                    variant="outline"
-                    aria-label={translateUi("Configure advanced background activity")}
-                    onClick={() => setBackgroundActivityDialogOpen(true)}
-                  >
-                    <SettingsIcon className="size-4" />
-                  </Button>
-                }
+              render={
+                <Button
+                  size="icon-sm"
+                  variant="outline"
+                  aria-label={translateUi("Configure advanced background activity")}
+                  onClick={() => setBackgroundActivityDialogOpen(true)}
+                >
+                  <SettingsIcon className="size-4" />
+                </Button>
+              }
               side="top"
               label={translateUi("Configure background activity")}
-              />
+            />
           ) : null}
           <BackgroundActivityAdvancedDialog
             open={backgroundActivityDialogOpen && isEnvironmentScope}

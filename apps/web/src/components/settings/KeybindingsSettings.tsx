@@ -220,20 +220,20 @@ function WarningTooltipIcon({
 }) {
   return (
     <SharedTooltipTrigger
-        render={
-          <span
-            tabIndex={focusable ? 0 : undefined}
-            aria-label={label}
-            className={cn(
-              "inline-flex size-5 shrink-0 items-center justify-center rounded-sm text-warning outline-none transition-colors hover:bg-warning/10 focus-visible:ring-3 focus-visible:ring-inset focus-visible:ring-warning/25",
-              className,
-            )}
-          />
-        }
+      render={
+        <span
+          tabIndex={focusable ? 0 : undefined}
+          aria-label={label}
+          className={cn(
+            "inline-flex size-5 shrink-0 items-center justify-center rounded-sm text-warning outline-none transition-colors hover:bg-warning/10 focus-visible:ring-3 focus-visible:ring-inset focus-visible:ring-warning/25",
+            className,
+          )}
+        />
+      }
       side="top"
       label={children}
-      >
-        <TriangleAlertIcon className="size-3.5" />
+    >
+      <TriangleAlertIcon className="size-3.5" />
     </SharedTooltipTrigger>
   );
 }
@@ -947,8 +947,8 @@ function KeybindingRowTitle({ row }: { row: KeybindingRow }) {
       side="top"
       label={row.command}
     >
-        {t(commandLabel(row.command))}
-        <KeybindingSourceBadge source={row.source} />
+      {t(commandLabel(row.command))}
+      <KeybindingSourceBadge source={row.source} />
     </SharedTooltipTrigger>
   );
 }
@@ -1216,20 +1216,20 @@ function NewKeybindingCancelIcon({
   const { t } = useTranslation();
   return (
     <SharedTooltipTrigger
-        render={
-          <Button
-            type="button"
-            variant="ghost-muted"
-            size="icon-sm"
-            disabled={isSaving}
-            aria-label={t("Cancel new keybinding")}
-            onClick={onCancel}
-          />
-        }
+      render={
+        <Button
+          type="button"
+          variant="ghost-muted"
+          size="icon-sm"
+          disabled={isSaving}
+          aria-label={t("Cancel new keybinding")}
+          onClick={onCancel}
+        />
+      }
       side="top"
       label={t("Cancel")}
-      >
-        <XIcon className="size-3.5" />
+    >
+      <XIcon className="size-3.5" />
     </SharedTooltipTrigger>
   );
 }
@@ -1512,21 +1512,21 @@ export function KeybindingsSettingsPanel() {
             {t("Add keybinding")}
           </Button>
           <SharedTooltipTrigger
-              render={
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="icon"
-                  disabled={!keybindingsConfigPath || !canOpenKeybindingsFile}
-                  onClick={openKeybindingsFile}
-                  aria-label={t("Open keybindings.json")}
-                >
-                  <FileJsonIcon aria-hidden className="size-4" />
-                </Button>
-              }
+            render={
+              <Button
+                type="button"
+                variant="outline"
+                size="icon"
+                disabled={!keybindingsConfigPath || !canOpenKeybindingsFile}
+                onClick={openKeybindingsFile}
+                aria-label={t("Open keybindings.json")}
+              >
+                <FileJsonIcon aria-hidden className="size-4" />
+              </Button>
+            }
             side="top"
             label={t("Open keybindings.json")}
-            />
+          />
         </div>
       </SettingsSection>
 

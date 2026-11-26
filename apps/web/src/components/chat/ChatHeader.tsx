@@ -348,14 +348,14 @@ export const ChatHeader = memo(function ChatHeader({
           <>
             <WorkspaceBreadcrumbItem className="shrink">
               <SharedTooltipTrigger
-                  render={
-                    <button
-                      type="button"
-                      aria-label={`New thread in ${activeProjectName}`}
-                      onClick={onNewThreadInProject}
-                      className="inline-flex min-w-0 max-w-full cursor-pointer items-center gap-1.5 rounded-sm text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
-                    />
-                  }
+                render={
+                  <button
+                    type="button"
+                    aria-label={`New thread in ${activeProjectName}`}
+                    onClick={onNewThreadInProject}
+                    className="inline-flex min-w-0 max-w-full cursor-pointer items-center gap-1.5 rounded-sm text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+                  />
+                }
                 side="top"
                 label={
                   <>
@@ -363,11 +363,11 @@ export const ChatHeader = memo(function ChatHeader({
                     {activeProjectName}
                   </>
                 }
-                >
-                  <ProjectFavicon project={activeProject} className="size-3.5" />
-                  <WorkspaceBreadcrumbText className="max-w-40">
-                    {activeProjectName}
-                  </WorkspaceBreadcrumbText>
+              >
+                <ProjectFavicon project={activeProject} className="size-3.5" />
+                <WorkspaceBreadcrumbText className="max-w-40">
+                  {activeProjectName}
+                </WorkspaceBreadcrumbText>
               </SharedTooltipTrigger>
             </WorkspaceBreadcrumbItem>
             <WorkspaceBreadcrumbSeparator>
@@ -379,28 +379,28 @@ export const ChatHeader = memo(function ChatHeader({
           <>
             <WorkspaceBreadcrumbItem>
               <SharedTooltipTrigger
-                  render={
-                    <button
-                      type="button"
-                      aria-label={`Open parent thread: ${parentThreadLink.title}`}
-                      onClick={() => onOpenThread(parentThreadLink.threadId)}
-                      className="inline-flex min-w-0 max-w-full cursor-pointer items-center rounded-sm text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
-                    />
-                  }
+                render={
+                  <button
+                    type="button"
+                    aria-label={`Open parent thread: ${parentThreadLink.title}`}
+                    onClick={() => onOpenThread(parentThreadLink.threadId)}
+                    className="inline-flex min-w-0 max-w-full cursor-pointer items-center rounded-sm text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+                  />
+                }
                 side="top"
                 label={parentThreadLink.title}
+              >
+                <WorkspaceBreadcrumbText
+                  aria-hidden
+                  className={collapseParentTitle ? "w-0" : undefined}
                 >
-                  <WorkspaceBreadcrumbText
-                    aria-hidden
-                    className={collapseParentTitle ? "w-0" : undefined}
-                  >
-                    {parentThreadLink.title}
-                  </WorkspaceBreadcrumbText>
-                  {collapseParentTitle ? (
-                    <span aria-hidden data-parent-breadcrumb-ellipsis>
-                      ...
-                    </span>
-                  ) : null}
+                  {parentThreadLink.title}
+                </WorkspaceBreadcrumbText>
+                {collapseParentTitle ? (
+                  <span aria-hidden data-parent-breadcrumb-ellipsis>
+                    ...
+                  </span>
+                ) : null}
               </SharedTooltipTrigger>
             </WorkspaceBreadcrumbItem>
             <WorkspaceBreadcrumbSeparator>
@@ -432,46 +432,46 @@ export const ChatHeader = memo(function ChatHeader({
             />
           ) : isServerThread ? (
             <SharedTooltipTrigger
-                render={
-                  <button
-                    ref={titleButtonRef}
-                    type="button"
-                    aria-label={`Thread actions for ${activeThreadTitle}`}
-                    aria-haspopup="menu"
-                    onClick={openMenuFromTitle}
-                    onDoubleClick={canOperateThread ? handleTitleDoubleClick : undefined}
-                    onBlur={cancelPendingTitleMenu}
-                    className="group/thread-title inline-flex min-w-0 max-w-full cursor-pointer items-center gap-1 rounded-sm text-left focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring max-sm:min-h-11 max-sm:flex-1 max-sm:overflow-hidden max-sm:rounded-md"
-                  />
-                }
+              render={
+                <button
+                  ref={titleButtonRef}
+                  type="button"
+                  aria-label={`Thread actions for ${activeThreadTitle}`}
+                  aria-haspopup="menu"
+                  onClick={openMenuFromTitle}
+                  onDoubleClick={canOperateThread ? handleTitleDoubleClick : undefined}
+                  onBlur={cancelPendingTitleMenu}
+                  className="group/thread-title inline-flex min-w-0 max-w-full cursor-pointer items-center gap-1 rounded-sm text-left focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring max-sm:min-h-11 max-sm:flex-1 max-sm:overflow-hidden max-sm:rounded-md"
+                />
+              }
               side="top"
               label={activeThreadTitle}
+            >
+              <h2
+                className="min-w-0 max-sm:flex-1 max-sm:overflow-hidden"
+                dir={textDirection(activeThreadTitle)}
               >
-                <h2
-                  className="min-w-0 max-sm:flex-1 max-sm:overflow-hidden"
-                  dir={textDirection(activeThreadTitle)}
-                >
-                  <WorkspaceBreadcrumbText>{activeThreadTitle}</WorkspaceBreadcrumbText>
-                </h2>
-                <ChevronDownIcon
-                  aria-hidden
-                  data-thread-title-chevron
-                  className="size-3.5 shrink-0 text-muted-foreground opacity-0 transition-opacity group-hover/thread-title:opacity-100 group-focus-visible/thread-title:opacity-100"
-                />
+                <WorkspaceBreadcrumbText>{activeThreadTitle}</WorkspaceBreadcrumbText>
+              </h2>
+              <ChevronDownIcon
+                aria-hidden
+                data-thread-title-chevron
+                className="size-3.5 shrink-0 text-muted-foreground opacity-0 transition-opacity group-hover/thread-title:opacity-100 group-focus-visible/thread-title:opacity-100"
+              />
             </SharedTooltipTrigger>
           ) : (
             <SharedTooltipTrigger
-                render={
-                  <h2
-                    aria-label={activeThreadTitle}
-                    className="min-w-0 flex-1"
-                    dir={textDirection(activeThreadTitle)}
-                  />
-                }
+              render={
+                <h2
+                  aria-label={activeThreadTitle}
+                  className="min-w-0 flex-1"
+                  dir={textDirection(activeThreadTitle)}
+                />
+              }
               side="top"
               label={activeThreadTitle}
-              >
-                <WorkspaceBreadcrumbText>{activeThreadTitle}</WorkspaceBreadcrumbText>
+            >
+              <WorkspaceBreadcrumbText>{activeThreadTitle}</WorkspaceBreadcrumbText>
             </SharedTooltipTrigger>
           )}
           {renamingTitle === null && activeThreadLinkOrigin ? (
@@ -482,7 +482,7 @@ export const ChatHeader = memo(function ChatHeader({
                 <>Started by an agent on {activeThreadLinkOrigin} through a linked environment.</>
               }
             >
-                From {activeThreadLinkOrigin}
+              From {activeThreadLinkOrigin}
             </SharedTooltipTrigger>
           ) : null}
           <MobileBranchOverflowTrigger />
@@ -492,40 +492,40 @@ export const ChatHeader = memo(function ChatHeader({
       computerControlLabel &&
       (computerControlPlatform === "darwin" || computerControlPlatform === "win32") ? (
         <SharedTooltipTrigger
-            render={
-              <Badge
-                size="control"
-                variant={
-                  computerControlState === "ready"
-                    ? "success"
-                    : computerControlState === "waiting"
-                      ? "warning"
-                      : computerControlState === "stopped"
-                        ? "error"
-                        : "secondary"
-                }
-                render={
-                  <button
-                    type="button"
-                    aria-label={`${t("Open computer control settings")}: ${computerControlLabel}`}
-                    onClick={() => {
-                      if (window.coxDesktop?.openSettings) {
-                        void window.coxDesktop.openSettings("/settings/labs");
-                      } else {
-                        void navigate({ to: "/settings/labs" });
-                      }
-                    }}
-                  />
-                }
-              />
-            }
+          render={
+            <Badge
+              size="control"
+              variant={
+                computerControlState === "ready"
+                  ? "success"
+                  : computerControlState === "waiting"
+                    ? "warning"
+                    : computerControlState === "stopped"
+                      ? "error"
+                      : "secondary"
+              }
+              render={
+                <button
+                  type="button"
+                  aria-label={`${t("Open computer control settings")}: ${computerControlLabel}`}
+                  onClick={() => {
+                    if (window.coxDesktop?.openSettings) {
+                      void window.coxDesktop.openSettings("/settings/labs");
+                    } else {
+                      void navigate({ to: "/settings/labs" });
+                    }
+                  }}
+                />
+              }
+            />
+          }
           side="bottom"
           align="end"
           textFormat="pre"
           label={<>{computerControlTooltip}</>}
-          >
-            <MonitorIcon aria-hidden />
-            <span className="max-sm:hidden">{t("Computer control")}</span>
+        >
+          <MonitorIcon aria-hidden />
+          <span className="max-sm:hidden">{t("Computer control")}</span>
         </SharedTooltipTrigger>
       ) : null}
     </div>

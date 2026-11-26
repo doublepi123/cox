@@ -203,22 +203,22 @@ export const ModelPickerSidebar = memo(function ModelPickerSidebar(props: {
             <>
               <div className="relative w-full" data-model-picker-provider="favorites">
                 <SharedTooltipTrigger
-                    render={
-                      <Toolbar.Button
-                        className={cn(
-                          "relative isolate flex w-full cursor-pointer aspect-square items-center justify-center rounded-md transition-colors hover:bg-foreground/10 focus-visible:bg-foreground/10 focus-visible:outline-none",
-                        )}
-                        onClick={() => handleSelect("favorites")}
-                        type="button"
-                        aria-label={t("Favorites")}
-                        aria-pressed={props.selectedInstanceId === "favorites"}
-                      >
-                        <StarIcon className="size-5 fill-current shrink-0" aria-hidden />
-                      </Toolbar.Button>
-                    }
-                    side={PICKER_TOOLTIP_SIDE}
-                    sideOffset={PICKER_TOOLTIP_SIDE_OFFSET}
-                    align="center"
+                  render={
+                    <Toolbar.Button
+                      className={cn(
+                        "relative isolate flex w-full cursor-pointer aspect-square items-center justify-center rounded-md transition-colors hover:bg-foreground/10 focus-visible:bg-foreground/10 focus-visible:outline-none",
+                      )}
+                      onClick={() => handleSelect("favorites")}
+                      type="button"
+                      aria-label={t("Favorites")}
+                      aria-pressed={props.selectedInstanceId === "favorites"}
+                    >
+                      <StarIcon className="size-5 fill-current shrink-0" aria-hidden />
+                    </Toolbar.Button>
+                  }
+                  side={PICKER_TOOLTIP_SIDE}
+                  sideOffset={PICKER_TOOLTIP_SIDE_OFFSET}
+                  align="center"
                   label={<>{t("Favorites")}</>}
                 />
               </div>
@@ -300,9 +300,9 @@ export const ModelPickerSidebar = memo(function ModelPickerSidebar(props: {
               >
                 <SharedTooltipTrigger
                   render={trigger}
-                    side={PICKER_TOOLTIP_SIDE}
-                    sideOffset={PICKER_TOOLTIP_SIDE_OFFSET}
-                    align="center"
+                  side={PICKER_TOOLTIP_SIDE}
+                  sideOffset={PICKER_TOOLTIP_SIDE_OFFSET}
+                  align="center"
                   label={<>{tooltip}</>}
                 />
               </div>

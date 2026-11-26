@@ -314,11 +314,11 @@ function ComposerMentionNodeView({ node }: NodeViewProps) {
         side="top"
         label={
           <>
-          <WorkspaceEntryTooltip
-            path={path}
-            environmentId={actions.environmentId}
-            cwd={actions.cwd}
-          />
+            <WorkspaceEntryTooltip
+              path={path}
+              environmentId={actions.environmentId}
+              cwd={actions.cwd}
+            />
           </>
         }
       />

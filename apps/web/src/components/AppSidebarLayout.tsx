@@ -319,19 +319,19 @@ function SidebarControl() {
       data-sidebar-control=""
     >
       <SharedTooltipTrigger
-          render={
-            <SidebarTrigger
-              variant={isSidebarVisible && stageBackdropVariant ? "media-navigation" : "ghost"}
-              interactive
-              position={isSidebarVisible && stageBackdropVariant ? "inline" : "default"}
-              aria-label={t("Toggle main sidebar")}
-            />
-          }
+        render={
+          <SidebarTrigger
+            variant={isSidebarVisible && stageBackdropVariant ? "media-navigation" : "ghost"}
+            interactive
+            position={isSidebarVisible && stageBackdropVariant ? "inline" : "default"}
+            aria-label={t("Toggle main sidebar")}
+          />
+        }
         side="bottom"
         label={
           <>
-          {t("Toggle main sidebar")}
-          {shortcutLabel ? ` (${shortcutLabel})` : ""}
+            {t("Toggle main sidebar")}
+            {shortcutLabel ? ` (${shortcutLabel})` : ""}
           </>
         }
       />

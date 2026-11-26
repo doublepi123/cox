@@ -410,22 +410,22 @@ function SnoozeMenuButton(props: {
   return (
     <Menu open={open} onOpenChange={onOpenChange}>
       <SharedTooltipTrigger
-          render={
-            <MenuTrigger
-              render={
-                <button
-                  type="button"
-                  aria-label={t("Snooze thread")}
-                  onClick={(event) => event.stopPropagation()}
-                  onDoubleClick={(event) => event.stopPropagation()}
-                  className="inline-flex h-full cursor-pointer items-center gap-0.5 rounded-md bg-transparent px-1.5 text-xs text-muted-foreground hover:text-foreground"
-                />
-              }
-            />
-          }
+        render={
+          <MenuTrigger
+            render={
+              <button
+                type="button"
+                aria-label={t("Snooze thread")}
+                onClick={(event) => event.stopPropagation()}
+                onDoubleClick={(event) => event.stopPropagation()}
+                className="inline-flex h-full cursor-pointer items-center gap-0.5 rounded-md bg-transparent px-1.5 text-xs text-muted-foreground hover:text-foreground"
+              />
+            }
+          />
+        }
         label={t("Snooze thread")}
-        >
-          <ClockIcon className="size-3" />
+      >
+        <ClockIcon className="size-3" />
       </SharedTooltipTrigger>
       <MenuPopup side="bottom" align="end">
         {presets.map((preset) => (
@@ -919,23 +919,23 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
   const deleteButton =
     props.onDelete && canOperateThread ? (
       <SharedTooltipTrigger
-          render={
-            <button
-              type="button"
-              aria-label={t("Delete thread")}
-              onPointerDown={(event) => event.stopPropagation()}
-              onClick={(event) => {
-                event.preventDefault();
-                event.stopPropagation();
-                props.onDelete?.(threadRef);
-              }}
-              className="inline-flex cursor-pointer items-center rounded-md bg-transparent px-1.5 text-xs text-muted-foreground hover:text-destructive"
-            />
-          }
+        render={
+          <button
+            type="button"
+            aria-label={t("Delete thread")}
+            onPointerDown={(event) => event.stopPropagation()}
+            onClick={(event) => {
+              event.preventDefault();
+              event.stopPropagation();
+              props.onDelete?.(threadRef);
+            }}
+            className="inline-flex cursor-pointer items-center rounded-md bg-transparent px-1.5 text-xs text-muted-foreground hover:text-destructive"
+          />
+        }
         side="top"
         label={t("Delete thread")}
-        >
-          <Trash2Icon className="size-3.5" />
+      >
+        <Trash2Icon className="size-3.5" />
       </SharedTooltipTrigger>
     ) : null;
   const handleActionPointerDown = (event: ReactPointerEvent) => {
@@ -1134,18 +1134,18 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
   );
   const draftIndicator = hasUnsentDraft ? (
     <SharedTooltipTrigger
-        render={
-          <span
-            role="img"
-            aria-label={t("Unsent draft")}
-            data-testid={`sidebar-draft-indicator-${thread.id}`}
-            className="inline-flex shrink-0 items-center"
-          />
-        }
+      render={
+        <span
+          role="img"
+          aria-label={t("Unsent draft")}
+          data-testid={`sidebar-draft-indicator-${thread.id}`}
+          className="inline-flex shrink-0 items-center"
+        />
+      }
       side="top"
       label={t("Unsent draft")}
-      >
-        <SquarePenIcon aria-hidden className={draftPenClassName} />
+    >
+      <SquarePenIcon aria-hidden className={draftPenClassName} />
     </SharedTooltipTrigger>
   ) : null;
   const showPin =
@@ -1161,18 +1161,18 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
     showPin && props.pinningSupported && canOperateThread && !sortable?.isDragging ? (
       <span className="ms-1 inline-flex border-s border-border/60 ps-1">
         <SharedTooltipTrigger
-            render={
-              <button
-                type="button"
-                aria-label={t("Unpin thread")}
-                onPointerDown={(event) => event.stopPropagation()}
-                onClick={handleUnpinClick}
-                className="inline-flex cursor-pointer items-center rounded-md bg-transparent px-1.5 text-xs text-muted-foreground outline-none transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
-              />
-            }
+          render={
+            <button
+              type="button"
+              aria-label={t("Unpin thread")}
+              onPointerDown={(event) => event.stopPropagation()}
+              onClick={handleUnpinClick}
+              className="inline-flex cursor-pointer items-center rounded-md bg-transparent px-1.5 text-xs text-muted-foreground outline-none transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+            />
+          }
           label={t("Unpin thread")}
-          >
-            <PinOffIcon aria-hidden className="size-3.5" />
+        >
+          <PinOffIcon aria-hidden className="size-3.5" />
         </SharedTooltipTrigger>
       </span>
     ) : null;
@@ -1325,20 +1325,20 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
                       </span>
                     ) : (inFolder ? isWokeStatus : isWoke) ? (
                       <SharedTooltipTrigger
-                          render={
-                            <button
-                              type="button"
-                              aria-label={t("Dismiss Woke notification")}
-                              onClick={handleAcknowledgeWokeClick}
-                              className="inline-flex cursor-pointer items-center gap-1 rounded-sm text-xs font-medium text-warning-foreground outline-none hover:underline focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
-                            >
-                              <AlarmClockIcon aria-hidden className="size-3" />
-                              <span role="status">{t("Woke")}</span>
-                            </button>
-                          }
+                        render={
+                          <button
+                            type="button"
+                            aria-label={t("Dismiss Woke notification")}
+                            onClick={handleAcknowledgeWokeClick}
+                            className="inline-flex cursor-pointer items-center gap-1 rounded-sm text-xs font-medium text-warning-foreground outline-none hover:underline focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+                          >
+                            <AlarmClockIcon aria-hidden className="size-3" />
+                            <span role="status">{t("Woke")}</span>
+                          </button>
+                        }
                         side="top"
                         label={t("Dismiss Woke notification")}
-                        />
+                      />
                     ) : inFolder && topStatus ? (
                       // Folder rows have no status line, so the status takes the time slot.
                       <span
@@ -1400,8 +1400,8 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
                         }
                         side="right"
                         label={t("Un-settle thread")}
-                        >
-                          <Undo2Icon className="mb-px size-3.5" />
+                      >
+                        <Undo2Icon className="mb-px size-3.5" />
                       </SharedTooltipTrigger>
                     ) : (
                       <SharedTooltipTrigger
@@ -1419,8 +1419,8 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
                         }
                         side="right"
                         label={t("Settle thread")}
-                        >
-                          <CheckIcon className="size-3" />
+                      >
+                        <CheckIcon className="size-3" />
                       </SharedTooltipTrigger>
                     )}
                     {deleteButton}
@@ -1519,23 +1519,23 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
                     ) : topStatus ? (
                       isWokeStatus ? (
                         <SharedTooltipTrigger
-                            render={
-                              <button
-                                type="button"
-                                aria-label={t("Dismiss Woke notification")}
-                                onClick={handleAcknowledgeWokeClick}
-                                className={cn(
-                                  "inline-flex cursor-pointer items-center gap-1 rounded-sm font-medium outline-none hover:underline focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
-                                  topStatus.className,
-                                )}
-                              >
-                                <AlarmClockIcon aria-hidden className="size-4 shrink-0" />
-                                <span role="status">{t(topStatus.label)}</span>
-                              </button>
-                            }
+                          render={
+                            <button
+                              type="button"
+                              aria-label={t("Dismiss Woke notification")}
+                              onClick={handleAcknowledgeWokeClick}
+                              className={cn(
+                                "inline-flex cursor-pointer items-center gap-1 rounded-sm font-medium outline-none hover:underline focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
+                                topStatus.className,
+                              )}
+                            >
+                              <AlarmClockIcon aria-hidden className="size-4 shrink-0" />
+                              <span role="status">{t(topStatus.label)}</span>
+                            </button>
+                          }
                           side="top"
                           label={t("Dismiss Woke notification")}
-                          />
+                        />
                       ) : (
                         <span
                           className={cn(
@@ -1580,18 +1580,18 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
                     >
                       {hasUnsentDraft ? (
                         <SharedTooltipTrigger
-                            render={
-                              <button
-                                type="button"
-                                aria-label={t("Discard draft")}
-                                onClick={handleDiscardDraftClick}
-                                className="inline-flex cursor-pointer items-center rounded-md bg-transparent px-1.5 text-xs text-muted-foreground hover:text-foreground"
-                              />
-                            }
+                          render={
+                            <button
+                              type="button"
+                              aria-label={t("Discard draft")}
+                              onClick={handleDiscardDraftClick}
+                              className="inline-flex cursor-pointer items-center rounded-md bg-transparent px-1.5 text-xs text-muted-foreground hover:text-foreground"
+                            />
+                          }
                           side="top"
                           label={t("Discard draft")}
-                          >
-                            <XIcon className="size-3.5" />
+                        >
+                          <XIcon className="size-3.5" />
                         </SharedTooltipTrigger>
                       ) : null}
                       {showSnoozeButton ? (
@@ -1616,9 +1616,9 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
                           }
                           side="right"
                           label={t("Settle thread")}
-                          >
-                            <CheckIcon className="size-3.5" />
-                            {t("Settle")}
+                        >
+                          <CheckIcon className="size-3.5" />
+                          {t("Settle")}
                         </SharedTooltipTrigger>
                       ) : null}
                       {deleteButton}

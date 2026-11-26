@@ -189,17 +189,17 @@ function AddToChatButton({
   return onAddToChat === undefined ? null : (
     <span className="-mt-1 shrink-0">
       <SharedTooltipTrigger
-          render={
-            <Button
-              size="icon-xs"
-              variant="ghost-muted"
-              aria-label="Add to chat"
-              onClick={() => onAddToChat(comment)}
-            />
-          }
+        render={
+          <Button
+            size="icon-xs"
+            variant="ghost-muted"
+            aria-label="Add to chat"
+            onClick={() => onAddToChat(comment)}
+          />
+        }
         label={"Add to chat"}
-        >
-          <MessageSquarePlusIcon className="size-3" />
+      >
+        <MessageSquarePlusIcon className="size-3" />
       </SharedTooltipTrigger>
     </span>
   );
@@ -620,20 +620,20 @@ function ReviewVerdictEvent({
             <ActorName actor={event.actor} />
             <SharedTooltipTrigger
               disabled={!stale}
-                render={
-                  <span
-                    className={cn(
-                      "font-medium lowercase",
-                      stale
-                        ? "text-muted-foreground opacity-70"
-                        : pullRequestReviewOutcomeToneClassName(outcome),
-                    )}
-                  />
-                }
+              render={
+                <span
+                  className={cn(
+                    "font-medium lowercase",
+                    stale
+                      ? "text-muted-foreground opacity-70"
+                      : pullRequestReviewOutcomeToneClassName(outcome),
+                  )}
+                />
+              }
               label={pullRequestReviewOutcomeStaleLabel(outcome)}
-              >
-                {pullRequestReviewOutcomeLabel(outcome)}
-                {stale ? <span className="sr-only">, before the latest commits</span> : null}
+            >
+              {pullRequestReviewOutcomeLabel(outcome)}
+              {stale ? <span className="sr-only">, before the latest commits</span> : null}
             </SharedTooltipTrigger>
           </h2>
           <div className="mt-0.5 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">

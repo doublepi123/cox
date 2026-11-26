@@ -131,16 +131,16 @@ export function AppRouteModalClose({
   const { t } = useTranslation();
   return (
     <SharedTooltipTrigger
-        render={
-          <DialogPrimitive.Close
-            aria-label={t("Close")}
-            render={<Button size={size} variant="ghost" />}
-          />
-        }
+      render={
+        <DialogPrimitive.Close
+          aria-label={t("Close")}
+          render={<Button size={size} variant="ghost" />}
+        />
+      }
       side="bottom"
       label={"Close (Esc)"}
-      >
-        <XIcon />
+    >
+      <XIcon />
     </SharedTooltipTrigger>
   );
 }

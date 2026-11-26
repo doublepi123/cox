@@ -730,9 +730,7 @@ function SidebarRail({
   );
   if (canResize && resolvedResizable.collapseOnResize) return rail;
 
-  return (
-    <SharedTooltipTrigger render={rail} side="right" label={railTitle} />
-  );
+  return <SharedTooltipTrigger render={rail} side="right" label={railTitle} />;
 }
 
 function SidebarInput({ className, ...props }: Omit<InputProps, "unstyled" | "variant">) {

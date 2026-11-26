@@ -382,31 +382,31 @@ function ProviderSettingsPanelContent(target: ProviderSettingsTarget) {
                 return (
                   <SharedTooltipTrigger
                     key={environment.environmentId}
-                      render={
-                        <Toggle value={environment.environmentId}>
-                          <EnvironmentMachineIcon
-                            kind={machine}
-                            className="size-3.5 shrink-0"
-                            aria-hidden
-                          />
-                          <span className="max-w-40 truncate">{environment.label}</span>
-                          {environment.connection.phase !== "connected" ? (
-                            <ConnectionStatusDot
+                    render={
+                      <Toggle value={environment.environmentId}>
+                        <EnvironmentMachineIcon
+                          kind={machine}
+                          className="size-3.5 shrink-0"
+                          aria-hidden
+                        />
+                        <span className="max-w-40 truncate">{environment.label}</span>
+                        {environment.connection.phase !== "connected" ? (
+                          <ConnectionStatusDot
                             dotClassName={connectionPhaseDotClassName(environment.connection.phase)}
-                              pingClassName={connectionPhasePingClassName(
-                                environment.connection.phase,
-                              )}
-                            />
-                          ) : null}
-                          <span className="sr-only">
-                            {detail}, {statusText}
-                          </span>
-                        </Toggle>
-                      }
+                            pingClassName={connectionPhasePingClassName(
+                              environment.connection.phase,
+                            )}
+                          />
+                        ) : null}
+                        <span className="sr-only">
+                          {detail}, {statusText}
+                        </span>
+                      </Toggle>
+                    }
                     side="top"
                     label={
                       <>
-                      {detail} · {statusText}
+                        {detail} · {statusText}
                       </>
                     }
                   />
@@ -989,19 +989,19 @@ export function EnvironmentProviderSettings({
         titleAction={
           !readOnly ? (
             <SharedTooltipTrigger
-                render={
-                  <Button
-                    size="icon-xs"
-                    variant="ghost-muted"
-                    onClick={() => setIsAddInstanceDialogOpen(true)}
-                    aria-label={t("Add provider")}
-                  >
-                    <PlusIcon />
-                  </Button>
-                }
+              render={
+                <Button
+                  size="icon-xs"
+                  variant="ghost-muted"
+                  onClick={() => setIsAddInstanceDialogOpen(true)}
+                  aria-label={t("Add provider")}
+                >
+                  <PlusIcon />
+                </Button>
+              }
               side="top"
               label={t("Add provider")}
-              />
+            />
           ) : null
         }
         headerAction={
@@ -1009,28 +1009,28 @@ export function EnvironmentProviderSettings({
           <div className="-me-2 flex min-w-0 items-center gap-2">
             <ProviderUpdatesAction />
             <SharedTooltipTrigger
-                render={
-                  <Button
-                    size="xs"
-                    variant="ghost-muted"
-                    disabled={isRefreshingProviders || !canRefreshProviders}
-                    aria-busy={isRefreshingProviders}
-                    onClick={() => void refreshProviders()}
-                  >
-                    <RefreshIcon refreshing={isRefreshingProviders} />
-                    <span className="sr-only">{t("Refresh provider status")}</span>
-                    <span className="hidden min-w-0 truncate sm:inline">
-                      {isRefreshingProviders ? (
-                        t("Refreshing providers")
-                      ) : (
-                        <ProviderLastChecked environmentId={environmentId} />
-                      )}
-                    </span>
-                  </Button>
-                }
+              render={
+                <Button
+                  size="xs"
+                  variant="ghost-muted"
+                  disabled={isRefreshingProviders || !canRefreshProviders}
+                  aria-busy={isRefreshingProviders}
+                  onClick={() => void refreshProviders()}
+                >
+                  <RefreshIcon refreshing={isRefreshingProviders} />
+                  <span className="sr-only">{t("Refresh provider status")}</span>
+                  <span className="hidden min-w-0 truncate sm:inline">
+                    {isRefreshingProviders ? (
+                      t("Refreshing providers")
+                    ) : (
+                      <ProviderLastChecked environmentId={environmentId} />
+                    )}
+                  </span>
+                </Button>
+              }
               side="top"
               label={t("Refresh provider status")}
-              />
+            />
           </div>
         }
       >

@@ -363,7 +363,7 @@ function ProjectDetail({
                     render={<span className="block truncate" />}
                     label={firstMember.workspaceRoot}
                   >
-                      {firstMember.workspaceRoot}
+                    {firstMember.workspaceRoot}
                   </SharedTooltipTrigger>
                 ) : null}
               </>
@@ -378,12 +378,12 @@ function ProjectDetail({
                     className="flex min-w-0 items-center justify-between gap-3"
                   >
                     <SharedTooltipTrigger
-                        render={
-                          <span className="min-w-0 truncate text-xs text-muted-foreground/80" />
-                        }
+                      render={
+                        <span className="min-w-0 truncate text-xs text-muted-foreground/80" />
+                      }
                       label={member.workspaceRoot}
-                      >
-                        {member.workspaceRoot}
+                    >
+                      {member.workspaceRoot}
                     </SharedTooltipTrigger>
                     <div className="shrink-0">{checkoutRemoveButton(member)}</div>
                   </div>
