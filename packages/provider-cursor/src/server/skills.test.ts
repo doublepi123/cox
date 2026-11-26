@@ -192,12 +192,18 @@ describe("Cursor skills", () => {
         yield* fileSystem.writeFileString(path.join(root, "a-large", "SKILL.md"), "---\n---\n");
         yield* fileSystem.makeDirectory(path.join(root, "b-small"), { recursive: true });
         yield* fileSystem.writeFileString(path.join(root, "b-small", "SKILL.md"), "---\n---\n");
-        // More ordinary files than the whole-scan entry budget of 10,000.
-        yield* Effect.forEach(
-          Array.from({ length: 11_000 }, (_, index) => path.join(artifacts, `file-${index}.txt`)),
-          (file) => fileSystem.writeFileString(file, ""),
-          { concurrency: 64, discard: true },
-        );
+        const ordinaryFiles = Array.from({ length: 11_000 }, (_, index) => `file-${index}.txt`);
+        const artifactPaths = new Set(ordinaryFiles.map((file) => path.join(artifacts, file)));
+        const artifactInfo = yield* fileSystem.stat(path.join(root, "a-large", "SKILL.md"));
+        const withArtifacts = Effect.provideService(FileSystem.FileSystem, {
+          ...fileSystem,
+          readDirectory: (directory, options) =>
+            directory === artifacts
+              ? Effect.succeed(ordinaryFiles)
+              : fileSystem.readDirectory(directory, options),
+          stat: (file) =>
+            artifactPaths.has(file) ? Effect.succeed(artifactInfo) : fileSystem.stat(file),
+        });
 
         const expected = [
           {
@@ -213,8 +219,12 @@ describe("Cursor skills", () => {
             enabled: true,
           },
         ];
-        expect(yield* discoverCursorSkills(workspace, { HOME: userHome })).toEqual(expected);
-        expect(yield* probeCursorSkills(workspace, { HOME: userHome })).toEqual(expected);
+        expect(
+          yield* discoverCursorSkills(workspace, { HOME: userHome }).pipe(withArtifacts),
+        ).toEqual(expected);
+        expect(yield* probeCursorSkills(workspace, { HOME: userHome }).pipe(withArtifacts)).toEqual(
+          expected,
+        );
       }),
     ));
 
