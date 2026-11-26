@@ -10,7 +10,7 @@ import {
   type DraftId,
   useComposerDraftStore,
 } from "../composerDraftStore";
-import { retargetDraftWorkspace } from "./retargetDraftWorkspace";
+import { loadRetargetedDraftWorkspace, retargetDraftWorkspace } from "./retargetDraftWorkspace";
 import { getClientSettings } from "../hooks/useSettings";
 import { resolveProjectSettings } from "@t3tools/shared/projectSettings";
 import { resolveNewThreadModelSelection } from "@t3tools/shared/usageLimits";
@@ -51,6 +51,7 @@ export function moveDraftToProject(
     draftId,
     retargetDraftWorkspace(session, projectRef, project),
   );
+  loadRetargetedDraftWorkspace(draftId, projectRef, project);
   if (!hasExplicitComposerModelSelection(currentDraft)) {
     store.applyStickyState(draftId);
     const environmentConfig = readEnvironment(project.environmentId)?.serverConfig;

@@ -76,6 +76,7 @@ function keepsProvisionalWorkspace(
   return (
     draft !== null &&
     draft.promotedTo == null &&
+    !draft.workspaceExplicit &&
     draft.envMode === provisional.envMode &&
     draft.worktreePath === null &&
     draft.branch === provisional.branch &&
@@ -90,6 +91,27 @@ export function readPendingWorkspaceDefault(draftId: DraftId): Promise<void> | n
   const draft = useComposerDraftStore.getState().getDraftSession(draftId);
   return keepsProvisionalWorkspace(draft, pending) ? pending.settled : null;
 }
+export function trackPendingWorkspaceDefault(
+  draftId: DraftId,
+  provisional: ProvisionalWorkspace,
+  load: (isCurrent: () => boolean) => Promise<void>,
+): void {
+  const isCurrent = () =>
+    pendingWorkspaceDefaults.get(draftId)?.settled === settled &&
+    keepsProvisionalWorkspace(
+      useComposerDraftStore.getState().getDraftSession(draftId),
+      provisional,
+    );
+  const settled: Promise<void> = Promise.resolve()
+    .then(() => load(isCurrent))
+    .finally(() => {
+      if (pendingWorkspaceDefaults.get(draftId)?.settled === settled) {
+        pendingWorkspaceDefaults.delete(draftId);
+      }
+    });
+  pendingWorkspaceDefaults.set(draftId, { ...provisional, settled });
+}
+
 interface NewThreadWorkspaceOptions {
   branch?: string | null;
   worktreePath?: string | null;

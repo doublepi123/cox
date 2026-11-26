@@ -1,10 +1,44 @@
 import { scopeProjectRef } from "@t3tools/client-runtime/environment";
 import type { EnvironmentProject } from "@t3tools/client-runtime/state/shell";
 import { EnvironmentId, ProjectId } from "@t3tools/contracts";
-import { beforeEach, describe, expect, it } from "vite-plus/test";
+import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
 import { DraftId, useComposerDraftStore } from "../composerDraftStore";
 import { moveDraftToProject } from "./moveDraftToProject";
+import { readPendingWorkspaceDefault } from "../hooks/useHandleNewThread";
+import type { T3ProjectFile } from "@t3tools/contracts";
+
+const destination = vi.hoisted(() => ({
+  project: null as EnvironmentProject | null,
+  listeners: new Set<() => void>(),
+  read: vi.fn<
+    (
+      environment: EnvironmentId,
+      root: string,
+      signal?: AbortSignal,
+    ) => Promise<T3ProjectFile | null>
+  >(),
+}));
+vi.mock(import("../state/environments"), async (original) => ({
+  ...(await original()),
+  readEnvironment: (() =>
+    destination.project ? { connection: { phase: "connected" } } : null) as never,
+}));
+vi.mock(import("../state/entities"), async (original) => ({
+  ...(await original()),
+  readProject: () => destination.project,
+  subscribeProjects: (listener) => {
+    const call = () => listener(destination.project ? [destination.project] : []);
+    destination.listeners.add(call);
+    return () => {
+      destination.listeners.delete(call);
+    };
+  },
+}));
+vi.mock(import("./t3ProjectFileDefaults"), () => ({
+  peekT3ProjectFile: () => undefined,
+  readT3ProjectFile: destination.read,
+}));
 
 const environmentId = EnvironmentId.make("environment-local");
 const draftId = DraftId.make("draft-1");
@@ -29,6 +63,9 @@ const currentRef = scopeProjectRef(environmentId, current.id);
 const addedRef = scopeProjectRef(environmentId, added.id);
 
 beforeEach(() => {
+  destination.project = null;
+  destination.listeners.clear();
+  destination.read.mockReset();
   useComposerDraftStore.setState({
     draftsByThreadKey: {},
     draftThreadsByThreadKey: {},
@@ -67,6 +104,35 @@ describe("moveDraftToProject", () => {
         true,
       );
       expect(store.getDraftSession(draftId)?.envMode).toBe(explicit ? "local" : "worktree");
+    },
+  );
+
+  it.each(["moved", "deleted"] as const)(
+    "checks a destination that was %s while reading its default",
+    async (change) => {
+      const store = useComposerDraftStore.getState();
+      store.setPrompt(draftId, "Keep this prompt");
+      destination.project = added;
+      destination.read.mockImplementation((_environment, root, signal) =>
+        root === "/work/moved"
+          ? Promise.resolve({ defaultThreadEnvMode: "worktree" })
+          : new Promise((resolve) => {
+              signal?.addEventListener("abort", () => resolve(null), { once: true });
+            }),
+      );
+      expect(moveDraftToProject(draftId, added)).toBe(true);
+      const load = readPendingWorkspaceDefault(draftId);
+      expect(load).not.toBeNull();
+      await Promise.resolve();
+      destination.project = change === "moved" ? { ...added, workspaceRoot: "/work/moved" } : null;
+      for (const listener of destination.listeners) listener();
+      await load;
+      expect(destination.read).toHaveBeenCalledTimes(change === "moved" ? 2 : 1);
+      expect(store.getDraftSession(draftId)?.envMode).toBe(
+        change === "moved" ? "worktree" : "local",
+      );
+      expect(store.getComposerDraft(draftId)?.prompt).toBe("Keep this prompt");
+      expect(destination.listeners.size).toBe(0);
     },
   );
 });
