@@ -51,8 +51,16 @@ function field(value: unknown, key: string): unknown {
 const text = (value: unknown): string | null =>
   typeof value === "string" && value.trim() !== "" ? value : null;
 
+const parseUrl = (url: string): URL | null => {
+  try {
+    return new URL(url);
+  } catch {
+    return null;
+  }
+};
+
 const isWebUrl = (url: string) => {
-  const protocol = URL.parse(url)?.protocol;
+  const protocol = parseUrl(url)?.protocol;
   return protocol === "https:" || protocol === "http:";
 };
 
@@ -920,8 +928,8 @@ export function workflowReferenceLabel(reference: WorkflowRunSubject): string {
   const pullRequest = workflowReferencePullRequest(reference);
   if (pullRequest !== null) return `#${pullRequest.number}`;
   if (reference.title !== "") return reference.title;
-  if (reference.url !== null && URL.canParse(reference.url)) return new URL(reference.url).host;
-  return reference.kind;
+  const url = reference.url === null ? null : parseUrl(reference.url);
+  return url?.host ?? reference.kind;
 }
 
 /** The references a step touched, in the order the run first touched them. */
