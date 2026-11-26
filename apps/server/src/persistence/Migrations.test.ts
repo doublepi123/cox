@@ -6,6 +6,14 @@ import * as Exit from "effect/Exit";
 import * as FileSystem from "effect/FileSystem";
 import * as Path from "effect/Path";
 import * as SqlClient from "effect/sql/SqlClient";
+import * as Ref from "effect/Ref";
+import * as Logger from "effect/Logger";
+import type { DatabaseMigrationProgress as Progress } from "@t3tools/contracts";
+import {
+  DATABASE_MIGRATION_PROGRESS_MESSAGE,
+  databaseMigrationProgress,
+} from "@t3tools/shared/databaseMigrationLog";
+import { DatabaseMigrationProgress } from "./DatabaseMigrationProgress.ts";
 
 import { migrationManifest, runMigrations } from "./Migrations.ts";
 
@@ -72,7 +80,29 @@ describe("runMigrations", () => {
   it.effect("upgrades a database at exactly 54", () =>
     Effect.gen(function* () {
       yield* runMigrations({ toMigrationInclusive: 54 });
-      assert.deepStrictEqual(yield* runMigrations(), v2Migrations);
+      const current = yield* Ref.make<Progress | null>(null);
+      const steps: Array<Progress | null> = [];
+      const loggedSteps: Array<Progress | null> = [];
+      const logger = Logger.make(({ message }) => {
+        const line = String(message);
+        if (line.startsWith(DATABASE_MIGRATION_PROGRESS_MESSAGE)) {
+          steps.push(Ref.getUnsafe(current));
+          loggedSteps.push(databaseMigrationProgress(line));
+        }
+      });
+      const migrate = runMigrations().pipe(
+        Effect.provideService(DatabaseMigrationProgress, { current }),
+        Effect.provide(Logger.layer([logger], { mergeWithExisting: false })),
+      );
+      assert.deepStrictEqual(yield* migrate, v2Migrations);
+      assert.deepStrictEqual(
+        steps,
+        v2Migrations.map((_, index) => ({ current: index + 1, total: v2Migrations.length })),
+      );
+      assert.deepStrictEqual(loggedSteps, steps);
+      assert.isNull(yield* Ref.get(current));
+      assert.deepStrictEqual(yield* migrate, []);
+      assert.lengthOf(steps, v2Migrations.length);
       assert.deepStrictEqual(yield* history, migrationManifest);
       assert.isAbove(yield* v2TableCount, 0);
     }).pipe(Effect.provide(NodeSqliteClient.layer({ filename: ":memory:" }))),

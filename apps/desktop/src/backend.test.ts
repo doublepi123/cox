@@ -58,6 +58,8 @@ server.listen(0, '127.0.0.1', () => {
   if (mode === 'migrating') {
     process.stdout.write('Running database migra');
     process.stdout.write('tions\\n');
+    process.stdout.write('Upgrading database (1 of ');
+    process.stdout.write('2)\\nUpgrading database (2 of 2)\\n');
     setTimeout(() => {
       console.log('Migrations ran successfully');
       announce();
@@ -70,7 +72,7 @@ const preload = join(import.meta.dirname, "backend-parent.ts");
 
 async function createBackend(
   mode = "normal",
-  options?: Pick<BackendOptions, "onComputerRequest" | "startupTimeoutMs">,
+  options?: Pick<BackendOptions, "onComputerRequest" | "startupTimeoutMs" | "onMigrationProgress">,
 ) {
   const home = await mkdtemp(join(tmpdir(), "cox-desktop-test-"));
   cleanups.unshift(() => rm(home, { recursive: true, force: true }));
@@ -275,6 +277,14 @@ describe("desktop backend supervisor", () => {
     await vi.advanceTimersByTimeAsync(180_000);
     await failure;
     vi.useRealTimers();
+  });
+
+  it("publishes the latest complete migration step and clears it after the upgrade", async () => {
+    const onMigrationProgress = vi.fn();
+    const { backend } = await createBackend("migrating", { onMigrationProgress });
+    await backend.start();
+    expect(onMigrationProgress).toHaveBeenCalledWith({ current: 2, total: 2 });
+    expect(onMigrationProgress).toHaveBeenLastCalledWith(null);
   });
 
   it("terminates only its own process tree when graceful shutdown fails", async () => {

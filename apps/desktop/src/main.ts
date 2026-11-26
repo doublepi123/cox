@@ -2448,6 +2448,18 @@ async function start() {
           publishComputerOverlay({ ...prior, state: "stopped" });
       },
       onLog: (message) => log.write(message),
+      onMigrationProgress: (progress) => {
+        if (
+          startingBackend &&
+          connectionMode === "local" &&
+          window &&
+          !window.isDestroyed() &&
+          localPageUrl &&
+          window.webContents.getURL() === localPageUrl
+        ) {
+          window.webContents.send("cox:database-migration-progress", progress);
+        }
+      },
       onUnexpectedExit: (message) => {
         if (startingBackend) return;
         if (macUpdateLaunch && !macUpdateLaunch.acknowledged) {

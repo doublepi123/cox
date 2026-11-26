@@ -21,6 +21,7 @@ export function createStartupPage(
         installing: "正在安装依赖…",
         validating: "正在验证安装…",
         starting: "正在启动 Cox…",
+        migration: "正在升级数据库（{current}/{total}）",
         remaining: "预计还需 {seconds} 秒",
         error: "准备未完成，请重试。",
       }
@@ -32,6 +33,7 @@ export function createStartupPage(
         installing: "Installing dependencies…",
         validating: "Verifying installation…",
         starting: "Starting Cox…",
+        migration: "Upgrading database ({current} of {total})",
         remaining: "About {seconds}s remaining",
         error: "Setup could not finish. Please retry.",
       };

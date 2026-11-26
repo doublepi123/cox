@@ -1,4 +1,5 @@
 import type {
+  DatabaseMigrationProgress,
   DesktopShellBridge,
   DesktopWindowState,
   DesktopBackendUpdateState,
@@ -239,6 +240,22 @@ if (window.location.protocol === "data:") {
     });
   });
 }
+
+ipcRenderer.on(
+  "cox:database-migration-progress",
+  (_event, progress: DatabaseMigrationProgress | null) => {
+    if (window.location.protocol !== "data:" || bridge.windowKind !== "main") return;
+    const root = document.getElementById("cox-startup");
+    const status = document.getElementById("cox-startup-status");
+    if (!root || !status) return;
+    status.textContent =
+      (progress === null
+        ? root.dataset.starting
+        : root.dataset.migration
+            ?.replace("{current}", String(progress.current))
+            .replace("{total}", String(progress.total))) ?? "";
+  },
+);
 
 ipcRenderer.on("cox:startup-progress", (_event, state: DesktopBackendUpdateState) => {
   if (window.location.protocol !== "data:" || bridge.windowKind !== "main") return;

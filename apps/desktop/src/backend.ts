@@ -1,4 +1,5 @@
 import {
+  databaseMigrationProgress,
   DATABASE_MIGRATIONS_FINISHED_MESSAGE,
   DATABASE_MIGRATIONS_STARTED_MESSAGE,
 } from "@t3tools/shared/databaseMigrationLog";
@@ -11,6 +12,7 @@ import { backendOriginFromOutput } from "./config.ts";
 import { backendInstallerEnvironment } from "./backend-install.ts";
 import { killOwnedProcessTree, stopOwnedProcess } from "./process-tree.ts";
 import type {
+  DatabaseMigrationProgress,
   DesktopComputerReply,
   DesktopComputerRequest,
   DesktopComputerThreadEvent,
@@ -58,6 +60,7 @@ export interface BackendOptions {
   readonly cwd: string;
   readonly environment: NodeJS.ProcessEnv;
   readonly onLog: (message: string) => void;
+  readonly onMigrationProgress?: (progress: DatabaseMigrationProgress | null) => void;
   readonly onUnexpectedExit: (message: string) => void;
   readonly startupTimeoutMs?: number;
   readonly stopTimeoutMs?: number;
@@ -213,6 +216,7 @@ export class BackendProcess {
         );
       let timeout = scheduleTimeout();
       let migrating = false;
+      let lastStep: DatabaseMigrationProgress | null = null;
       let output = "";
       let validating = false;
       let settled = false;
@@ -253,6 +257,13 @@ export class BackendProcess {
           timeout = scheduleTimeout();
         }
         output = output.slice(-65_536);
+        if (this.options.onMigrationProgress) {
+          const current = databaseMigrationProgress(output, lastStep);
+          if (current?.current !== lastStep?.current || current?.total !== lastStep?.total) {
+            lastStep = current;
+            this.options.onMigrationProgress(current);
+          }
+        }
         const origin = backendOriginFromOutput(output);
         if (!origin) return;
         validating = true;

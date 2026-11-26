@@ -1,10 +1,14 @@
 import * as Migrator from "effect/sql/Migrator";
 import * as Effect from "effect/Effect";
+import * as Option from "effect/Option";
+import * as Ref from "effect/Ref";
 import * as SqlClient from "effect/sql/SqlClient";
 import {
+  DATABASE_MIGRATION_PROGRESS_MESSAGE,
   DATABASE_MIGRATIONS_FINISHED_MESSAGE,
   DATABASE_MIGRATIONS_STARTED_MESSAGE,
 } from "@t3tools/shared/databaseMigrationLog";
+import { DatabaseMigrationProgress } from "./DatabaseMigrationProgress.ts";
 import { reconcileV2PreviewMigration } from "./reconcileV2PreviewMigration.ts";
 
 import Migration0001 from "./Migrations/001_OrchestrationEvents.ts";
@@ -211,15 +215,6 @@ const migrationEntries = [
 
 export const migrationManifest = migrationEntries.map(([id, name]) => [id, name] as const);
 
-const makeMigrationLoader = (throughId?: number) =>
-  Migrator.fromRecord(
-    Object.fromEntries(
-      migrationEntries
-        .filter(([id]) => throughId === undefined || id <= throughId)
-        .map(([id, name, migration]) => [`${id}_${name}`, migration]),
-    ),
-  );
-
 const FIRST_V2_MIGRATION_ID = 55;
 
 // Migrators skip ids up to the highest recorded; reject collisions that would skip V2 schema.
@@ -271,13 +266,55 @@ export const runMigrations = Effect.fn("runMigrations")(function* ({
   if (includesV2) {
     yield* assertV2MigrationsCanRun(toMigrationInclusive);
   }
+  const progress = yield* Effect.serviceOption(DatabaseMigrationProgress);
+  const sql = yield* SqlClient.SqlClient;
+  const loader = Effect.gen(function* () {
+    const rows = yield* sql<{
+      readonly latest: number;
+    }>`SELECT COALESCE(MAX(migration_id), 0) AS latest FROM effect_sql_migrations`;
+    const latest = rows[0]?.latest ?? 0;
+    const pending = migrationEntries.filter(
+      ([id]) => id > latest && (toMigrationInclusive === undefined || id <= toMigrationInclusive),
+    );
+    return pending.map(([id, name, migration], index) => {
+      const step = { current: index + 1, total: pending.length };
+      return [
+        id,
+        name,
+        Effect.succeed(
+          Effect.gen(function* () {
+            if (Option.isSome(progress)) {
+              yield* Ref.set(progress.value.current, step);
+              yield* Effect.promise(() => new Promise<void>((resolve) => setImmediate(resolve)));
+            }
+            yield* Effect.log(
+              `${DATABASE_MIGRATION_PROGRESS_MESSAGE} (${step.current} of ${step.total})`,
+            );
+            return yield* migration;
+          }),
+        ),
+      ] as const;
+    });
+  }).pipe(
+    Effect.mapError(
+      (cause) =>
+        new Migrator.MigrationError({
+          kind: "BadState",
+          message: "Could not read recorded migration ids.",
+          cause,
+        }),
+    ),
+  );
   const executedMigrations = [
     ...previewMigrations,
-    ...(yield* run({ loader: makeMigrationLoader(toMigrationInclusive) })),
+    ...(yield* run({ loader }).pipe(
+      Effect.ensuring(
+        Option.isSome(progress) ? Ref.set(progress.value.current, null) : Effect.void,
+      ),
+    )),
   ];
   const migrations = executedMigrations.map(([id, name]) => `${id}_${name}`);
 
-  const sql = yield* SqlClient.SqlClient;
   const recorded = yield* sql<{
     readonly migration_id: number;
     readonly name: string;

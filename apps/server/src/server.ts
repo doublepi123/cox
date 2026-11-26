@@ -21,6 +21,7 @@ import { EnvironmentHttpApi, type RepositoryIdentity } from "@t3tools/contracts"
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
+import * as Ref from "effect/Ref";
 import * as Stream from "effect/Stream";
 import { FetchHttpClient, HttpRouter, HttpServer } from "effect/http";
 import * as HttpApiBuilder from "effect/http-api/HttpApiBuilder";
@@ -29,6 +30,7 @@ import * as BackgroundPolicy from "./background/BackgroundPolicy.ts";
 import { enableAndroidWakeIdle, startAndroidWakeLink } from "./AndroidWakeLink.ts";
 import * as HostPowerMonitor from "./background/HostPowerMonitor.ts";
 import * as ServerConfig from "./config.ts";
+import * as DatabaseMigrationProgress from "./persistence/DatabaseMigrationProgress.ts";
 import { withUntracedRequests } from "./http.ts";
 import * as ServerHttp from "./http.ts";
 import {
@@ -260,10 +262,12 @@ const layerResourceDiagnostics = Layer.mergeAll(
 const layerHttpServer = Layer.unwrap(
   Effect.gen(function* () {
     const config = yield* ServerConfig.ServerConfig;
+    const migrations = yield* DatabaseMigrationProgress.DatabaseMigrationProgress;
     return NodeHttpServer.layer(
       () => {
         const server = rejectRequestsUntilServing(
           guardHttpResponseWriteErrors(NodeHttp.createServer()),
+          () => Ref.getUnsafe(migrations.current),
         );
 
         return server;
@@ -833,6 +837,7 @@ const layerMakeServer = Layer.unwrap(
       ),
       Layer.provide(layerActivation),
       Layer.provideMerge(layerHttpServer),
+      Layer.provide(DatabaseMigrationProgress.layer),
       Layer.provide(layerApplicationObservability),
       Layer.provideMerge(FetchHttpClient.layer),
       Layer.provide(VcsProcess.layer),
