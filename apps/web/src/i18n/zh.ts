@@ -2691,6 +2691,12 @@ export const zh = {
   "Sending...": "正在发送…",
   Refine: "完善计划",
   "{count} sessions": "{count} 个会话",
+  "It is shared with other working threads. Stop those to free it.":
+    "其他正在运行的对话也在使用该进程。停止这些对话即可释放进程。",
+  "It is shared with 1 working thread. Stop that thread to free it.":
+    "另有 1 个正在运行的对话在使用该进程。停止该对话即可释放进程。",
+  "It is shared with {count} working threads. Stop those to free it.":
+    "另有 {count} 个正在运行的对话在使用该进程。停止这些对话即可释放进程。",
   "{count} session": "{count} 个会话",
   "{count} queued": "{count} 条排队消息",
   "{count}% left": "剩余 {count}%",

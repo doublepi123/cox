@@ -2882,6 +2882,12 @@ export const en = {
   "Sending...": "Sending...",
   Refine: "Refine",
   "{count} sessions": "{count} sessions",
+  "It is shared with other working threads. Stop those to free it.":
+    "It is shared with other working threads. Stop those to free it.",
+  "It is shared with 1 working thread. Stop that thread to free it.":
+    "It is shared with 1 working thread. Stop that thread to free it.",
+  "It is shared with {count} working threads. Stop those to free it.":
+    "It is shared with {count} working threads. Stop those to free it.",
   "{count} session": "{count} session",
   "{count} queued": "{count} queued",
   "{count}% left": "{count}% left",

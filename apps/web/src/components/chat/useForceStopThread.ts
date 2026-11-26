@@ -10,9 +10,11 @@ import {
 } from "@t3tools/client-runtime/state/runtime";
 import { useAtomCommand } from "../../state/use-atom-command";
 import { toastManager } from "../ui/toast";
+import { useTranslation } from "../../i18n";
 
 /** Force stop for an agent that no longer answers Stop; shared by every place that offers it. */
 export function useForceStopThread(environmentId: EnvironmentId) {
+  const { t } = useTranslation();
   const forceStop = useAtomCommand(orchestrationEnvironment.forceStopThread);
   const permitted = useAtomValue(
     orchestrationEnvironment.forceStopThread.permissionAtom(environmentId),
@@ -51,7 +53,14 @@ export function useForceStopThread(environmentId: EnvironmentId) {
       toastManager.add({
         type: "info",
         title: "Turn stopped; the agent process kept running",
-        description: `It is shared with ${others === 0 ? "other" : others} working ${others === 1 ? "thread" : "threads"}. Stop those to free it.`,
+        description:
+          others === 0
+            ? t("It is shared with other working threads. Stop those to free it.")
+            : others === 1
+              ? t("It is shared with 1 working thread. Stop that thread to free it.")
+              : t("It is shared with {count} working threads. Stop those to free it.", {
+                  count: others,
+                }),
       });
     }
   };
