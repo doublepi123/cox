@@ -25,6 +25,7 @@ interface RegisteredTool {
     }>;
     readonly structuredContent?: unknown;
     readonly isError?: boolean;
+    readonly details: { readonly isError?: boolean };
   }>;
 }
 

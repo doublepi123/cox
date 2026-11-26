@@ -434,14 +434,15 @@ export default async function t3McpExtension(pi: ExtensionAPI, options?: { reado
               signal,
             );
             const content = mcpModelContent(result);
-            if (isMcpToolError(result) && !content.some((part) => part.type === "text" && part.text.length > 0)) {
+            const errorFlag = isMcpToolError(result) ? { isError: true } : {};
+            if (errorFlag.isError && !content.some((part) => part.type === "text" && part.text.length > 0)) {
               content.push({ type: "text", text: "MCP tool cox/" + name + " returned an error" });
             }
             return {
               content,
               structuredContent: mcpScriptResult(result),
-              details: { server: "cox", tool: name },
-              ...(isMcpToolError(result) ? { isError: true } : {}),
+              details: { server: "cox", tool: name, ...errorFlag },
+              ...errorFlag,
             };
           },
         });

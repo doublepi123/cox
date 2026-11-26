@@ -248,6 +248,7 @@ describe("Pi MCP tool results", () => {
       assert.equal(output.content.length, isError ? 2 : 1);
       if (isError) assert.include(output.content[1]?.text ?? "", "returned an error");
       assert.equal(output.isError, isError ? true : undefined);
+      assert.equal(output.details.isError, output.isError);
       assert.deepEqual(output.structuredContent, result);
     },
   );
