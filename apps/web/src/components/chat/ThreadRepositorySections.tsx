@@ -76,6 +76,7 @@ const RepositorySection = memo(function RepositorySection(props: {
   cwd: string;
   removable: boolean;
   expanded: boolean;
+  overflow: boolean;
   owner: { readonly threadId?: ThreadId; readonly projectId?: ProjectId };
   showActions: boolean;
   onToggle: (key: string) => void;
@@ -98,6 +99,7 @@ const RepositorySection = memo(function RepositorySection(props: {
     <div
       role="group"
       aria-label={t("Repository {name}", { name: props.name })}
+      data-thread-details-repository-overflow={props.overflow || undefined}
       className="flex flex-col"
     >
       <ThreadDetailsControl
@@ -282,7 +284,7 @@ export function ThreadRepositorySections(props: ThreadRepositorySectionsProps) {
     : { projectId: props.projectId };
   const toggle = (key: string) => setExpandedKey((current) => (current === key ? null : key));
   const remove = (key: string) => unpin(threadRef, key);
-  const renderSection = (section: ThreadRepositorySection) => (
+  const renderSection = (section: ThreadRepositorySection, index: number) => (
     <RepositorySection
       key={section.key}
       threadRef={threadRef}
@@ -291,6 +293,7 @@ export function ThreadRepositorySections(props: ThreadRepositorySectionsProps) {
       cwd={section.cwd}
       removable={section.origin === "pinned"}
       expanded={expandedKey === section.key}
+      overflow={index >= THREAD_REPOSITORY_SECTIONS_VISIBLE}
       owner={owner}
       showActions={props.showActions}
       onToggle={toggle}
