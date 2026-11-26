@@ -2046,7 +2046,8 @@ a,
   touch-action: manipulation;
 }
 
-[data-preview-url-input] {
+[data-preview-url-input],
+[data-script-command-input] {
   font-variant-ligatures: none;
 }
 
