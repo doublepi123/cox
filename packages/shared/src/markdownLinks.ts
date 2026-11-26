@@ -173,7 +173,12 @@ function looksLikeHostname(segment: string, hasPosition: boolean): boolean {
 
 export function inlineCodeFilePathCandidate(codeText: string): string | null {
   const trimmed = codeText.trim();
-  if (trimmed.length === 0 || INLINE_CODE_DISQUALIFIER_PATTERN.test(trimmed)) return null;
+  if (
+    trimmed.length === 0 ||
+    INLINE_CODE_DISQUALIFIER_PATTERN.test(trimmed) ||
+    /[<>]/.test(trimmed)
+  )
+    return null;
 
   const candidate = isWindowsAbsolutePath(trimmed) ? trimmed : trimmed.replaceAll("\\", "/");
   const hasPosition = POSITION_SUFFIX_PATTERN.test(candidate);

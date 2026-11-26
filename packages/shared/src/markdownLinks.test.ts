@@ -41,6 +41,8 @@ describe("inlineCodeFilePathCandidate", () => {
     ["/tmp/.../scratchpad/notes.md", null],
     ["~/projects/…/notes.md", null],
     ["src/.../main.ts", null],
+    ["~/Videos/clips/<thread-slug>/shot.png", null],
+    ["clips/<name>.mp4", null],
   ])("distinguishes file paths from code and hostnames in %s", (source, candidate) => {
     expect(inlineCodeFilePathCandidate(source)).toBe(candidate);
   });
