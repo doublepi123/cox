@@ -53,6 +53,22 @@ interface XmlNode {
   hasTextChoice?: boolean;
 }
 
+function separateRubyReadings(ruby: XmlNode) {
+  const parts = ruby.children.filter((part) =>
+    typeof part === "string"
+      ? part.trim() !== ""
+      : !HIDDEN_XML_NODES.has(part.name) && (part.name !== "rp" || part.hasText),
+  );
+  const isFallback = (part: XmlNode | string | undefined) =>
+    typeof part !== "string" && part?.name === "rp";
+  for (const [index, part] of parts.entries()) {
+    if (typeof part === "string" || part.name !== "rt" || !part.hasText) continue;
+    if (isFallback(parts[index - 1]) || isFallback(parts[index + 1])) continue;
+    part.children.unshift("(");
+    part.children.push(")");
+  }
+}
+
 function xml(source: string, extension: string): XmlNode {
   const odfSpaces = [".odt", ".ods", ".odp"].includes(extension);
   const htmlEntities = extension === ".epub";
@@ -109,6 +125,8 @@ function xml(source: string, extension: string): XmlNode {
       parent.children.pop();
       return;
     }
+    if (htmlEntities && node.name === "ruby" && stack[1]?.name === "html")
+      separateRubyReadings(node);
     if (!node.hasText) return;
     parent.hasText = true;
     if (node.name === "Choice") parent.hasTextChoice = true;
