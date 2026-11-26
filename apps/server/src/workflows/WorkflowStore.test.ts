@@ -15,6 +15,7 @@ import * as TestClock from "effect/testing/TestClock";
 import WorkflowsMigration from "../persistence/Migrations/086_Workflows.ts";
 import WorkflowSkippedRunsMigration from "../persistence/Migrations/091_WorkflowSkippedRuns.ts";
 import WorkflowRunIndexesMigration from "../persistence/Migrations/092_WorkflowRunIndexes.ts";
+import WorkflowRunTagsMigration from "../persistence/Migrations/093_WorkflowRunTags.ts";
 import * as MilestoneHub from "../milestones/MilestoneHub.ts";
 import * as WorkflowStore from "./WorkflowStore.ts";
 
@@ -33,6 +34,7 @@ const withStore = <A, E>(
     const migrated = Layer.effectDiscard(
       Effect.andThen(WorkflowsMigration, WorkflowSkippedRunsMigration).pipe(
         Effect.andThen(WorkflowRunIndexesMigration),
+        Effect.andThen(WorkflowRunTagsMigration),
       ),
     );
     return yield* Effect.provide(

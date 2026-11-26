@@ -46,11 +46,11 @@ Dot-files and subfolders are ignored. Keep shared helpers in a subfolder and res
 
 ```sh
 cox workflow start <name> --input '<json>' --key <key>
-cox workflow list [--status paused]
+cox workflow list [--status paused] [--tag <tag>]
 cox workflow show <run>
 cox workflow resume <run>
 cox workflow cancel <run> [--reason '<why>']
-cox workflow questions
+cox workflow questions [--kind <kind>]
 cox workflow signal '{"choice":"yes"}' --run <run> --wait <name>
 cox workflow signal '<json>' --workflow <name> --channel <channel>
 cox workflow hooks
@@ -61,6 +61,35 @@ cox workflow store set <key> '<json>'
 Every start needs a `--key`: starting twice with the same key returns the same run — even after a version bump — so retries do not duplicate work. Use `signal` with `--run` and `--wait` to answer a question or wake a run, or with `--workflow` and `--channel` to wake whichever run waits on that channel. A signal for a question that is no longer open is kept for a later wait rather than refused, so check `cox workflow questions` first. Use `store` to read or change state kept between runs.
 
 For the `cox_workflow` MCP tool, full access in default interaction mode is required to start, signal, resume or cancel runs, change stored state, or read webhook paths. Lower modes can still read runs, questions and stored state.
+
+## Kinds of question and tags
+
+A workflow that asks more than one kind of question can name the kinds, so you can answer one kind at a time. List them in the workflow's options with the label to show, and give each `ask` its `kind`:
+
+```ts
+const { workflow, ask, tags, Issue } = T3;
+
+workflow(
+  "triage",
+  {
+    version: 1,
+    payload: Issue,
+    asks: { feature: "Feature wanted?", intended: "Bug or intended?" },
+  },
+  Effect.fn(function* (issue) {
+    yield* tags(["backlog"]);
+    yield* ask("wanted", {
+      kind: "feature",
+      title: `Build ${issue.title}?`,
+      choices: ["Yes", "No"],
+    });
+  }),
+);
+```
+
+Under **Needs you**, a picker then shows each kind with how many questions of it are open, and **Other** for the rest; your pick is remembered on that device. A question whose kind is not in the workflow's own `asks` is asked like any other and shows under **Other**, as do questions asked without a kind. `cox workflow questions --kind feature` lists the questions asked with exactly that kind from the CLI.
+
+`tags([...])` labels a run for `cox workflow list --tag backlog`, whether or not it waits on anyone.
 
 ## Triggers
 

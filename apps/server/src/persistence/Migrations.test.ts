@@ -96,6 +96,7 @@ describe("runMigrations", () => {
         [90, "SupersededRunAttemptIndex"],
         [91, "WorkflowSkippedRuns"],
         [92, "WorkflowRunIndexes"],
+        [93, "WorkflowRunTags"],
       ]);
 
       const tables = yield* sql<{ readonly name: string }>`

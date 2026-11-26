@@ -100,6 +100,7 @@ import Migration0089 from "./Migrations/089_AgentFeedback.ts";
 import Migration0090 from "./Migrations/090_SupersededRunAttemptIndex.ts";
 import Migration0091 from "./Migrations/091_WorkflowSkippedRuns.ts";
 import Migration0092 from "./Migrations/092_WorkflowRunIndexes.ts";
+import Migration0093 from "./Migrations/093_WorkflowRunTags.ts";
 
 const migrationEntries = [
   [1, "OrchestrationEvents", Migration0001],
@@ -195,6 +196,7 @@ const migrationEntries = [
   [90, "SupersededRunAttemptIndex", Migration0090],
   [91, "WorkflowSkippedRuns", Migration0091],
   [92, "WorkflowRunIndexes", Migration0092],
+  [93, "WorkflowRunTags", Migration0093],
 ] as const;
 
 export const migrationManifest = migrationEntries.map(([id, name]) => [id, name] as const);
