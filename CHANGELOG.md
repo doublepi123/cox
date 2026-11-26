@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+## 0.2.45 — 2026-11-26
+
+- Model services route each model through the protocol configured for the service, whatever
+  endpoint types the gateway's model list declares. Models on a single-protocol service no longer
+  fail with "No compatible protocol is configured for this model.", including models imported
+  before this release.
+
 ## 0.2.44 — 2026-11-26
 
 - DeepSeek Harness binds to Cox model services: pick a service and default model when adding or
