@@ -1,3 +1,4 @@
+import { formatProcessName, formatShortProcessName } from "./DiagnosticsSettings.logic";
 import { SharedTooltipTrigger } from "../ui/shared-tooltip";
 import { translateCurrent, useTranslation } from "../../i18n";
 import { ProcessSignalActions } from "./ProcessSignalActions";
@@ -227,14 +228,6 @@ function TraceIdCell({ traceId }: { traceId: string }) {
   );
 }
 
-function formatProcessName(command: string): string {
-  const firstToken = command.trim().split(/\s+/)[0];
-  if (!firstToken) return command;
-  const normalized = firstToken.replace(/^['"]|['"]$/g, "");
-  const segments = normalized.split(/[\\/]/).filter(Boolean);
-  return segments.at(-1) ?? normalized;
-}
-
 function formatProcessType(process: ServerProcessDiagnosticsEntry): string {
   if (process.depth > 0) return translateCurrent("Subprocess");
   if (/\b(codex|claude|opencode|cursor)\b/i.test(process.command)) return translateCurrent("Agent");
@@ -423,11 +416,6 @@ function formatCpuTime(seconds: number): string {
   const minutes = seconds / 60;
   if (minutes < 60) return `${minutes.toFixed(minutes >= 10 ? 1 : 2).replace(/\.0+$/, "")}m`;
   return `${(minutes / 60).toFixed(2).replace(/\.0+$/, "")}h`;
-}
-
-function formatShortProcessName(command: string): string {
-  const name = formatProcessName(command);
-  return name.length > 42 ? `${name.slice(0, 39)}...` : name;
 }
 
 function ResourceHistoryProcessNameCell({
