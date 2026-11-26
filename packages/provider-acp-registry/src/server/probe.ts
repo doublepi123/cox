@@ -176,12 +176,23 @@ export interface AcpRegistryLiveConfiguration {
   readonly currentModelId: string | null;
   readonly configOptions: AcpRegistryProbeResult["configOptions"];
   readonly modelOptionIds?: NonNullable<AcpRegistryProbeResult["modelOptionIds"]>;
+  readonly modelsFromModelSelect?: boolean;
+}
+
+export function acpRegistryLiveCatalogKey(
+  configuration: Pick<AcpRegistryLiveConfiguration, "models" | "modelsFromModelSelect">,
+): string {
+  if (configuration.models.length === 0) return "";
+  return `${configuration.modelsFromModelSelect ? "select" : "list"}:${configuration.models
+    .map((model) => `${model.id}\0${model.name}`)
+    .join("\u001f")}`;
 }
 
 export function normalizeAcpRegistryLiveConfiguration(
   configOptions: ReadonlyArray<EffectAcpSchema.SessionConfigOption>,
   modeState?: Parameters<typeof acpProviderOptionDescriptors>[0]["modeState"],
   modelState?: EffectAcpSchema.SessionModelState | null,
+  options?: { readonly includeCatalog?: boolean },
 ): AcpRegistryLiveConfiguration {
   const modelOption = findModelConfigOption(configOptions);
   const currentModelId =
@@ -212,12 +223,14 @@ export function normalizeAcpRegistryLiveConfiguration(
   const modelOptionIds = descriptors
     .filter((descriptor) => modelScopedIds.has(descriptor.id))
     .map((descriptor) => descriptor.id);
+  const includeCatalog = options?.includeCatalog !== false;
   return {
-    models,
+    models: includeCatalog ? models : [],
     currentModelId: models.some((model) => model.id === boundedCurrentModelId)
       ? boundedCurrentModelId
       : null,
     configOptions: descriptors,
+    modelsFromModelSelect: includeCatalog && modelOption !== undefined,
     ...(modelOptionIds.length > 0 ? { modelOptionIds } : {}),
   };
 }
@@ -324,6 +337,7 @@ export interface AcpRegistryConfigurationProbeResult {
   readonly probe: AcpRegistryProbeResult;
   readonly slashCommands: ReadonlyArray<ServerProviderSlashCommand>;
   readonly skills: ReadonlyArray<ServerProviderSkill>;
+  readonly modelsFromModelSelect?: boolean;
 }
 
 export type AcpRegistryConfigurationProbe<Requirements = never> = (
@@ -407,27 +421,18 @@ const isolateDeepSeekProbeHistory = Effect.fn("AcpRegistryProbe.isolateDeepSeekP
 );
 
 export const probeAcpRegistryConfiguration = Effect.fn("AcpRegistryProbe.probeConfiguration")(
-  function* (
-    input: AcpRegistryConfigurationProbeInput,
-  ): Effect.fn.Return<
-    AcpRegistryConfigurationProbeResult,
-    AcpRegistryOperationError,
-    | AcpRegistrySupport.AcpRegistryCatalog
-    | ChildProcessSpawner.ChildProcessSpawner
-    | FileSystem.FileSystem
-    | Path.Path
-    | SecureRandom.SecureRandom
-  > {
+  function* (input: AcpRegistryConfigurationProbeInput) {
     const catalog = yield* AcpRegistrySupport.AcpRegistryCatalog;
     const childProcessSpawner = yield* ChildProcessSpawner.ChildProcessSpawner;
     const crypto = yield* SecureRandom.SecureRandom;
     const pty = yield* Effect.serviceOption(PtyAdapter.PtyAdapter);
 
+    // Downloads and package installs have their own bounded timeouts inside AcpRegistryCatalog.
+    const resolved = yield* catalog
+      .resolve(input.settings, input.cwd, input.environment)
+      .pipe(Effect.mapError(AcpRegistrySupport.toAcpRegistryOperationError));
+
     const openSession = Effect.gen(function* () {
-      // Resolution may install packages; bound it by the probe deadline.
-      const resolved = yield* catalog
-        .resolve(input.settings, input.cwd, input.environment)
-        .pipe(Effect.mapError(AcpRegistrySupport.toAcpRegistryOperationError));
       const spawn = yield* isolateDeepSeekProbeHistory(
         input.settings.commandPath,
         resolved.spawn,
@@ -541,7 +546,7 @@ export const probeAcpRegistryConfiguration = Effect.fn("AcpRegistryProbe.probeCo
           Effect.fail(
             new AcpRegistryOperationError({
               reason: "probe_failed",
-              message: `The ACP agent did not resolve and create a test session within ${PROBE_TIMEOUT_SECONDS} seconds. Package installation or agent startup may be slow; this check retries on the next provider refresh.`,
+              message: `The ACP agent did not create a test session within ${PROBE_TIMEOUT_SECONDS} seconds. Agent startup may be slow. This check retries on the next provider refresh.`,
             }),
           ),
       }),
@@ -565,9 +570,13 @@ export const probeAcpRegistryConfiguration = Effect.fn("AcpRegistryProbe.probeCo
         slashCommands: result.commands.slashCommands,
         skills: result.commands.skills,
         modelConfigurations,
+        modelsFromModelSelect:
+          findModelConfigOption(result.started.sessionSetupResult.configOptions ?? []) !==
+          undefined,
       };
-    }).pipe(Effect.scoped);
+    });
   },
+  Effect.scoped,
 );
 
 const MANAGEMENT_TIMEOUT = Duration.seconds(60);

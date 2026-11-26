@@ -494,6 +494,8 @@ describe("ACP Registry probe", () => {
     const catalog = AcpRegistrySupport.AcpRegistryCatalog.of({
       search: () => Effect.die("unused search"),
       prepare: () => Effect.die("unused prepare"),
+      refreshIndex: () => Effect.succeed(false),
+      invalidateIndex: () => Effect.void,
       inspect: () => Effect.die("unused inspect"),
       uninstallManagedBinary: () => Effect.die("unused uninstall"),
       resolve: () =>
@@ -571,6 +573,8 @@ await import(pathToFileURL(agentPath).href);
       const catalog = AcpRegistrySupport.AcpRegistryCatalog.of({
         search: () => Effect.die("unused search"),
         prepare: () => Effect.die("unused prepare"),
+        refreshIndex: () => Effect.succeed(false),
+        invalidateIndex: () => Effect.void,
         inspect: () => Effect.die("unused inspect"),
         uninstallManagedBinary: () => Effect.die("unused uninstall"),
         resolve: () =>
@@ -622,6 +626,8 @@ await import(pathToFileURL(agentPath).href);
         const catalog = AcpRegistrySupport.AcpRegistryCatalog.of({
           search: () => Effect.die("unused search"),
           prepare: () => Effect.die("unused prepare"),
+          refreshIndex: () => Effect.succeed(false),
+          invalidateIndex: () => Effect.void,
           inspect: () => Effect.die("unused inspect"),
           uninstallManagedBinary: () => Effect.die("unused uninstall"),
           resolve: () =>

@@ -14,6 +14,7 @@ import * as Clock from "effect/Clock";
 import * as SecureRandom from "effect/crypto/SecureRandom";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
+import * as Equal from "effect/Equal";
 import * as FileSystem from "effect/FileSystem";
 import * as Option from "effect/Option";
 import * as Path from "effect/Path";
@@ -63,6 +64,75 @@ const DRIVER_KIND = ProviderDriverKind.make("acpRegistry");
 const decodeSettings = Schema.decodeSync(AcpRegistrySettings);
 // Cache only successful authenticated probes so sign-in changes remain visible.
 const PROBE_SUCCESS_TTL_MS = 15 * 60 * 1_000;
+const PROBE_PROVISIONAL_TTL_MS = 30_000;
+const REGISTRY_REFRESH_FAILURE_BACKOFF_MS = 60_000;
+
+interface AcpRegistryEnrichmentCache {
+  readonly generation: number;
+  readonly entry: {
+    readonly provider: ServerProvider;
+    readonly launchIdentity?: string;
+    readonly expiresAt: number;
+  } | null;
+}
+
+const builtInModels = (provider: ServerProvider) =>
+  provider.models.filter((model) => !model.isCustom);
+const isAuthoritativeCatalog = (models: ReadonlyArray<ServerProviderModel>, fromSelect: boolean) =>
+  models.length > 1 || (models.length === 1 && fromSelect);
+const probeTtl = (provider: ServerProvider) =>
+  builtInModels(provider).every(({ slug }) => slug === "default")
+    ? PROBE_PROVISIONAL_TTL_MS
+    : PROBE_SUCCESS_TTL_MS;
+
+export function isAcpRegistryCacheValid(
+  entry: NonNullable<AcpRegistryEnrichmentCache["entry"]>,
+  version: string | null,
+  local: boolean,
+  now: number,
+  launchIdentity?: string,
+): boolean {
+  return (
+    entry.expiresAt > now &&
+    ((local && version === null) || entry.provider.version === version) &&
+    (launchIdentity === undefined || entry.launchIdentity === launchIdentity)
+  );
+}
+
+export function updateAcpRegistryEnrichmentCache(input: {
+  readonly cache: AcpRegistryEnrichmentCache;
+  readonly configuration: AcpRegistryLiveConfiguration;
+  readonly customModels: ReadonlyArray<string>;
+  readonly now: number;
+}): AcpRegistryEnrichmentCache {
+  const { cache, configuration, customModels, now } = input;
+  const { entry } = cache;
+  if (entry === null) {
+    return configuration.models.length === 0
+      ? cache
+      : { ...cache, generation: cache.generation + 1 };
+  }
+  const provider = applyAcpRegistryLiveConfiguration(
+    entry.provider,
+    configuration,
+    customModels,
+    entry.provider.models,
+  );
+  if (Equal.equals(provider, entry.provider)) return cache;
+  const catalogChanged = !Equal.equals(
+    builtInModels(entry.provider).map(({ slug }) => slug),
+    builtInModels(provider).map(({ slug }) => slug),
+  );
+  return {
+    generation: cache.generation + Number(catalogChanged),
+    entry: {
+      ...entry,
+      provider,
+      expiresAt: catalogChanged ? now + probeTtl(provider) : entry.expiresAt,
+    },
+  };
+}
+
 const EMPTY_CAPABILITIES = createModelCapabilities({ optionDescriptors: [] });
 const MAINTENANCE = makeManualOnlyProviderMaintenanceCapabilities({
   provider: DRIVER_KIND,
@@ -290,14 +360,22 @@ export function applyAcpRegistryLiveConfiguration(
             name: model.name,
             description: null,
           })),
-          currentModelId: discoveredModels.find((model) => model.isDefault)?.slug ?? null,
+          currentModelId: discoveredModels.some(({ slug }) => slug === configuration.currentModelId)
+            ? configuration.currentModelId
+            : (discoveredModels.find((model) => model.isDefault)?.slug ?? null),
         };
   return {
     ...snapshot,
     status: provider.enabled ? "ready" : provider.status,
     models:
       configuration.models.length === 0 && configuration.configOptions.length === 0
-        ? provider.models
+        ? provider.models.map((model) =>
+            model.isCustom ||
+            discovery.currentModelId === null ||
+            model.isDefault === (model.slug === discovery.currentModelId)
+              ? model
+              : { ...model, isDefault: model.slug === discovery.currentModelId },
+          )
         : modelsFromDiscovery(discovery, customModels, previousModels),
   };
 }
@@ -583,98 +661,158 @@ export const AcpRegistryDriver: ProviderDriver<AcpRegistrySettings, AcpRegistryD
         );
         return [next, next.models === provider.models ? learned : next.models];
       });
+    const lastObservedLiveRevision = yield* Ref.make(0);
+    const lastAcceptedCatalog = yield* Ref.make<ReadonlyArray<ServerProviderModel> | null>(null);
+    const observeLiveRevision = (revision: number) =>
+      Ref.update(lastObservedLiveRevision, (current) => Math.max(current, revision));
     const withLiveRuntimeState = Effect.fn("AcpRegistryDriver.withLiveRuntimeState")(function* (
       input: ServerProvider,
     ) {
-      if (input.auth.status === "unauthenticated") yield* confirmedAuthentication.set(false);
-      const provider =
+      if (input.auth.status === "unauthenticated") {
+        yield* confirmedAuthentication.set(false);
+        yield* Ref.set(lastAcceptedCatalog, null);
+      }
+      const accepted = yield* Ref.get(lastAcceptedCatalog);
+      const models =
+        accepted !== null &&
         input.enabled &&
         input.installed &&
-        input.auth.status === "unknown" &&
-        (yield* confirmedAuthentication.get)
-          ? { ...input, auth: { ...input.auth, status: "authenticated" as const } }
-          : input;
-      return yield* Option.isNone(runtimeCoordinator)
-        ? Effect.succeed(provider)
-        : Effect.all({
-            commands: runtimeCoordinator.value.getAvailableCommands(instanceId),
-            configuration: runtimeCoordinator.value.getLiveConfiguration(instanceId),
-            authAction: runtimeCoordinator.value.getUrlAuthAction(instanceId),
-          }).pipe(
-            Effect.flatMap(({ commands, configuration, authAction }) => {
-              const withCommands = applyAcpRegistryAvailableCommands(provider, commands);
-              return Option.match(configuration, {
-                onNone: () => Effect.succeed(withCommands),
-                onSome: (liveConfiguration) =>
-                  applyLiveConfiguration(withCommands, liveConfiguration),
-              }).pipe(
-                Effect.map((withConfiguration) =>
-                  applyAcpRegistryUrlAuthAction(withConfiguration, authAction),
-                ),
-              );
-            }),
-          );
+        input.auth.status !== "unauthenticated" &&
+        builtInModels(input).every(({ slug }) => slug === "default")
+          ? [...accepted, ...input.models.filter((model) => model.isCustom)]
+          : input.models;
+      const provider = {
+        ...input,
+        models,
+        auth:
+          input.enabled &&
+          input.installed &&
+          input.auth.status === "unknown" &&
+          (yield* confirmedAuthentication.get)
+            ? { ...input.auth, status: "authenticated" as const }
+            : input.auth,
+      };
+      if (Option.isNone(runtimeCoordinator)) return provider;
+      const coordinator = runtimeCoordinator.value;
+      const { commands, live, authAction } = yield* Effect.all({
+        commands: coordinator.getAvailableCommands(instanceId),
+        live: coordinator.getLiveConfigurationWithRevision(instanceId),
+        authAction: coordinator.getUrlAuthAction(instanceId),
+      });
+      yield* observeLiveRevision(live.revision);
+      const withCommands = applyAcpRegistryAvailableCommands(provider, commands);
+      const withConfiguration = Option.isSome(live.configuration)
+        ? yield* applyLiveConfiguration(withCommands, live.configuration.value)
+        : withCommands;
+      return applyAcpRegistryUrlAuthAction(withConfiguration, authAction);
     });
     const checkProvider = checkAcpRegistryProviderReadiness(readinessInput).pipe(
       Effect.provideService(AcpRegistrySupport.AcpRegistryCatalog, catalog),
       Effect.flatMap(withLiveRuntimeState),
     );
-    const enrichProvider = checkAcpRegistryProviderStatus(
-      {
-        ...readinessInput,
-        cwd: host.paths.cwd,
-      },
-      probeAcpRegistryConfiguration,
-    ).pipe(
-      Effect.provideService(AcpRegistrySupport.AcpRegistryCatalog, catalog),
-      Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, spawner),
-      Effect.provideService(FileSystem.FileSystem, fileSystem),
-      Effect.provideService(Path.Path, path),
-      Effect.provideService(SecureRandom.SecureRandom, crypto),
-    );
-    const enrichmentCache = yield* Ref.make<{
-      readonly generation: number;
-      readonly entry: {
-        readonly provider: ServerProvider;
-        readonly expiresAt: number;
-      } | null;
-    }>({ generation: 0, entry: null });
+    const hasRegistryAgent =
+      effectiveConfig.enabled &&
+      effectiveConfig.source !== "local" &&
+      effectiveConfig.agentId.trim().length > 0;
+    const refreshIndex = catalog
+      .refreshIndex({
+        maxAgeMs: PROBE_SUCCESS_TTL_MS,
+        failureBackoffMs: REGISTRY_REFRESH_FAILURE_BACKOFF_MS,
+      })
+      .pipe(Effect.orElseSucceed(() => false));
+    const enrichmentCache = yield* Ref.make<AcpRegistryEnrichmentCache>({
+      generation: 0,
+      entry: null,
+    });
     const liveSnapshotSemaphore = yield* Semaphore.make(1);
     const invalidateEnrichmentCache = Ref.update(enrichmentCache, (current) => ({
       generation: current.generation + 1,
       entry: null,
     }));
+    const clearLiveState = (
+      Option.isSome(runtimeCoordinator)
+        ? runtimeCoordinator.value
+            .clearLiveConfiguration(instanceId)
+            .pipe(Effect.andThen(runtimeCoordinator.value.clearAvailableCommands(instanceId)))
+        : Effect.void
+    ).pipe(
+      Effect.andThen(Ref.set(learnedModels, [])),
+      Effect.andThen(Ref.set(lastAcceptedCatalog, null)),
+    );
     const enrichProviderCached = Effect.fn("AcpRegistryDriver.enrichProviderCached")(function* (
       baseSnapshot: ServerProvider,
     ) {
+      if (hasRegistryAgent) yield* refreshIndex;
+      const inspection = hasRegistryAgent
+        ? yield* catalog.inspect(effectiveConfig, processEnvironment).pipe(Effect.option)
+        : Option.none();
+      const ready =
+        Option.isSome(inspection) && inspection.value.status === "ready"
+          ? inspection.value
+          : undefined;
+      const version = ready?.version ?? baseSnapshot.version;
+      const launchIdentity = ready?.launchIdentity;
+      const cache = yield* Ref.get(enrichmentCache);
+      const cached = cache.entry;
       const now = yield* Clock.currentTimeMillis;
-      const cacheState = yield* Ref.get(enrichmentCache);
-      const cached = cacheState.entry;
       if (
         cached !== null &&
-        cached.expiresAt > now &&
-        cached.provider.version === baseSnapshot.version
+        isAcpRegistryCacheValid(
+          cached,
+          version,
+          effectiveConfig.source === "local",
+          now,
+          launchIdentity,
+        )
       ) {
         return {
           provider: { ...cached.provider, checkedAt: baseSnapshot.checkedAt },
-          generation: cacheState.generation,
+          generation: cache.generation,
+          probe: null,
         };
       }
-      const enriched = yield* enrichProvider;
-      if (enriched.status === "ready") {
+      const revision = Option.isSome(runtimeCoordinator)
+        ? (yield* runtimeCoordinator.value.getLiveConfigurationWithRevision(instanceId)).revision
+        : 0;
+      const runtimeChanged =
+        (cached !== null &&
+          (cached.provider.version !== version ||
+            (launchIdentity !== undefined && cached.launchIdentity !== launchIdentity))) ||
+        (version !== null && baseSnapshot.version !== null && version !== baseSnapshot.version);
+      const fromSelect = yield* Ref.make(false);
+      const provider = yield* checkAcpRegistryProviderStatus(
+        { ...readinessInput, cwd: host.paths.cwd },
+        (probeInput) =>
+          probeAcpRegistryConfiguration(probeInput).pipe(
+            Effect.tap((result) => Ref.set(fromSelect, result.modelsFromModelSelect === true)),
+          ),
+      ).pipe(
+        Effect.provideService(AcpRegistrySupport.AcpRegistryCatalog, catalog),
+        Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, spawner),
+        Effect.provideService(FileSystem.FileSystem, fileSystem),
+        Effect.provideService(Path.Path, path),
+        Effect.provideService(SecureRandom.SecureRandom, crypto),
+      );
+      if (provider.status === "ready") {
+        const expiresAt = (yield* Clock.currentTimeMillis) + probeTtl(provider);
         yield* Ref.update(enrichmentCache, (current) =>
-          current.generation === cacheState.generation
+          current.generation === cache.generation
             ? {
                 ...current,
                 entry: {
-                  provider: enriched,
-                  expiresAt: now + PROBE_SUCCESS_TTL_MS,
+                  provider,
+                  expiresAt,
+                  ...(launchIdentity === undefined ? {} : { launchIdentity }),
                 },
               }
             : current,
         );
       }
-      return { provider: enriched, generation: cacheState.generation };
+      return {
+        provider,
+        generation: cache.generation,
+        probe: { runtimeChanged, revision, fromSelect: yield* Ref.get(fromSelect) },
+      };
     });
     const snapshotSettings = yield* makeProviderSnapshotSettingsSource(effectiveConfig);
     const snapshot = yield* makeManagedServerProvider<
@@ -686,39 +824,72 @@ export const AcpRegistryDriver: ProviderDriver<AcpRegistrySettings, AcpRegistryD
       haveSettingsChanged: haveProviderSnapshotSettingsChanged,
       initialSnapshot: () => checkProvider,
       checkProvider,
-      enrichSnapshot: Effect.fn("enrichSnapshot")(function ({
+      enrichSnapshot: Effect.fn("enrichSnapshot")(function* ({
         snapshot,
         getSnapshot,
         publishSnapshot,
       }) {
-        if (!snapshot.installed) return Effect.void;
+        let target = snapshot;
+        if (!target.installed) {
+          if (!hasRegistryAgent) return;
+          const refreshed = Option.isSome(runtimeCoordinator)
+            ? yield* runtimeCoordinator.value.runBackgroundProbe(
+                effectiveConfig.agentId,
+                refreshIndex,
+              )
+            : yield* refreshIndex.pipe(Effect.asSome);
+          if (Option.isNone(refreshed)) return;
+          target = yield* checkProvider;
+          if (target.installed || refreshed.value)
+            yield* liveSnapshotSemaphore.withPermit(publishSnapshot(target));
+          if (!target.installed) return;
+        }
+        const enrichment = enrichProviderCached(target);
         const publishEnrichment = (
           Option.isSome(runtimeCoordinator)
             ? runtimeCoordinator.value.runBackgroundProbe(
                 effectiveConfig.source === "local"
                   ? `local:${instanceId}`
                   : effectiveConfig.agentId,
-                enrichProviderCached(snapshot),
+                enrichment,
               )
-            : enrichProviderCached(snapshot).pipe(Effect.asSome)
+            : enrichment.pipe(Effect.asSome)
         ).pipe(
           Effect.flatMap(
             Option.match({
               onNone: () => Effect.void,
-              onSome: ({ provider, generation }) =>
+              onSome: ({ provider, generation, probe }) =>
                 liveSnapshotSemaphore.withPermit(
-                  Ref.get(enrichmentCache).pipe(
-                    Effect.flatMap((current) =>
-                      current.generation === generation
-                        ? withLiveRuntimeState(provider).pipe(Effect.flatMap(publishSnapshot))
-                        : Effect.void,
-                    ),
-                  ),
+                  Effect.gen(function* () {
+                    if ((yield* Ref.get(enrichmentCache)).generation !== generation) return;
+                    if (probe !== null && provider.status === "ready") {
+                      const models = builtInModels(provider);
+                      const authoritative = isAuthoritativeCatalog(models, probe.fromSelect);
+                      if (probe.runtimeChanged || authoritative) {
+                        const cleared =
+                          Option.isNone(runtimeCoordinator) ||
+                          (yield* runtimeCoordinator.value.clearLiveConfigurationIfRevision(
+                            instanceId,
+                            probe.revision,
+                          ));
+                        if (cleared) {
+                          if (probe.runtimeChanged) {
+                            yield* Ref.set(learnedModels, []);
+                            yield* Ref.set(lastAcceptedCatalog, null);
+                            if (Option.isSome(runtimeCoordinator))
+                              yield* runtimeCoordinator.value.clearAvailableCommands(instanceId);
+                          }
+                          if (authoritative) yield* Ref.set(lastAcceptedCatalog, models);
+                        }
+                      }
+                    }
+                    yield* publishSnapshot(yield* withLiveRuntimeState(provider));
+                  }),
                 ),
             }),
           ),
         );
-        if (Option.isNone(runtimeCoordinator)) return publishEnrichment;
+        if (Option.isNone(runtimeCoordinator)) return yield* publishEnrichment;
 
         const publishLiveCommands = runtimeCoordinator.value.watchAvailableCommands(
           instanceId,
@@ -735,15 +906,43 @@ export const AcpRegistryDriver: ProviderDriver<AcpRegistrySettings, AcpRegistryD
               ),
             ),
         );
-        const publishLiveConfiguration = runtimeCoordinator.value.watchLiveConfiguration(
-          instanceId,
-          (configuration) =>
-            liveSnapshotSemaphore.withPermit(
-              getSnapshot.pipe(
-                Effect.flatMap((current) => applyLiveConfiguration(current, configuration)),
-                Effect.flatMap(publishSnapshot),
-              ),
+        const publishLiveConfiguration = Ref.get(lastObservedLiveRevision).pipe(
+          Effect.flatMap((afterRevision) =>
+            runtimeCoordinator.value.watchLiveConfiguration(
+              instanceId,
+              (configuration, revision) =>
+                liveSnapshotSemaphore.withPermit(
+                  Effect.gen(function* () {
+                    const live =
+                      yield* runtimeCoordinator.value.getLiveConfigurationWithRevision(instanceId);
+                    if (live.revision !== revision && Option.isNone(live.configuration)) return;
+                    yield* observeLiveRevision(revision);
+                    const updated = yield* applyLiveConfiguration(
+                      yield* getSnapshot,
+                      configuration,
+                    );
+                    const models = builtInModels(updated);
+                    if (
+                      configuration.models.length > 0 &&
+                      isAuthoritativeCatalog(models, configuration.modelsFromModelSelect === true)
+                    ) {
+                      yield* Ref.set(lastAcceptedCatalog, models);
+                    }
+                    const now = yield* Clock.currentTimeMillis;
+                    yield* Ref.update(enrichmentCache, (cache) =>
+                      updateAcpRegistryEnrichmentCache({
+                        cache,
+                        configuration,
+                        customModels: effectiveConfig.customModels,
+                        now,
+                      }),
+                    );
+                    yield* publishSnapshot(updated);
+                  }),
+                ),
+              { afterRevision },
             ),
+          ),
         );
         const publishUrlAuthAction = runtimeCoordinator.value.watchUrlAuthAction(
           instanceId,
@@ -758,7 +957,7 @@ export const AcpRegistryDriver: ProviderDriver<AcpRegistrySettings, AcpRegistryD
               ),
             ),
         );
-        return Effect.all(
+        yield* Effect.all(
           [publishEnrichment, publishLiveCommands, publishLiveConfiguration, publishUrlAuthAction],
           {
             concurrency: "unbounded",
@@ -802,13 +1001,6 @@ export const AcpRegistryDriver: ProviderDriver<AcpRegistrySettings, AcpRegistryD
         : provided;
     };
 
-    const clearLiveState = (
-      Option.isSome(runtimeCoordinator)
-        ? runtimeCoordinator.value
-            .clearLiveConfiguration(instanceId)
-            .pipe(Effect.andThen(runtimeCoordinator.value.clearAvailableCommands(instanceId)))
-        : Effect.void
-    ).pipe(Effect.andThen(Ref.set(learnedModels, [])));
     const controller = yield* AcpRegistryAuth.makeAcpRegistryAuth({
       instanceId,
       settings: effectiveConfig,
@@ -851,6 +1043,9 @@ export const AcpRegistryDriver: ProviderDriver<AcpRegistrySettings, AcpRegistryD
         ...snapshot,
         refresh: snapshot.refresh.pipe(Effect.tap(() => controller.refreshMethods ?? Effect.void)),
       },
+      invalidateCaches: liveSnapshotSemaphore
+        .withPermit(clearLiveState.pipe(Effect.andThen(invalidateEnrichmentCache)))
+        .pipe(Effect.andThen(hasRegistryAgent ? catalog.invalidateIndex() : Effect.void)),
       orchestrationAdapter,
       textGeneration: yield* makeAcpRegistryTextGeneration({
         instanceId,
@@ -899,7 +1094,19 @@ export const AcpRegistryDriver: ProviderDriver<AcpRegistrySettings, AcpRegistryD
               baseUrl,
               ...(headers === undefined ? {} : { headers }),
             }),
-          ).pipe(Effect.tap(() => liveSnapshotSemaphore.withPermit(invalidateEnrichmentCache))),
+          ).pipe(
+            Effect.tap(() =>
+              liveSnapshotSemaphore.withPermit(
+                (Option.isSome(runtimeCoordinator)
+                  ? runtimeCoordinator.value.clearLiveConfiguration(instanceId)
+                  : Effect.void
+                ).pipe(
+                  Effect.andThen(Ref.set(lastAcceptedCatalog, null)),
+                  Effect.andThen(invalidateEnrichmentCache),
+                ),
+              ),
+            ),
+          ),
         disableProvider: ({ cwd, providerId }) =>
           provideAcpManagementServices(
             disableAcpRegistryProvider({
@@ -909,7 +1116,19 @@ export const AcpRegistryDriver: ProviderDriver<AcpRegistrySettings, AcpRegistryD
               environment: processEnvironment,
               providerId,
             }),
-          ).pipe(Effect.tap(() => liveSnapshotSemaphore.withPermit(invalidateEnrichmentCache))),
+          ).pipe(
+            Effect.tap(() =>
+              liveSnapshotSemaphore.withPermit(
+                (Option.isSome(runtimeCoordinator)
+                  ? runtimeCoordinator.value.clearLiveConfiguration(instanceId)
+                  : Effect.void
+                ).pipe(
+                  Effect.andThen(Ref.set(lastAcceptedCatalog, null)),
+                  Effect.andThen(invalidateEnrichmentCache),
+                ),
+              ),
+            ),
+          ),
         logout: (cwd) => {
           const logout = logoutAcpRegistry({
             instanceId,
