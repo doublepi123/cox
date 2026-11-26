@@ -1,9 +1,14 @@
 import { assert, it } from "@effect/vitest";
 import { ProjectId, RunId, ThreadId } from "@t3tools/contracts";
+import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import * as HostProcess from "@t3tools/shared/HostProcess";
+import * as NetService from "@t3tools/shared/Net";
+import * as ConfigProvider from "effect/ConfigProvider";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
+import * as Layer from "effect/Layer";
+import { CliError, Command } from "effect/cli";
 import * as Option from "effect/Option";
 import * as Path from "effect/Path";
 
@@ -13,6 +18,7 @@ import {
   readLatestMessages,
   readOutputSchema,
   type ThreadTools,
+  threadCommand,
   waitForRun,
 } from "./thread.ts";
 
@@ -286,6 +292,45 @@ it.effect("show returns a --messages count larger than one call can spread", () 
       latest(200_000),
     );
   }),
+);
+
+it.effect("show rejects a negative --messages before reaching the server", () =>
+  Effect.gen(function* () {
+    const fs = yield* FileSystem.FileSystem;
+    const baseDir = yield* fs.makeTempDirectoryScoped({ prefix: "cox-thread-show-messages-" });
+    const show = (messages: string) =>
+      Command.runWith(threadCommand, { version: "0.0.0" })([
+        "show",
+        threadId,
+        "--messages",
+        messages,
+        "--base-dir",
+        baseDir,
+      ]).pipe(Effect.flip);
+
+    const error = yield* show("-1");
+    if (!CliError.isCliError(error) || error._tag !== "ShowHelp") {
+      assert.fail(`Expected ShowHelp, got ${String(error)}`);
+    }
+    const flagError = error.errors[0];
+    if (flagError?._tag !== "InvalidValue") {
+      assert.fail(`Expected InvalidValue, got ${String(flagError?._tag)}`);
+    }
+    assert.strictEqual(flagError.option, "messages");
+    assert.strictEqual(flagError.value, "-1");
+    // Zero is valid: it shows the thread's state with no messages.
+    assert.strictEqual((yield* show("0"))._tag, "ThreadServerNotRunningError");
+  }).pipe(
+    Effect.scoped,
+    Effect.provide(
+      Layer.mergeAll(
+        NodeServices.layer,
+        NodeCrypto.layer,
+        NetService.layer,
+        ConfigProvider.layer(ConfigProvider.fromEnv({ env: { COX_PORT: "3773" } })),
+      ),
+    ),
+  ),
 );
 
 it.effect("show gives the latest run's last error only when that run did not complete", () =>
