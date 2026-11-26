@@ -127,6 +127,19 @@ function xml(source: string, extension: string): XmlNode {
     }
     if (htmlEntities && node.name === "ruby" && stack[1]?.name === "html")
       separateRubyReadings(node);
+    const alt = tag.attributes.alt;
+    if (
+      htmlEntities &&
+      node.name === "img" &&
+      stack[1]?.name === "html" &&
+      alt?.trim() &&
+      !/(?:^|;)\s*(?:display\s*:\s*none|visibility\s*:\s*(?:hidden|collapse))\s*(?:!important\s*)?(?:;|$)/i.test(
+        String(tag.attributes.style ?? ""),
+      )
+    ) {
+      node.children.push(alt);
+      node.hasText = true;
+    }
     if (!node.hasText) return;
     parent.hasText = true;
     if (node.name === "Choice") parent.hasTextChoice = true;
