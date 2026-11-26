@@ -1,3 +1,4 @@
+import { SharedTooltipTrigger } from "../ui/shared-tooltip";
 import { useTranslation } from "../../i18n";
 import {
   AuthOrchestrationOperateScope,
@@ -24,7 +25,7 @@ import {
 } from "react";
 import { isTrailingDoubleClick } from "../Sidebar.logic";
 import { Badge } from "../ui/badge";
-import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
+
 import { toastManager } from "../ui/toast";
 import { useThreadActionMenu } from "~/hooks/useThreadActionMenu";
 import { readLocalApi } from "~/localApi";
@@ -346,8 +347,7 @@ export const ChatHeader = memo(function ChatHeader({
         {activeProject ? (
           <>
             <WorkspaceBreadcrumbItem className="shrink">
-              <Tooltip>
-                <TooltipTrigger
+              <SharedTooltipTrigger
                   render={
                     <button
                       type="button"
@@ -356,17 +356,19 @@ export const ChatHeader = memo(function ChatHeader({
                       className="inline-flex min-w-0 max-w-full cursor-pointer items-center gap-1.5 rounded-sm text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
                     />
                   }
+                side="top"
+                label={
+                  <>
+                    {t("New thread in")}
+                    {activeProjectName}
+                  </>
+                }
                 >
                   <ProjectFavicon project={activeProject} className="size-3.5" />
                   <WorkspaceBreadcrumbText className="max-w-40">
                     {activeProjectName}
                   </WorkspaceBreadcrumbText>
-                </TooltipTrigger>
-                <TooltipPopup side="top">
-                  {t("New thread in")}
-                  {activeProjectName}
-                </TooltipPopup>
-              </Tooltip>
+              </SharedTooltipTrigger>
             </WorkspaceBreadcrumbItem>
             <WorkspaceBreadcrumbSeparator>
               <WorkspaceBreadcrumbText>/</WorkspaceBreadcrumbText>
@@ -376,8 +378,7 @@ export const ChatHeader = memo(function ChatHeader({
         {parentThreadLink ? (
           <>
             <WorkspaceBreadcrumbItem>
-              <Tooltip>
-                <TooltipTrigger
+              <SharedTooltipTrigger
                   render={
                     <button
                       type="button"
@@ -386,6 +387,8 @@ export const ChatHeader = memo(function ChatHeader({
                       className="inline-flex min-w-0 max-w-full cursor-pointer items-center rounded-sm text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
                     />
                   }
+                side="top"
+                label={parentThreadLink.title}
                 >
                   <WorkspaceBreadcrumbText
                     aria-hidden
@@ -398,9 +401,7 @@ export const ChatHeader = memo(function ChatHeader({
                       ...
                     </span>
                   ) : null}
-                </TooltipTrigger>
-                <TooltipPopup side="top">{parentThreadLink.title}</TooltipPopup>
-              </Tooltip>
+              </SharedTooltipTrigger>
             </WorkspaceBreadcrumbItem>
             <WorkspaceBreadcrumbSeparator>
               <WorkspaceBreadcrumbText>/</WorkspaceBreadcrumbText>
@@ -430,8 +431,7 @@ export const ChatHeader = memo(function ChatHeader({
               onKeyDown={handleRenameKeyDown}
             />
           ) : isServerThread ? (
-            <Tooltip>
-              <TooltipTrigger
+            <SharedTooltipTrigger
                 render={
                   <button
                     ref={titleButtonRef}
@@ -444,6 +444,8 @@ export const ChatHeader = memo(function ChatHeader({
                     className="group/thread-title inline-flex min-w-0 max-w-full cursor-pointer items-center gap-1 rounded-sm text-left focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring max-sm:min-h-11 max-sm:flex-1 max-sm:overflow-hidden max-sm:rounded-md"
                   />
                 }
+              side="top"
+              label={activeThreadTitle}
               >
                 <h2
                   className="min-w-0 max-sm:flex-1 max-sm:overflow-hidden"
@@ -456,12 +458,9 @@ export const ChatHeader = memo(function ChatHeader({
                   data-thread-title-chevron
                   className="size-3.5 shrink-0 text-muted-foreground opacity-0 transition-opacity group-hover/thread-title:opacity-100 group-focus-visible/thread-title:opacity-100"
                 />
-              </TooltipTrigger>
-              <TooltipPopup side="top">{activeThreadTitle}</TooltipPopup>
-            </Tooltip>
+            </SharedTooltipTrigger>
           ) : (
-            <Tooltip>
-              <TooltipTrigger
+            <SharedTooltipTrigger
                 render={
                   <h2
                     aria-label={activeThreadTitle}
@@ -469,21 +468,22 @@ export const ChatHeader = memo(function ChatHeader({
                     dir={textDirection(activeThreadTitle)}
                   />
                 }
+              side="top"
+              label={activeThreadTitle}
               >
                 <WorkspaceBreadcrumbText>{activeThreadTitle}</WorkspaceBreadcrumbText>
-              </TooltipTrigger>
-              <TooltipPopup side="top">{activeThreadTitle}</TooltipPopup>
-            </Tooltip>
+            </SharedTooltipTrigger>
           )}
           {renamingTitle === null && activeThreadLinkOrigin ? (
-            <Tooltip>
-              <TooltipTrigger render={<Badge variant="info" size="sm" />}>
+            <SharedTooltipTrigger
+              render={<Badge variant="info" size="sm" />}
+              side="top"
+              label={
+                <>Started by an agent on {activeThreadLinkOrigin} through a linked environment.</>
+              }
+            >
                 From {activeThreadLinkOrigin}
-              </TooltipTrigger>
-              <TooltipPopup side="top">
-                Started by an agent on {activeThreadLinkOrigin} through a linked environment.
-              </TooltipPopup>
-            </Tooltip>
+            </SharedTooltipTrigger>
           ) : null}
           <MobileBranchOverflowTrigger />
         </WorkspaceBreadcrumbItem>
@@ -491,8 +491,7 @@ export const ChatHeader = memo(function ChatHeader({
       {computerControlState &&
       computerControlLabel &&
       (computerControlPlatform === "darwin" || computerControlPlatform === "win32") ? (
-        <Tooltip>
-          <TooltipTrigger
+        <SharedTooltipTrigger
             render={
               <Badge
                 size="control"
@@ -520,14 +519,14 @@ export const ChatHeader = memo(function ChatHeader({
                 }
               />
             }
+          side="bottom"
+          align="end"
+          textFormat="pre"
+          label={<>{computerControlTooltip}</>}
           >
             <MonitorIcon aria-hidden />
             <span className="max-sm:hidden">{t("Computer control")}</span>
-          </TooltipTrigger>
-          <TooltipPopup side="bottom" align="end" textFormat="pre">
-            {computerControlTooltip}
-          </TooltipPopup>
-        </Tooltip>
+        </SharedTooltipTrigger>
       ) : null}
     </div>
   );

@@ -1,3 +1,5 @@
+import { SharedTooltipTrigger } from "../ui/shared-tooltip";
+import { Tooltip, TooltipTrigger, TooltipPopup } from "../ui/tooltip";
 import { composerFileLinksToPlainText } from "@t3tools/shared/composerInlineTokens";
 import { useTranslation } from "../../i18n";
 import { scopeThreadRef } from "@t3tools/client-runtime/environment";
@@ -38,7 +40,7 @@ import { useAtomCommand } from "../../state/use-atom-command";
 import { isImageAttachment, type ChatMessage } from "../../types";
 import { cn } from "~/lib/utils";
 import { Button, InlineButton } from "../ui/button";
-import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
+
 import type { TimestampFormat } from "@t3tools/contracts/settings";
 import { GuestMessageName } from "./guestMessageStyle";
 import { TimelineRowTimestamp } from "./TimelineRowParts";
@@ -315,26 +317,28 @@ export function QueuedRunsControl({
               >
                 {canSendRun(item.freshContext) && !isEditing ? (
                   <>
-                    <Tooltip>
-                      <TooltipTrigger render={<span className="flex shrink-0" />}>
-                        <Button
-                          size="xs"
-                          variant="ghost-muted"
-                          disabled={item.runId === null || busyRunId !== null}
-                          onClick={() => {
-                            if (item.runId !== null) {
-                              void sendQueuedMessage(item.runId);
-                            }
-                          }}
-                        >
-                          <ArrowUpIcon />
-                          {t("Send now")}
-                        </Button>
-                      </TooltipTrigger>
-                      <TooltipPopup>
-                        {`${workflow?.canSendNow ? "Start a turn with this message" : workflow?.promoteSkipsCompaction ? "Skip compaction and send this message" : movesCommandFirst ? t("Move this command to the front of the queue") : "Send into the current turn"}${item.serverIndex === 0 && props.steerShortcutLabel ? ` (${props.steerShortcutLabel})` : ""}`}
-                      </TooltipPopup>
-                    </Tooltip>
+                    <SharedTooltipTrigger
+                      render={<span className="flex shrink-0" />}
+                      label={
+                        <>
+                          {`${workflow?.canSendNow ? "Start a turn with this message" : workflow?.promoteSkipsCompaction ? "Skip compaction and send this message" : movesCommandFirst ? t("Move this command to the front of the queue") : "Send into the current turn"}${item.serverIndex === 0 && props.steerShortcutLabel ? ` (${props.steerShortcutLabel})` : ""}`}
+                        </>
+                      }
+                    >
+                      <Button
+                        size="xs"
+                        variant="ghost-muted"
+                        disabled={item.runId === null || busyRunId !== null}
+                        onClick={() => {
+                          if (item.runId !== null) {
+                            void sendQueuedMessage(item.runId);
+                          }
+                        }}
+                      >
+                        <ArrowUpIcon />
+                        {t("Send now")}
+                      </Button>
+                    </SharedTooltipTrigger>
                   </>
                 ) : null}
                 {item.pending ? (
@@ -359,48 +363,48 @@ export function QueuedRunsControl({
                   <>
                     {queued.length > 1 ? (
                       <>
-                        <Tooltip>
-                          <TooltipTrigger render={<span className="flex shrink-0" />}>
-                            <Button
-                              size="icon-xs"
-                              variant="ghost-muted"
-                              aria-label={t("Move queued message up")}
-                              disabled={
-                                item.serverIndex === null ||
-                                item.serverIndex === 0 ||
-                                busyRunId !== null
-                              }
-                              onClick={() => {
-                                if (item.serverIndex !== null)
-                                  void moveQueuedMessage(item.serverIndex, "up");
-                              }}
-                            >
-                              <ArrowUpIcon />
-                            </Button>
-                          </TooltipTrigger>
-                          <TooltipPopup>{t("Move queued message up")}</TooltipPopup>
-                        </Tooltip>
-                        <Tooltip>
-                          <TooltipTrigger render={<span className="flex shrink-0" />}>
-                            <Button
-                              size="icon-xs"
-                              variant="ghost-muted"
-                              aria-label={t("Move queued message down")}
-                              disabled={
-                                item.serverIndex === null ||
-                                item.serverIndex >= queued.length - 1 ||
-                                busyRunId !== null
-                              }
-                              onClick={() => {
-                                if (item.serverIndex !== null)
-                                  void moveQueuedMessage(item.serverIndex, "down");
-                              }}
-                            >
-                              <ArrowDownIcon />
-                            </Button>
-                          </TooltipTrigger>
-                          <TooltipPopup>{t("Move queued message down")}</TooltipPopup>
-                        </Tooltip>
+                        <SharedTooltipTrigger
+                          render={<span className="flex shrink-0" />}
+                          label={t("Move queued message up")}
+                        >
+                          <Button
+                            size="icon-xs"
+                            variant="ghost-muted"
+                            aria-label={t("Move queued message up")}
+                            disabled={
+                              item.serverIndex === null ||
+                              item.serverIndex === 0 ||
+                              busyRunId !== null
+                            }
+                            onClick={() => {
+                              if (item.serverIndex !== null)
+                                void moveQueuedMessage(item.serverIndex, "up");
+                            }}
+                          >
+                            <ArrowUpIcon />
+                          </Button>
+                        </SharedTooltipTrigger>
+                        <SharedTooltipTrigger
+                          render={<span className="flex shrink-0" />}
+                          label={t("Move queued message down")}
+                        >
+                          <Button
+                            size="icon-xs"
+                            variant="ghost-muted"
+                            aria-label={t("Move queued message down")}
+                            disabled={
+                              item.serverIndex === null ||
+                              item.serverIndex >= queued.length - 1 ||
+                              busyRunId !== null
+                            }
+                            onClick={() => {
+                              if (item.serverIndex !== null)
+                                void moveQueuedMessage(item.serverIndex, "down");
+                            }}
+                          >
+                            <ArrowDownIcon />
+                          </Button>
+                        </SharedTooltipTrigger>
                       </>
                     ) : null}
                     <Tooltip>
@@ -435,24 +439,22 @@ export function QueuedRunsControl({
                           `${t("Edit in the composer")}${item.serverIndex === queued.length - 1 && props.editShortcutLabel ? ` (${props.editShortcutLabel})` : ""}`}
                       </TooltipPopup>
                     </Tooltip>
-                    <Tooltip>
-                      <TooltipTrigger
-                        render={
-                          <Button
-                            size="icon-xs"
-                            variant="ghost-muted"
-                            aria-label={t("Remove queued message")}
-                            disabled={item.runId === null || busyRunId !== null}
-                            onClick={() => {
-                              if (item.runId !== null) void remove(item.runId);
-                            }}
-                          />
-                        }
-                      >
-                        <XIcon />
-                      </TooltipTrigger>
-                      <TooltipPopup>{t("Remove from queue")}</TooltipPopup>
-                    </Tooltip>
+                    <SharedTooltipTrigger
+                      render={
+                        <Button
+                          size="icon-xs"
+                          variant="ghost-muted"
+                          aria-label={t("Remove queued message")}
+                          disabled={item.runId === null || busyRunId !== null}
+                          onClick={() => {
+                            if (item.runId !== null) void remove(item.runId);
+                          }}
+                        />
+                      }
+                      label={t("Remove from queue")}
+                    >
+                      <XIcon />
+                    </SharedTooltipTrigger>
                   </>
                 )}
               </QueuedMessage>

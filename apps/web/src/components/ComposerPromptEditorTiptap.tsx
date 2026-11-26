@@ -1,3 +1,4 @@
+import { SharedTooltipTrigger } from "./ui/shared-tooltip";
 import { Paragraph } from "@tiptap/extension-paragraph";
 import { documentChipKindForFileName } from "~/pierre-icons";
 import { isProviderSkillUserInvocable } from "@t3tools/client-runtime/providerSkills";
@@ -131,7 +132,7 @@ import {
   ComposerContextRecordsContext,
 } from "./composerContextPresentation";
 import type { AssistantCitationSourceAnchor } from "~/lib/assistantTextSelection";
-import { Tooltip, TooltipPopup, TooltipTrigger } from "./ui/tooltip";
+
 import { ComposerCodeBlockNodeView } from "./chat/ComposerCodeBlockNodeView";
 import { resolveAssistantCitationCommentDismissal } from "./chat/assistantCitationCommentDismissal";
 import { composerCodeBlockHighlight } from "./composerCodeBlockHighlight";
@@ -305,16 +306,19 @@ function ComposerMentionNodeView({ node }: NodeViewProps) {
   );
   return (
     <NodeViewWrapper as="span" className={CHIP_NODE_SELECTION_CLASS_NAME}>
-      <Tooltip>
-        <TooltipTrigger render={chip} />
-        <TooltipPopup side="top" interactive>
+      <SharedTooltipTrigger
+        render={chip}
+        side="top"
+        label={
+          <>
           <WorkspaceEntryTooltip
             path={path}
             environmentId={actions.environmentId}
             cwd={actions.cwd}
           />
-        </TooltipPopup>
-      </Tooltip>
+          </>
+        }
+      />
     </NodeViewWrapper>
   );
 }

@@ -1,8 +1,9 @@
+import { SharedTooltipTrigger } from "~/components/ui/shared-tooltip";
 /* oxlint-disable react/no-array-index-key -- Positions identify source rows and columns. */
 import { useEffect, useEffectEvent, useLayoutEffect, useRef, useState } from "react";
 import { useClientSettings } from "~/hooks/useSettings";
 import { observeResize } from "~/lib/observeResize";
-import { Tooltip, TooltipPopup, TooltipTrigger } from "~/components/ui/tooltip";
+
 import { PREVIEW_PAGE_ROWS } from "./largeTextProtocol";
 
 export default function VirtualTablePreview(props: {
@@ -141,21 +142,20 @@ export default function VirtualTablePreview(props: {
               <div className="sticky left-0 z-10 w-14 shrink-0 border-r border-border bg-background" />
               <div style={{ width: offset(firstColumn), flexShrink: 0 }} />
               {columns.map((column) => (
-                <Tooltip key={column}>
-                  <TooltipTrigger
-                    render={
-                      <div
-                        role="columnheader"
-                        aria-colindex={column + 1}
-                        className="shrink-0 overflow-hidden border-r border-border/40 px-3 py-1.5 text-ellipsis whitespace-pre"
-                        style={{ width: sizes[column] }}
-                      >
-                        {props.header?.[column] ?? columnLabel(column)}
-                      </div>
-                    }
-                  />
-                  <TooltipPopup>{props.header?.[column] ?? columnLabel(column)}</TooltipPopup>
-                </Tooltip>
+                <SharedTooltipTrigger
+                  key={column}
+                  render={
+                    <div
+                      role="columnheader"
+                      aria-colindex={column + 1}
+                      className="shrink-0 overflow-hidden border-r border-border/40 px-3 py-1.5 text-ellipsis whitespace-pre"
+                      style={{ width: sizes[column] }}
+                    >
+                      {props.header?.[column] ?? columnLabel(column)}
+                    </div>
+                  }
+                  label={props.header?.[column] ?? columnLabel(column)}
+                />
               ))}
             </div>
           ) : null}

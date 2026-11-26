@@ -1,3 +1,4 @@
+import { SharedTooltipTrigger } from "./ui/shared-tooltip";
 import { useTranslation } from "../i18n";
 import ChatMarkdown from "./ChatMarkdown";
 import { isSvgAttachment } from "@t3tools/shared/image";
@@ -45,7 +46,7 @@ import {
   type ContextPresentationCapability,
 } from "./contextPresentationRegistry";
 import type { ContextChipKind } from "./ContextChip";
-import { Tooltip, TooltipPopup, TooltipTrigger } from "./ui/tooltip";
+
 import {
   ContextChipPopover,
   ContextChipShell,
@@ -257,22 +258,20 @@ function ImageContextChip(props: {
   const actions = use(ComposerContextActionsContext);
   const suffix = useUploadStatusSuffix(props.record.id, props.upload);
   return (
-    <Tooltip>
-      <TooltipTrigger
-        render={
-          <ImageChipButton
-            name={props.record.name}
-            previewUrl={props.record.previewUrl}
-            size={formatAttachmentSize(props.record.sizeBytes)}
-            suffix={suffix}
-            onClick={() => actions.expandImage(props.record.id)}
-          />
-        }
-      />
-      <TooltipPopup side="top" textFormat="pre">
-        {attachmentTooltip(props.record, props.upload)}
-      </TooltipPopup>
-    </Tooltip>
+    <SharedTooltipTrigger
+      render={
+        <ImageChipButton
+          name={props.record.name}
+          previewUrl={props.record.previewUrl}
+          size={formatAttachmentSize(props.record.sizeBytes)}
+          suffix={suffix}
+          onClick={() => actions.expandImage(props.record.id)}
+        />
+      }
+      side="top"
+      textFormat="pre"
+      label={<>{attachmentTooltip(props.record, props.upload)}</>}
+    />
   );
 }
 

@@ -1,3 +1,4 @@
+import { SharedTooltipTrigger } from "../ui/shared-tooltip";
 import { useTranslation } from "../../i18n";
 import {
   capitalizeTerm,
@@ -32,7 +33,7 @@ import { Button } from "../ui/button";
 import { PullRequestEditButton } from "./PullRequestEditButton";
 import { Collapsible, CollapsiblePanel, CollapsibleTrigger } from "../ui/collapsible";
 import { toastManager } from "../ui/toast";
-import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
+
 import {
   buildPullRequestTimeline,
   groupPullRequestTimelineConversations,
@@ -187,8 +188,7 @@ function AddToChatButton({
   const onAddToChat = reactions.onAddToChat;
   return onAddToChat === undefined ? null : (
     <span className="-mt-1 shrink-0">
-      <Tooltip>
-        <TooltipTrigger
+      <SharedTooltipTrigger
           render={
             <Button
               size="icon-xs"
@@ -197,11 +197,10 @@ function AddToChatButton({
               onClick={() => onAddToChat(comment)}
             />
           }
+        label={"Add to chat"}
         >
           <MessageSquarePlusIcon className="size-3" />
-        </TooltipTrigger>
-        <TooltipPopup>Add to chat</TooltipPopup>
-      </Tooltip>
+      </SharedTooltipTrigger>
     </span>
   );
 }
@@ -619,8 +618,8 @@ function ReviewVerdictEvent({
         <div className="min-w-0 flex-1">
           <h2 className="flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-1 text-xs">
             <ActorName actor={event.actor} />
-            <Tooltip disabled={!stale}>
-              <TooltipTrigger
+            <SharedTooltipTrigger
+              disabled={!stale}
                 render={
                   <span
                     className={cn(
@@ -631,12 +630,11 @@ function ReviewVerdictEvent({
                     )}
                   />
                 }
+              label={pullRequestReviewOutcomeStaleLabel(outcome)}
               >
                 {pullRequestReviewOutcomeLabel(outcome)}
                 {stale ? <span className="sr-only">, before the latest commits</span> : null}
-              </TooltipTrigger>
-              <TooltipPopup>{pullRequestReviewOutcomeStaleLabel(outcome)}</TooltipPopup>
-            </Tooltip>
+            </SharedTooltipTrigger>
           </h2>
           <div className="mt-0.5 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
             <PullRequestMetaLine className="flex-wrap text-2xs text-muted-foreground">

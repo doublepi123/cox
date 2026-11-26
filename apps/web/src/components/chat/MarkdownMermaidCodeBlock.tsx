@@ -1,9 +1,10 @@
+import { SharedTooltipTrigger } from "../ui/shared-tooltip";
 import { CodeIcon, WorkflowIcon } from "lucide-react";
 import { Suspense, use, useState, type ReactNode } from "react";
 
 import { RenderErrorBoundary } from "../RenderErrorBoundary";
 import { Button } from "../ui/button";
-import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
+
 import { MarkdownCodeBlock } from "./MarkdownCodeBlock";
 import { findRevealRef, MarkdownFindContext } from "./markdownFindContext";
 import { MermaidDiagram } from "./MermaidDiagram";
@@ -40,22 +41,21 @@ export function MarkdownMermaidCodeBlock({
       diagram={showDiagram}
       viewToggle={
         isStreaming ? null : (
-          <Tooltip>
-            <TooltipTrigger
-              render={
-                <Button
-                  type="button"
-                  variant="ghost-muted"
-                  size="icon-xs"
-                  onClick={() => setShowCode((value) => !value)}
-                  aria-label={toggleLabel}
-                />
-              }
-            >
-              {showCode ? <WorkflowIcon className="size-3" /> : <CodeIcon className="size-3" />}
-            </TooltipTrigger>
-            <TooltipPopup side="top">{toggleLabel}</TooltipPopup>
-          </Tooltip>
+          <SharedTooltipTrigger
+            render={
+              <Button
+                type="button"
+                variant="ghost-muted"
+                size="icon-xs"
+                onClick={() => setShowCode((value) => !value)}
+                aria-label={toggleLabel}
+              />
+            }
+            side="top"
+            label={toggleLabel}
+          >
+            {showCode ? <WorkflowIcon className="size-3" /> : <CodeIcon className="size-3" />}
+          </SharedTooltipTrigger>
         )
       }
     >

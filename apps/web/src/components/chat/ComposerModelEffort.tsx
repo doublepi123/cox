@@ -1,3 +1,4 @@
+import { SharedTooltipTrigger } from "../ui/shared-tooltip";
 import { useTranslation } from "../../i18n";
 import {
   buildTraitsTriggerDisplay,
@@ -12,7 +13,7 @@ import { type KeyboardEvent, type ReactNode, use, useRef } from "react";
 
 import { cn } from "~/lib/utils";
 import { Menu, MenuPopup, MenuTrigger } from "../ui/menu";
-import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
+
 import type { ComposerControlSize } from "./ComposerControl";
 import { ComposerPermissionsSection, type RuntimeModeOption } from "./ComposerFooterControls";
 import { composerFloatingLayerProps, focusCheckedPermission } from "./composerEventScope";
@@ -223,12 +224,17 @@ function ColumnRow(props: {
   );
   if (!props.description) return <button {...rowProps}>{content}</button>;
   return (
-    <Tooltip>
-      <TooltipTrigger render={<button {...rowProps} />}>{content}</TooltipTrigger>
-      <TooltipPopup side="right">
-        <div className="max-w-56">{props.description}</div>
-      </TooltipPopup>
-    </Tooltip>
+    <SharedTooltipTrigger
+      render={<button {...rowProps} />}
+      side="right"
+      label={
+        <>
+          <div className="max-w-56">{props.description}</div>
+        </>
+      }
+    >
+      {content}
+    </SharedTooltipTrigger>
   );
 }
 
@@ -479,10 +485,9 @@ function SpeedSegment(props: {
   );
   if (!props.description || sheet) return <button {...buttonProps}>{content}</button>;
   return (
-    <Tooltip>
-      <TooltipTrigger render={<button {...buttonProps} />}>{content}</TooltipTrigger>
-      <TooltipPopup side="top">{props.description}</TooltipPopup>
-    </Tooltip>
+    <SharedTooltipTrigger render={<button {...buttonProps} />} side="top" label={props.description}>
+      {content}
+    </SharedTooltipTrigger>
   );
 }
 

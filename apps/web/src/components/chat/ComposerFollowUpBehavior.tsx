@@ -1,3 +1,4 @@
+import { SharedTooltipTrigger } from "../ui/shared-tooltip";
 import { ChevronDownIcon, CornerUpRightIcon, ListPlusIcon } from "lucide-react";
 
 import { updateClientSettings, useClientSettings } from "../../hooks/useSettings";
@@ -12,7 +13,7 @@ import {
   MenuRadioItemIndicator,
   MenuTrigger,
 } from "../ui/menu";
-import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
+
 import { ComposerControl, type ComposerControlSize } from "./ComposerControl";
 import { useComposerMenuProps } from "./composerEventScope";
 import { useComposerMenuState } from "./useComposerMenuState";
@@ -31,27 +32,23 @@ export function ComposerFollowUpBehavior({
   const label = t(behavior === "queue" ? "Queue" : "Steer");
   return (
     <Menu open={open} onOpenChange={setOpen}>
-      <Tooltip>
-        <TooltipTrigger
-          render={
-            <MenuTrigger
-              render={
-                <ComposerControl
-                  size={size}
-                  className={size === "sm" ? "max-sm:min-h-11" : undefined}
-                  aria-label={t("Follow-up behavior: {behavior}", { behavior: label })}
-                />
-              }
-            />
-          }
-        >
-          <span data-composer-control-label>{label}</span>
-          <ChevronDownIcon aria-hidden="true" className="size-3" />
-        </TooltipTrigger>
-        <TooltipPopup>
-          {t("Choose how follow-up messages are sent while the agent runs.")}
-        </TooltipPopup>
-      </Tooltip>
+      <SharedTooltipTrigger
+        render={
+          <MenuTrigger
+            render={
+              <ComposerControl
+                size={size}
+                className={size === "sm" ? "max-sm:min-h-11" : undefined}
+                aria-label={t("Follow-up behavior: {behavior}", { behavior: label })}
+              />
+            }
+          />
+        }
+        label={<>{t("Choose how follow-up messages are sent while the agent runs.")}</>}
+      >
+        <span data-composer-control-label>{label}</span>
+        <ChevronDownIcon aria-hidden="true" className="size-3" />
+      </SharedTooltipTrigger>
       <MenuPopup align="end" side="top" {...menuProps}>
         <MenuGroup>
           <MenuGroupLabel>{t("Follow-up behavior")}</MenuGroupLabel>

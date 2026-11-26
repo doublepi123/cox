@@ -1,3 +1,4 @@
+import { SharedTooltipTrigger } from "../ui/shared-tooltip";
 import { useTranslation } from "../../i18n";
 import {
   AuthProvidersManageScope,
@@ -39,7 +40,7 @@ import {
   AlertDialogTitle,
 } from "../ui/alert-dialog";
 import { Button } from "../ui/button";
-import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
+
 import { UsageLimitsPooled } from "./UsageLimitsPooled";
 import { PROVIDER_PRESENTATION } from "./usageProviders";
 
@@ -59,20 +60,19 @@ export function barColor(driver: ServerProvider["driver"]): string {
 export function PaceIcon({ pace }: { readonly pace: LimitPace }) {
   const Icon = PACE[pace].icon;
   return (
-    <Tooltip>
-      <TooltipTrigger
-        render={
-          <span
-            role="img"
-            aria-label={PACE[pace].label}
-            className="inline-flex text-muted-foreground"
-          />
-        }
-      >
-        <Icon className="size-3.5" aria-hidden />
-      </TooltipTrigger>
-      <TooltipPopup side="top">{PACE[pace].label}</TooltipPopup>
-    </Tooltip>
+    <SharedTooltipTrigger
+      render={
+        <span
+          role="img"
+          aria-label={PACE[pace].label}
+          className="inline-flex text-muted-foreground"
+        />
+      }
+      side="top"
+      label={PACE[pace].label}
+    >
+      <Icon className="size-3.5" aria-hidden />
+    </SharedTooltipTrigger>
   );
 }
 
@@ -137,57 +137,60 @@ function WindowBar({
   }${resetsIn ? `, ${resetsIn}` : ""}`;
 
   return (
-    <Tooltip>
-      <TooltipTrigger
-        render={
+    <SharedTooltipTrigger
+      render={
+        <div
+          ref={barRef}
+          role="img"
+          aria-label={summary}
+          tabIndex={0}
+          className="relative h-6 cursor-default rounded-full outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+        />
+      }
+      side="top"
+      label={
+        <>
+          <div className="flex flex-col gap-0.5">
+            <span className="text-foreground">
+              {t("{count}% left", { count: remaining })}
+              {timeLeft !== null
+                ? ` · ${t("{count}% of the window left", { count: timeLeft })}`
+                : ""}
+            </span>
+            {timeLeft !== null ? (
+              <span className="text-muted-foreground">
+                {t("The line is where even spending would be.")}
+              </span>
+            ) : null}
+            {resetsAt ? (
+              <span className="text-muted-foreground">
+                {t("Resets")}
+                {resetsAt}
+                {resetsIn ? ` · ${resetsIn}` : ""}
+              </span>
+            ) : null}
+          </div>
+        </>
+      }
+    >
+      {/* Clip both layers so the gap exposes even a translucent composer surface. */}
+      <div className="absolute inset-0" style={paceMark?.gap}>
+        <div className="absolute inset-x-0 inset-y-1.5 rounded-full bg-muted" />
+        {remaining > 0 ? (
           <div
-            ref={barRef}
-            role="img"
-            aria-label={summary}
-            tabIndex={0}
-            className="relative h-6 cursor-default rounded-full outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
-          />
-        }
-      >
-        {/* Clip both layers so the gap exposes even a translucent composer surface. */}
-        <div className="absolute inset-0" style={paceMark?.gap}>
-          <div className="absolute inset-x-0 inset-y-1.5 rounded-full bg-muted" />
-          {remaining > 0 ? (
-            <div
-              className="absolute inset-y-1.5 left-0 rounded-full"
-              style={{ width: `${remaining}%`, backgroundColor: color }}
-            />
-          ) : null}
-        </div>
-        {paceMark ? (
-          <span
-            aria-hidden
-            className="absolute inset-y-1 w-0.5 -translate-x-1/2 rounded-full bg-foreground"
-            style={paceMark.tick}
+            className="absolute inset-y-1.5 left-0 rounded-full"
+            style={{ width: `${remaining}%`, backgroundColor: color }}
           />
         ) : null}
-      </TooltipTrigger>
-      <TooltipPopup side="top">
-        <div className="flex flex-col gap-0.5">
-          <span className="text-foreground">
-            {t("{count}% left", { count: remaining })}
-            {timeLeft !== null ? ` · ${t("{count}% of the window left", { count: timeLeft })}` : ""}
-          </span>
-          {timeLeft !== null ? (
-            <span className="text-muted-foreground">
-              {t("The line is where even spending would be.")}
-            </span>
-          ) : null}
-          {resetsAt ? (
-            <span className="text-muted-foreground">
-              {t("Resets")}
-              {resetsAt}
-              {resetsIn ? ` · ${resetsIn}` : ""}
-            </span>
-          ) : null}
-        </div>
-      </TooltipPopup>
-    </Tooltip>
+      </div>
+      {paceMark ? (
+        <span
+          aria-hidden
+          className="absolute inset-y-1 w-0.5 -translate-x-1/2 rounded-full bg-foreground"
+          style={paceMark.tick}
+        />
+      ) : null}
+    </SharedTooltipTrigger>
   );
 }
 

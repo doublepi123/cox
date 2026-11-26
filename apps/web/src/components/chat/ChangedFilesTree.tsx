@@ -1,3 +1,4 @@
+import { SharedTooltipTrigger } from "../ui/shared-tooltip";
 import { useTranslation } from "../../i18n";
 import { useSyncLayout } from "@legendapp/list/react";
 import { type OrchestrationV2CheckpointFileTotals, type RunId } from "@t3tools/contracts";
@@ -10,7 +11,7 @@ import { cn } from "~/lib/utils";
 import { DiffStatLabel, hasNonZeroStat } from "./DiffStatLabel";
 import { PierreEntryIcon } from "./PierreEntryIcon";
 import { Button } from "../ui/button";
-import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
+
 import { MiddleTruncate } from "../ui/middle-truncate";
 import { MorphIcon } from "~/components/MorphIcon";
 import { observeResize } from "~/lib/observeResize";
@@ -110,51 +111,47 @@ export const ChangedFilesCard = memo(function ChangedFilesCard(props: {
         </div>
         <div className="flex shrink-0 items-center gap-1">
           {hasDirectories && (
-            <Tooltip>
-              <TooltipTrigger
-                render={
-                  <Button
-                    type="button"
-                    size="icon-xs"
-                    variant="ghost-muted"
-                    aria-label={
-                      allDirectoriesExpanded ? "Collapse all folders" : "Expand all folders"
-                    }
-                    data-scroll-anchor-ignore
-                    onClick={() => {
-                      onToggleAllDirectories();
-                      syncTimelineLayout();
-                    }}
-                  />
-                }
-              >
-                <MorphIcon
-                  className="size-3"
-                  icon={allDirectoriesExpanded ? ChevronsDownUp : ChevronsUpDown}
-                />
-              </TooltipTrigger>
-              <TooltipPopup side="top">
-                {allDirectoriesExpanded ? "Collapse all folders" : "Expand all folders"}
-              </TooltipPopup>
-            </Tooltip>
-          )}
-          <Tooltip>
-            <TooltipTrigger
+            <SharedTooltipTrigger
               render={
                 <Button
                   type="button"
-                  size="xs"
+                  size="icon-xs"
                   variant="ghost-muted"
-                  aria-label={t("Open diff")}
-                  onClick={() => onOpenTurnDiff(runId, firstFilePath)}
+                  aria-label={
+                    allDirectoriesExpanded ? "Collapse all folders" : "Expand all folders"
+                  }
+                  data-scroll-anchor-ignore
+                  onClick={() => {
+                    onToggleAllDirectories();
+                    syncTimelineLayout();
+                  }}
                 />
               }
+              side="top"
+              label={<>{allDirectoriesExpanded ? "Collapse all folders" : "Expand all folders"}</>}
             >
-              <FileDiffIcon className="size-3" />
-              <span className="hidden @[24rem]/changed-files:inline">{t("Open diff")}</span>
-            </TooltipTrigger>
-            <TooltipPopup side="top">Open the full diff</TooltipPopup>
-          </Tooltip>
+              <MorphIcon
+                className="size-3"
+                icon={allDirectoriesExpanded ? ChevronsDownUp : ChevronsUpDown}
+              />
+            </SharedTooltipTrigger>
+          )}
+          <SharedTooltipTrigger
+            render={
+              <Button
+                type="button"
+                size="xs"
+                variant="ghost-muted"
+                aria-label={t("Open diff")}
+                onClick={() => onOpenTurnDiff(runId, firstFilePath)}
+              />
+            }
+            side="top"
+            label={"Open the full diff"}
+          >
+            <FileDiffIcon className="size-3" />
+            <span className="hidden @[24rem]/changed-files:inline">{t("Open diff")}</span>
+          </SharedTooltipTrigger>
         </div>
       </div>
       <div className="p-2">

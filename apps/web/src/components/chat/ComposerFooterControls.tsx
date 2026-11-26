@@ -1,3 +1,4 @@
+import { SharedTooltipTrigger } from "../ui/shared-tooltip";
 import { useTranslation } from "../../i18n";
 import type {
   ModelSelection,
@@ -12,7 +13,7 @@ import { type ComponentProps, memo, use, useId, useRef, useState } from "react";
 import type { ContextWindowSnapshot } from "../../lib/contextWindow";
 import { Menu as MenuPrimitive } from "@base-ui/react/menu";
 import { Menu, MenuPopup, MenuTrigger } from "../ui/menu";
-import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
+
 import { ComposerControl, ComposerControlIcon } from "./ComposerControl";
 import { focusRequestedPermission, useComposerMenuProps } from "./composerEventScope";
 import { ComposerPrimaryActions } from "./ComposerPrimaryActions";
@@ -64,8 +65,7 @@ export const ComposerFooterModeControls = memo(function ComposerFooterModeContro
       : "Default mode. Click to enter plan mode";
 
   const interactionModeToggle = props.showInteractionModeToggle ? (
-    <Tooltip>
-      <TooltipTrigger
+    <SharedTooltipTrigger
         render={
           <ComposerControl
             size={size}
@@ -76,6 +76,8 @@ export const ComposerFooterModeControls = memo(function ComposerFooterModeContro
             aria-label={interactionModeTooltip}
           />
         }
+      side="top"
+      label={interactionModeTooltip}
       >
         {props.interactionMode === "plan" ? (
           <ComposerControlIcon
@@ -97,9 +99,7 @@ export const ComposerFooterModeControls = memo(function ComposerFooterModeContro
         >
           {props.interactionMode === "plan" ? t("Plan") : "Build"}
         </span>
-      </TooltipTrigger>
-      <TooltipPopup side="top">{interactionModeTooltip}</TooltipPopup>
-    </Tooltip>
+    </SharedTooltipTrigger>
   ) : null;
 
   // The chip opens the same Permissions toggle used in the model picker and the overflow menu.
@@ -112,8 +112,7 @@ export const ComposerFooterModeControls = memo(function ComposerFooterModeContro
         focusRequestedPermission(isOpen, permissionsChipRef.current)
       }
     >
-      <Tooltip>
-        <TooltipTrigger
+      <SharedTooltipTrigger
           render={
             <MenuTrigger
               render={
@@ -128,6 +127,8 @@ export const ComposerFooterModeControls = memo(function ComposerFooterModeContro
               }
             />
           }
+        side="top"
+        label={permissionsTooltip}
         >
           <ComposerControlIcon
             icon={RuntimeModeIcon}
@@ -141,9 +142,7 @@ export const ComposerFooterModeControls = memo(function ComposerFooterModeContro
           >
             {runtimeModeOption.label}
           </span>
-        </TooltipTrigger>
-        <TooltipPopup side="top">{permissionsTooltip}</TooltipPopup>
-      </Tooltip>
+      </SharedTooltipTrigger>
       <MenuPopup align="start" {...composerFloatingLayerProps}>
         <ComposerPermissionsSection
           runtimeMode={props.runtimeMode}

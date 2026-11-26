@@ -1,10 +1,11 @@
+import { SharedTooltipTrigger } from "../ui/shared-tooltip";
 import { useTranslation } from "../../i18n";
 import { Toolbar } from "@base-ui/react/toolbar";
 import { type ProviderInstanceId } from "@t3tools/contracts";
 import { memo, useLayoutEffect, useRef, useState } from "react";
 import { StarIcon } from "lucide-react";
 import { ProviderInstanceIcon } from "./ProviderInstanceIcon";
-import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
+
 import { cn } from "~/lib/utils";
 import {
   isProviderInstancePickerReady,
@@ -201,8 +202,7 @@ export const ModelPickerSidebar = memo(function ModelPickerSidebar(props: {
           {showFavorites ? (
             <>
               <div className="relative w-full" data-model-picker-provider="favorites">
-                <Tooltip>
-                  <TooltipTrigger
+                <SharedTooltipTrigger
                     render={
                       <Toolbar.Button
                         className={cn(
@@ -216,15 +216,11 @@ export const ModelPickerSidebar = memo(function ModelPickerSidebar(props: {
                         <StarIcon className="size-5 fill-current shrink-0" aria-hidden />
                       </Toolbar.Button>
                     }
-                  />
-                  <TooltipPopup
                     side={PICKER_TOOLTIP_SIDE}
                     sideOffset={PICKER_TOOLTIP_SIDE_OFFSET}
                     align="center"
-                  >
-                    {t("Favorites")}
-                  </TooltipPopup>
-                </Tooltip>
+                  label={<>{t("Favorites")}</>}
+                />
               </div>
               <div className="border-b border-border/70" aria-hidden="true" />
             </>
@@ -302,16 +298,13 @@ export const ModelPickerSidebar = memo(function ModelPickerSidebar(props: {
                 className="relative w-full"
                 data-model-picker-provider={entry.instanceId}
               >
-                <Tooltip>
-                  <TooltipTrigger render={trigger} />
-                  <TooltipPopup
+                <SharedTooltipTrigger
+                  render={trigger}
                     side={PICKER_TOOLTIP_SIDE}
                     sideOffset={PICKER_TOOLTIP_SIDE_OFFSET}
                     align="center"
-                  >
-                    {tooltip}
-                  </TooltipPopup>
-                </Tooltip>
+                  label={<>{tooltip}</>}
+                />
               </div>
             );
           })}

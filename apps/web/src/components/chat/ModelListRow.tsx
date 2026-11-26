@@ -1,3 +1,5 @@
+import { SharedTooltipTrigger } from "../ui/shared-tooltip";
+import { Tooltip, TooltipTrigger, TooltipPopup } from "../ui/tooltip";
 import { useTranslation } from "../../i18n";
 import { type ProviderDriverKind, type ProviderInstanceId } from "@t3tools/contracts";
 import { memo } from "react";
@@ -7,7 +9,7 @@ import { ComboboxItem } from "../ui/combobox";
 import { Button } from "../ui/button";
 import { Badge } from "../ui/badge";
 import { Kbd } from "../ui/kbd";
-import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
+
 import { cn } from "~/lib/utils";
 import { modelPickerModelKey } from "./modelPickerKeys";
 import { ProviderInstanceIcon } from "./ProviderInstanceIcon";
@@ -152,11 +154,11 @@ export const ModelListRow = memo(function ModelListRow(props: {
   }
 
   return (
-    <Tooltip>
-      <TooltipTrigger render={row} />
-      <TooltipPopup side="left" align="center">
-        {props.disabledReason}
-      </TooltipPopup>
-    </Tooltip>
+    <SharedTooltipTrigger
+      render={row}
+      side="left"
+      align="center"
+      label={<>{props.disabledReason}</>}
+    />
   );
 });

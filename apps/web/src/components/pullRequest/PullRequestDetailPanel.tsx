@@ -83,7 +83,7 @@ import { useUiStateStore } from "~/uiStateStore";
 import { Alert, AlertAction, AlertDescription } from "../ui/alert";
 import { Button } from "../ui/button";
 import { toastManager } from "../ui/toast";
-import { Tooltip, TooltipPopup, TooltipProvider, TooltipTrigger } from "../ui/tooltip";
+import { TooltipProvider } from "../ui/tooltip";
 import { MiddleTruncate } from "../ui/middle-truncate";
 import {
   PullRequestChecksStatusLine,
@@ -93,7 +93,7 @@ import {
 import { PullRequestDetailGhost, PullRequestTimelineGhost } from "./PullRequestGhosts";
 import { PullRequestCopyableCode } from "./PullRequestCopyableCode";
 import { useStableCallback } from "~/hooks/useStableCallback";
-import { SharedTooltipProvider } from "../ui/shared-tooltip";
+import { SharedTooltipProvider, SharedTooltipTrigger } from "../ui/shared-tooltip";
 import {
   internPullRequestReference,
   pullRequestRefKey,
@@ -1522,16 +1522,15 @@ export function PullRequestDetailPanel({
                         aria-label="receives changes from"
                         className="size-3 shrink-0 opacity-60"
                       />
-                      <Tooltip>
-                        <TooltipTrigger
+                    <SharedTooltipTrigger
                           render={
                             <code className="flex min-w-0 flex-1">
                               <MiddleTruncate value={detail.headBranch} showTitle={false} />
                             </code>
                           }
+                      side="top"
+                      label={detail.headBranch}
                         />
-                        <TooltipPopup side="top">{detail.headBranch}</TooltipPopup>
-                      </Tooltip>
                     </span>
                     <span className="ml-auto inline-flex shrink-0 items-baseline justify-end gap-2 text-2xs">
                       <span

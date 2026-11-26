@@ -1,4 +1,5 @@
 import { commitNumberFieldOnEnter } from "./commitNumberFieldOnEnter";
+import { SharedTooltipTrigger } from "../ui/shared-tooltip";
 import { translateCurrent, useTranslation } from "../../i18n";
 import { SettingsGroup } from "./SettingsGroup";
 import { RefreshIcon } from "~/components/ui/refresh-icon";
@@ -89,7 +90,7 @@ import {
 } from "../ui/number-field";
 import { ScrollArea } from "../ui/scroll-area";
 import { Toggle, ToggleGroup } from "../ui/toggle-group";
-import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
+
 import { stackedThreadToast, toastManager } from "../ui/toast";
 import { AddProviderInstanceDialog } from "./AddProviderInstanceDialog";
 import { ExpandableText } from "./ExpandableText";
@@ -379,8 +380,8 @@ function ProviderSettingsPanelContent(target: ProviderSettingsTarget) {
                 const detail = providerEnvironmentDetail(environment);
                 const statusText = translateUi(connectionStatusTitle(environment.connection));
                 return (
-                  <Tooltip key={environment.environmentId}>
-                    <TooltipTrigger
+                  <SharedTooltipTrigger
+                    key={environment.environmentId}
                       render={
                         <Toggle value={environment.environmentId}>
                           <EnvironmentMachineIcon
@@ -391,9 +392,7 @@ function ProviderSettingsPanelContent(target: ProviderSettingsTarget) {
                           <span className="max-w-40 truncate">{environment.label}</span>
                           {environment.connection.phase !== "connected" ? (
                             <ConnectionStatusDot
-                              dotClassName={connectionPhaseDotClassName(
-                                environment.connection.phase,
-                              )}
+                            dotClassName={connectionPhaseDotClassName(environment.connection.phase)}
                               pingClassName={connectionPhasePingClassName(
                                 environment.connection.phase,
                               )}
@@ -404,11 +403,13 @@ function ProviderSettingsPanelContent(target: ProviderSettingsTarget) {
                           </span>
                         </Toggle>
                       }
-                    />
-                    <TooltipPopup side="top">
+                    side="top"
+                    label={
+                      <>
                       {detail} · {statusText}
-                    </TooltipPopup>
-                  </Tooltip>
+                      </>
+                    }
+                  />
                 );
               })}
             </ToggleGroup>
@@ -987,8 +988,7 @@ export function EnvironmentProviderSettings({
         variant="plain"
         titleAction={
           !readOnly ? (
-            <Tooltip>
-              <TooltipTrigger
+            <SharedTooltipTrigger
                 render={
                   <Button
                     size="icon-xs"
@@ -999,17 +999,16 @@ export function EnvironmentProviderSettings({
                     <PlusIcon />
                   </Button>
                 }
+              side="top"
+              label={t("Add provider")}
               />
-              <TooltipPopup side="top">{t("Add provider")}</TooltipPopup>
-            </Tooltip>
           ) : null
         }
         headerAction={
           // The ghost button's padding would inset its label, so pull the text to the card edge.
           <div className="-me-2 flex min-w-0 items-center gap-2">
             <ProviderUpdatesAction />
-            <Tooltip>
-              <TooltipTrigger
+            <SharedTooltipTrigger
                 render={
                   <Button
                     size="xs"
@@ -1029,9 +1028,9 @@ export function EnvironmentProviderSettings({
                     </span>
                   </Button>
                 }
+              side="top"
+              label={t("Refresh provider status")}
               />
-              <TooltipPopup side="top">{t("Refresh provider status")}</TooltipPopup>
-            </Tooltip>
           </div>
         }
       >

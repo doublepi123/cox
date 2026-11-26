@@ -1,3 +1,5 @@
+import { SharedTooltipTrigger } from "../ui/shared-tooltip";
+import { Tooltip, TooltipTrigger, TooltipPopup } from "../ui/tooltip";
 import { useTranslation } from "../../i18n";
 import { useAtomValue } from "@effect/atom-react";
 import { ThreadDetailsControl } from "./ThreadDetailsControl";
@@ -86,7 +88,7 @@ import {
 import { isMacPlatform } from "../../lib/utils";
 
 import { Menu, MenuItem, MenuPopup, MenuTrigger } from "../ui/menu";
-import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
+
 import { toastManager } from "../ui/toast";
 import { Spinner } from "../ui/spinner";
 import { cn } from "~/lib/utils";
@@ -837,37 +839,38 @@ export function ThreadRelationshipsPanel(props: {
               <RelationshipPopup side="left">{relationshipTooltip}</RelationshipPopup>
             </Tooltip>
             <span aria-hidden="true" className={THREAD_DETAILS_PANEL_SPLIT_SEPARATOR_CLASS} />
-            <Tooltip>
-              <TooltipTrigger
-                render={
-                  <ThreadDetailsControl
-                    size="sm"
-                    variant="ghost"
-                    part="secondary"
-                    aria-label={
-                      parentTitle
-                        ? `Merge back to ${parentTitle}`
-                        : "Merge back to source conversation"
-                    }
-                    aria-disabled={!canMerge || busyAction !== null || undefined}
-                    onClick={() => void merge()}
-                  >
-                    {busyAction === "merge" ? (
-                      <Spinner size="xs" />
-                    ) : (
-                      <PullRequestGlyph.merged className="size-3" />
-                    )}
-                  </ThreadDetailsControl>
-                }
-              />
-              <TooltipPopup side="left">
-                {latestMergeBackRun === null
-                  ? "Complete a run in this fork before merging it back"
-                  : parentTitle
-                    ? `Merge this conversation back into ${parentTitle}`
-                    : "Merge this conversation back into its source"}
-              </TooltipPopup>
-            </Tooltip>
+            <SharedTooltipTrigger
+              render={
+                <ThreadDetailsControl
+                  size="sm"
+                  variant="ghost"
+                  part="secondary"
+                  aria-label={
+                    parentTitle
+                      ? `Merge back to ${parentTitle}`
+                      : "Merge back to source conversation"
+                  }
+                  aria-disabled={!canMerge || busyAction !== null || undefined}
+                  onClick={() => void merge()}
+                >
+                  {busyAction === "merge" ? (
+                    <Spinner size="xs" />
+                  ) : (
+                    <PullRequestGlyph.merged className="size-3" />
+                  )}
+                </ThreadDetailsControl>
+              }
+              side="left"
+              label={
+                <>
+                  {latestMergeBackRun === null
+                    ? "Complete a run in this fork before merging it back"
+                    : parentTitle
+                      ? `Merge this conversation back into ${parentTitle}`
+                      : "Merge this conversation back into its source"}
+                </>
+              }
+            />
             <span className="shrink-0 border border-transparent ps-1 pe-2.5 text-2xs font-medium text-muted-foreground">
               {threadRelationshipStatusLabel(rowStatus)}
             </span>
@@ -877,28 +880,27 @@ export function ThreadRelationshipsPanel(props: {
         )}
         {canStop && agent ? (
           <div className="pointer-events-none absolute right-1 top-1/2 -translate-y-1/2 opacity-0 group-hover:pointer-events-auto group-hover:opacity-100 group-focus-within:pointer-events-auto group-focus-within:opacity-100 pointer-coarse:pointer-events-auto pointer-coarse:opacity-100 [@media(hover:none)]:pointer-events-auto [@media(hover:none)]:opacity-100">
-            <Tooltip>
-              <TooltipTrigger
-                render={
-                  <ThreadDetailsControl
-                    size="icon-xs"
-                    variant="ghost"
-                    part="icon"
-                    tone="destructive"
-                    aria-label={`Stop subagent ${threadTitle}`}
-                    disabled={stoppingId !== null}
-                    onClick={() => void stopSubagent(threadId, agent)}
-                  />
-                }
-              >
-                {stoppingId === threadId ? (
-                  <Spinner aria-hidden size="xs" />
-                ) : (
-                  <SquareIcon aria-hidden className="size-3 fill-current" />
-                )}
-              </TooltipTrigger>
-              <TooltipPopup side="left">{translateUi("Stop subagent")}</TooltipPopup>
-            </Tooltip>
+            <SharedTooltipTrigger
+              render={
+                <ThreadDetailsControl
+                  size="icon-xs"
+                  variant="ghost"
+                  part="icon"
+                  tone="destructive"
+                  aria-label={`Stop subagent ${threadTitle}`}
+                  disabled={stoppingId !== null}
+                  onClick={() => void stopSubagent(threadId, agent)}
+                />
+              }
+              side="left"
+              label={translateUi("Stop subagent")}
+            >
+              {stoppingId === threadId ? (
+                <Spinner aria-hidden size="xs" />
+              ) : (
+                <SquareIcon aria-hidden className="size-3 fill-current" />
+              )}
+            </SharedTooltipTrigger>
           </div>
         ) : null}
       </li>

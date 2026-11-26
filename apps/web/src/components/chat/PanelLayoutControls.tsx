@@ -1,3 +1,4 @@
+import { SharedTooltipTrigger } from "../ui/shared-tooltip";
 import { PanelBottomIcon, PanelRightIcon, SquareMenuIcon } from "lucide-react";
 import { Maximize2, Minimize2 } from "lucide";
 import { MorphIcon } from "~/components/MorphIcon";
@@ -8,7 +9,6 @@ import { cn } from "~/lib/utils";
 import type { ThreadPanelPresentation } from "../../rightPanelLayout";
 import { PopoverCreateHandle, PopoverTrigger } from "../ui/popover";
 import { Toggle } from "../ui/toggle";
-import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 
 export interface PanelLayoutControlsProps {
   showThreadPanelControl?: boolean;
@@ -61,19 +61,22 @@ export const PanelLayoutControls = memo(function PanelLayoutControls({
     </Toggle>
   );
   const threadPanelControl = (
-    <Tooltip>
-      <TooltipTrigger render={<span className="flex shrink-0" />}>
-        {threadPanelPresentation === "popover" ? (
-          <PopoverTrigger handle={threadPanelPopoverHandle} render={threadPanelToggle} />
-        ) : (
-          threadPanelToggle
-        )}
-      </TooltipTrigger>
-      <TooltipPopup side="bottom">
-        Toggle thread details
-        {threadPanelShortcutLabel ? ` (${threadPanelShortcutLabel})` : ""}
-      </TooltipPopup>
-    </Tooltip>
+    <SharedTooltipTrigger
+      render={<span className="flex shrink-0" />}
+      side="bottom"
+      label={
+        <>
+          Toggle thread details
+          {threadPanelShortcutLabel ? ` (${threadPanelShortcutLabel})` : ""}
+        </>
+      }
+    >
+      {threadPanelPresentation === "popover" ? (
+        <PopoverTrigger handle={threadPanelPopoverHandle} render={threadPanelToggle} />
+      ) : (
+        threadPanelToggle
+      )}
+    </SharedTooltipTrigger>
   );
 
   return (
@@ -83,47 +86,53 @@ export const PanelLayoutControls = memo(function PanelLayoutControls({
     >
       {showThreadPanelControl ? threadPanelControl : null}
       {showTerminalControl ? (
-        <Tooltip>
-          <TooltipTrigger render={<span className="flex shrink-0" />}>
-            <Toggle
-              pressed={terminalOpen}
-              onPressedChange={onToggleTerminal}
-              aria-label="Toggle terminal drawer"
-              variant="ghost"
-              size="sm"
-              disabled={!terminalAvailable}
-            >
-              <PanelBottomIcon className="size-4" />
-            </Toggle>
-          </TooltipTrigger>
-          <TooltipPopup side="bottom">
-            {terminalAvailable
-              ? `Toggle terminal drawer${terminalShortcutLabel ? ` (${terminalShortcutLabel})` : ""}`
-              : "Terminal drawer is unavailable"}
-          </TooltipPopup>
-        </Tooltip>
+        <SharedTooltipTrigger
+          render={<span className="flex shrink-0" />}
+          side="bottom"
+          label={
+            <>
+              {terminalAvailable
+                ? `Toggle terminal drawer${terminalShortcutLabel ? ` (${terminalShortcutLabel})` : ""}`
+                : "Terminal drawer is unavailable"}
+            </>
+          }
+        >
+          <Toggle
+            pressed={terminalOpen}
+            onPressedChange={onToggleTerminal}
+            aria-label="Toggle terminal drawer"
+            variant="ghost"
+            size="sm"
+            disabled={!terminalAvailable}
+          >
+            <PanelBottomIcon className="size-4" />
+          </Toggle>
+        </SharedTooltipTrigger>
       ) : null}
       {showRightPanelControl ? (
-        <Tooltip>
-          <TooltipTrigger render={<span className="flex shrink-0" />}>
-            <Toggle
-              pressed={rightPanelOpen}
-              onPressedChange={onToggleRightPanel}
-              aria-label="Toggle right panel"
-              data-right-panel-toggle
-              variant="ghost"
-              size="sm"
-              disabled={!rightPanelAvailable}
-            >
-              <PanelRightIcon className="size-4" />
-            </Toggle>
-          </TooltipTrigger>
-          <TooltipPopup side="bottom">
-            {rightPanelAvailable
-              ? `Toggle right panel${rightPanelShortcutLabel ? ` (${rightPanelShortcutLabel})` : ""}`
-              : rightPanelUnavailableLabel}
-          </TooltipPopup>
-        </Tooltip>
+        <SharedTooltipTrigger
+          render={<span className="flex shrink-0" />}
+          side="bottom"
+          label={
+            <>
+              {rightPanelAvailable
+                ? `Toggle right panel${rightPanelShortcutLabel ? ` (${rightPanelShortcutLabel})` : ""}`
+                : rightPanelUnavailableLabel}
+            </>
+          }
+        >
+          <Toggle
+            pressed={rightPanelOpen}
+            onPressedChange={onToggleRightPanel}
+            aria-label="Toggle right panel"
+            data-right-panel-toggle
+            variant="ghost"
+            size="sm"
+            disabled={!rightPanelAvailable}
+          >
+            <PanelRightIcon className="size-4" />
+          </Toggle>
+        </SharedTooltipTrigger>
       ) : null}
     </div>
   );
@@ -138,22 +147,23 @@ export const RightPanelMaximizeControl = memo(function RightPanelMaximizeControl
 }) {
   const label = maximized ? "Restore panel size" : "Maximize panel";
   return (
-    <Tooltip>
-      <TooltipTrigger render={<span className="flex shrink-0 [-webkit-app-region:no-drag]" />}>
-        {
-          <Toggle
-            pressed={maximized}
-            onPressedChange={onToggle}
-            aria-label={label}
-            variant="ghost"
-            size="sm"
-          >
-            <MorphIcon className="size-4" icon={maximized ? Minimize2 : Maximize2} />
-          </Toggle>
-        }
-      </TooltipTrigger>
-      <TooltipPopup side="bottom">{label}</TooltipPopup>
-    </Tooltip>
+    <SharedTooltipTrigger
+      render={<span className="flex shrink-0 [-webkit-app-region:no-drag]" />}
+      side="bottom"
+      label={label}
+    >
+      {
+        <Toggle
+          pressed={maximized}
+          onPressedChange={onToggle}
+          aria-label={label}
+          variant="ghost"
+          size="sm"
+        >
+          <MorphIcon className="size-4" icon={maximized ? Minimize2 : Maximize2} />
+        </Toggle>
+      }
+    </SharedTooltipTrigger>
   );
 });
 

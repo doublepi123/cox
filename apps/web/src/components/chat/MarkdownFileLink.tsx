@@ -1,3 +1,4 @@
+import { SharedTooltipTrigger } from "../ui/shared-tooltip";
 import { openContextMenuFromKeyboard } from "../../contextMenuSource";
 import { formatFilePathForClipboard } from "@t3tools/client-runtime/media-actions";
 import {
@@ -16,7 +17,7 @@ import { documentChipKindForFileName } from "../../pierre-icons";
 import { ContextChip } from "../ContextChip";
 import { stackedThreadToast, toastManager } from "../ui/toast";
 import { useSharedTooltip, withSharedTooltip } from "../ui/shared-tooltip";
-import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
+
 import { FileTagChipContent } from "./FileTagChip";
 import {
   hasMarkdownFilePrimaryAction,
@@ -385,12 +386,7 @@ export const MarkdownFileLink = memo(function MarkdownFileLink({
   );
   if (shared) return withSharedTooltip(chip, shared);
   return (
-    <Tooltip>
-      <TooltipTrigger render={chip} />
-      <TooltipPopup side="top" variant="code" interactive>
-        {tooltipContent}
-      </TooltipPopup>
-    </Tooltip>
+    <SharedTooltipTrigger render={chip} side="top" variant="code" label={<>{tooltipContent}</>} />
   );
 }, areMarkdownFileLinkPropsEqual);
 

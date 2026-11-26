@@ -1,3 +1,4 @@
+import { SharedTooltipTrigger } from "~/components/ui/shared-tooltip";
 import { useTranslation } from "../../i18n";
 import type { DesktopPreviewColorScheme } from "@t3tools/contracts";
 import { Minus, MoreVertical, Plus as PlusIcon, RotateCcw } from "lucide-react";
@@ -17,7 +18,6 @@ import {
   MenuSubTrigger,
   MenuTrigger,
 } from "~/components/ui/menu";
-import { Tooltip, TooltipPopup, TooltipTrigger } from "~/components/ui/tooltip";
 
 const COLOR_SCHEME_OPTIONS: ReadonlyArray<{
   value: DesktopPreviewColorScheme;
@@ -50,18 +50,16 @@ interface Props {
 }
 
 const MenuTriggerButton = () => (
-  <Tooltip>
-    <TooltipTrigger
-      render={
-        <MenuTrigger
-          render={<Button variant="ghost" size="icon-xs" type="button" aria-label="Preview menu" />}
-        />
-      }
-    >
-      <MoreVertical />
-    </TooltipTrigger>
-    <TooltipPopup>More</TooltipPopup>
-  </Tooltip>
+  <SharedTooltipTrigger
+    render={
+      <MenuTrigger
+        render={<Button variant="ghost" size="icon-xs" type="button" aria-label="Preview menu" />}
+      />
+    }
+    label={"More"}
+  >
+    <MoreVertical />
+  </SharedTooltipTrigger>
 );
 
 export function PreviewMoreMenu({

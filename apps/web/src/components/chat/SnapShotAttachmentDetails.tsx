@@ -1,3 +1,4 @@
+import { SharedTooltipTrigger } from "../ui/shared-tooltip";
 import { useTranslation } from "../../i18n";
 import type { SnapShotSource } from "@t3tools/contracts";
 import { ImageIcon, TextIcon } from "lucide-react";
@@ -8,7 +9,7 @@ import { cn } from "../../lib/utils";
 import { RenderErrorBoundary } from "../RenderErrorBoundary";
 import { Button } from "../ui/button";
 import { Popover, PopoverPopup, PopoverTitle, PopoverTrigger } from "../ui/popover";
-import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
+
 import { HighlightedTokens } from "./HighlightedTokens";
 
 export const SNAP_SHOT_ATTACHMENT_FRAME_CLASS =
@@ -89,28 +90,27 @@ export function SnapShotContentsButton({
 
   return (
     <Popover>
-      <Tooltip>
-        <TooltipTrigger
-          render={
-            <PopoverTrigger
-              render={
-                <Button
-                  aria-label={
-                    includesAccessibility ? "View accessibility data" : "No accessibility data"
-                  }
-                  className={className}
-                  onClick={(event) => event.stopPropagation()}
-                  size="icon-micro"
-                  variant="overlay"
-                />
-              }
-            />
-          }
-        >
-          <ContentsIcon className="size-3" aria-hidden="true" />
-        </TooltipTrigger>
-        <TooltipPopup side={side}>{tooltip}</TooltipPopup>
-      </Tooltip>
+      <SharedTooltipTrigger
+        render={
+          <PopoverTrigger
+            render={
+              <Button
+                aria-label={
+                  includesAccessibility ? "View accessibility data" : "No accessibility data"
+                }
+                className={className}
+                onClick={(event) => event.stopPropagation()}
+                size="icon-micro"
+                variant="overlay"
+              />
+            }
+          />
+        }
+        side={side}
+        label={tooltip}
+      >
+        <ContentsIcon className="size-3" aria-hidden="true" />
+      </SharedTooltipTrigger>
       <PopoverPopup side={side} align="center" width="md">
         <div className="max-h-[min(28rem,70vh)] space-y-2 overflow-y-auto">
           <PopoverTitle>{translateUi("Accessibility data")}</PopoverTitle>

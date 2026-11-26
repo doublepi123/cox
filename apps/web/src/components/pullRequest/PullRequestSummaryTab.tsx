@@ -1,5 +1,4 @@
 import { WorkflowRunsAbout } from "../workflows/WorkflowRunsAbout";
-import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { useAtomValue } from "@effect/atom-react";
 import { useTranslation } from "../../i18n";
 import {
@@ -853,21 +852,30 @@ export function PullRequestSummaryTab({
                         ? `${entry.actor.name} (@${login})`
                         : login;
                     return (
-                      <Tooltip key={entry.key}>
-                        <TooltipTrigger
+                      <SharedTooltipTrigger
+                        key={entry.key}
                           render={
                             <span
                               className={cn(
                                 "relative rounded-full hover:z-10",
                                 entry.outcome
-                                  ? pullRequestReviewOutcomeRingClassName(
-                                      entry.outcome,
-                                      entry.stale,
-                                    )
+                                ? pullRequestReviewOutcomeRingClassName(entry.outcome, entry.stale)
                                   : undefined,
                               )}
                             />
                           }
+                        side="bottom"
+                        label={
+                          <>
+                            {entry.outcome
+                              ? `${named}: ${
+                                  entry.stale
+                                    ? pullRequestReviewOutcomeStaleLabel(entry.outcome)
+                                    : pullRequestReviewOutcomeLabel(entry.outcome)
+                                }`
+                              : named}
+                          </>
+                        }
                         >
                           <PullRequestActorLabel
                             actor={entry.actor}
@@ -887,17 +895,7 @@ export function PullRequestSummaryTab({
                               </span>
                             </>
                           ) : null}
-                        </TooltipTrigger>
-                        <TooltipPopup side="bottom">
-                          {entry.outcome
-                            ? `${named}: ${
-                                entry.stale
-                                  ? pullRequestReviewOutcomeStaleLabel(entry.outcome)
-                                  : pullRequestReviewOutcomeLabel(entry.outcome)
-                              }`
-                            : named}
-                        </TooltipPopup>
-                      </Tooltip>
+                      </SharedTooltipTrigger>
                     );
                   })}
                 </span>

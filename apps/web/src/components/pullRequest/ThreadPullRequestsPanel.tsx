@@ -1,3 +1,4 @@
+import { SharedTooltipTrigger } from "../ui/shared-tooltip";
 import { useTranslation } from "../../i18n";
 import type { ProjectId, ScopedThreadRef, ThreadPullRequestLink } from "@t3tools/contracts";
 import {
@@ -39,7 +40,7 @@ import { RelativeTime } from "~/components/RelativeTime";
 import { Button } from "../ui/button";
 import { Menu, MenuItem, MenuPopup, MenuTrigger } from "../ui/menu";
 import { MiddleTruncate } from "../ui/middle-truncate";
-import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
+
 import { openLinkPullRequestDialog } from "./LinkPullRequestDialog";
 import {
   PULL_REQUEST_ROW_CLASS,
@@ -73,16 +74,16 @@ function ChecksGlyph({
 }) {
   const presentation = pullRequestChecksStatePresentation(state);
   return (
-    <Tooltip>
-      <TooltipTrigger render={<span className="inline-flex shrink-0" />}>
-        <presentation.Icon
-          role="img"
-          aria-label={presentation.label}
-          className={cn("size-3.5", presentation.toneClassName)}
-        />
-      </TooltipTrigger>
-      <TooltipPopup>{presentation.label}</TooltipPopup>
-    </Tooltip>
+    <SharedTooltipTrigger
+      render={<span className="inline-flex shrink-0" />}
+      label={presentation.label}
+    >
+      <presentation.Icon
+        role="img"
+        aria-label={presentation.label}
+        className={cn("size-3.5", presentation.toneClassName)}
+      />
+    </SharedTooltipTrigger>
   );
 }
 
@@ -180,29 +181,33 @@ function LinkRowImpl({
       >
         <PullRequestRowLines
           number={
-            <Tooltip>
-              <TooltipTrigger render={<span className={PULL_REQUEST_ROW_NUMBER_CLASS} />}>
-                #{link.number}
-              </TooltipTrigger>
-              <TooltipPopup>
-                {SOURCE_LABELS[link.source]} · <RelativeTime timestamp={link.linkedAt} />
-              </TooltipPopup>
-            </Tooltip>
+            <SharedTooltipTrigger
+              render={<span className={PULL_REQUEST_ROW_NUMBER_CLASS} />}
+              label={
+                <>
+                  {SOURCE_LABELS[link.source]} · <RelativeTime timestamp={link.linkedAt} />
+                </>
+              }
+            >
+              #{link.number}
+            </SharedTooltipTrigger>
           }
           title={snapshot?.title ?? link.repository}
           signals={
             open ? (
               <>
                 {watching ? (
-                  <Tooltip>
-                    <TooltipTrigger render={<span className="inline-flex shrink-0" />}>
-                      <EyeIcon role="img" aria-label="Watching" className="size-3.5" />
-                    </TooltipTrigger>
-                    <TooltipPopup>
-                      Watching: the agent wakes when checks finish, someone comments, or the branch
-                      conflicts
-                    </TooltipPopup>
-                  </Tooltip>
+                  <SharedTooltipTrigger
+                    render={<span className="inline-flex shrink-0" />}
+                    label={
+                      <>
+                        Watching: the agent wakes when checks finish, someone comments, or the
+                        branch conflicts
+                      </>
+                    }
+                  >
+                    <EyeIcon role="img" aria-label="Watching" className="size-3.5" />
+                  </SharedTooltipTrigger>
                 ) : null}
                 {snapshot?.checksState ? <ChecksGlyph state={snapshot.checksState} /> : null}
                 {snapshot?.reviewDecision ? (
@@ -236,21 +241,21 @@ function LinkRowImpl({
           meta={
             <>
               {stack ? (
-                <Tooltip>
-                  <TooltipTrigger
-                    render={
-                      <span className="inline-flex shrink-0 items-center gap-0.5 text-foreground/70" />
-                    }
-                  >
-                    <PullRequestGlyph.stack aria-hidden className="size-3" />
-                    {stack.size}
-                  </TooltipTrigger>
-                  <TooltipPopup>
-                    {stack.kind === "native"
-                      ? `${sourceControlClients.hostLabelForChangeRequestUrl(link.url)} stack of ${stack.size}: merging a layer lands the ones below it.`
-                      : `${stack.size} ${linkHost.changeRequest.plural} chained by base branch.`}
-                  </TooltipPopup>
-                </Tooltip>
+                <SharedTooltipTrigger
+                  render={
+                    <span className="inline-flex shrink-0 items-center gap-0.5 text-foreground/70" />
+                  }
+                  label={
+                    <>
+                      {stack.kind === "native"
+                        ? `${sourceControlClients.hostLabelForChangeRequestUrl(link.url)} stack of ${stack.size}: merging a layer lands the ones below it.`
+                        : `${stack.size} ${linkHost.changeRequest.plural} chained by base branch.`}
+                    </>
+                  }
+                >
+                  <PullRequestGlyph.stack aria-hidden className="size-3" />
+                  {stack.size}
+                </SharedTooltipTrigger>
               ) : null}
               {snapshot?.author ? (
                 <PullRequestRowAuthor
@@ -261,12 +266,12 @@ function LinkRowImpl({
               ) : null}
               {snapshot !== null ? (
                 <>
-                  <Tooltip>
-                    <TooltipTrigger render={<span className="flex min-w-0 max-w-32 font-mono" />}>
-                      <MiddleTruncate value={link.repository} showTitle={false} />
-                    </TooltipTrigger>
-                    <TooltipPopup>{link.repository}</TooltipPopup>
-                  </Tooltip>
+                  <SharedTooltipTrigger
+                    render={<span className="flex min-w-0 max-w-32 font-mono" />}
+                    label={link.repository}
+                  >
+                    <MiddleTruncate value={link.repository} showTitle={false} />
+                  </SharedTooltipTrigger>
                   <PullRequestRowBranches head={snapshot.headBranch} base={snapshot.baseBranch} />
                 </>
               ) : (

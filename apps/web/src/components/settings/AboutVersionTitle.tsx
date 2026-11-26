@@ -1,3 +1,4 @@
+import { SharedTooltipTrigger } from "../ui/shared-tooltip";
 import { useTranslation } from "../../i18n";
 import { useRef } from "react";
 
@@ -6,7 +7,6 @@ import { useCopyToClipboard } from "../../hooks/useCopyToClipboard";
 import { showAnchoredCopySuccessToast } from "../ui/anchoredCopyToast";
 import { InlineButton } from "../ui/button";
 import { stackedThreadToast, toastManager } from "../ui/toast";
-import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 
 export function AboutVersionTitle() {
   const { t: translateUi } = useTranslation();
@@ -29,21 +29,19 @@ export function AboutVersionTitle() {
     <span className="inline-flex items-baseline gap-2">
       <span>{translateUi("Version")}</span>
       <code className="text-2xs font-medium">
-        <Tooltip>
-          <TooltipTrigger
-            render={
-              <InlineButton
-                ref={copyButtonRef}
-                tone="muted"
-                aria-label={translateUi("Copy version {version}", { version: APP_VERSION })}
-                onClick={() => copyToClipboard(APP_VERSION, undefined)}
-              >
-                {APP_VERSION}
-              </InlineButton>
-            }
-          />
-          <TooltipPopup>{translateUi("Copy version")}</TooltipPopup>
-        </Tooltip>
+        <SharedTooltipTrigger
+          render={
+            <InlineButton
+              ref={copyButtonRef}
+              tone="muted"
+              aria-label={translateUi("Copy version {version}", { version: APP_VERSION })}
+              onClick={() => copyToClipboard(APP_VERSION, undefined)}
+            >
+              {APP_VERSION}
+            </InlineButton>
+          }
+          label={translateUi("Copy version")}
+        />
       </code>
     </span>
   );

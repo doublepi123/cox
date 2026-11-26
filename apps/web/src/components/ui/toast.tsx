@@ -1,3 +1,4 @@
+import { SharedTooltipTrigger } from "./shared-tooltip";
 import { useTranslation } from "../../i18n";
 import { Spinner } from "~/components/ui/spinner";
 
@@ -25,7 +26,7 @@ import {
   shouldHideCollapsedToastContent,
   shouldRenderThreadScopedToast,
 } from "./toast.logic";
-import { Tooltip, TooltipPopup, TooltipTrigger } from "./tooltip";
+
 import { useThreadRouteTarget } from "~/hooks/useThreadRouteTarget";
 
 export type ThreadToastData = {
@@ -140,24 +141,23 @@ function CopyErrorButton({ text }: { text: string }) {
   const label = isCopied ? "Copied error" : "Copy error";
 
   return (
-    <Tooltip>
-      <TooltipTrigger
-        render={
-          <Button
-            size="icon-micro"
-            variant="toast-close"
-            aria-label={label}
-            onClick={() => copyToClipboard(text)}
-          />
-        }
-      >
-        <MorphIcon
-          className={cn("size-3", isCopied && "text-success")}
-          icon={isCopied ? Check : Copy}
+    <SharedTooltipTrigger
+      render={
+        <Button
+          size="icon-micro"
+          variant="toast-close"
+          aria-label={label}
+          onClick={() => copyToClipboard(text)}
         />
-      </TooltipTrigger>
-      <TooltipPopup side="top">{label}</TooltipPopup>
-    </Tooltip>
+      }
+      side="top"
+      label={label}
+    >
+      <MorphIcon
+        className={cn("size-3", isCopied && "text-success")}
+        icon={isCopied ? Check : Copy}
+      />
+    </SharedTooltipTrigger>
   );
 }
 
@@ -239,43 +239,42 @@ function ToastDescriptionAndExpandable({
 
   return (
     <>
-      <Tooltip>
-        <TooltipTrigger
-          render={
-            <div
-              aria-label={open ? collapseLabel : expandLabel}
-              aria-expanded={open}
-              className={cn(
-                "group flex min-w-0 w-full cursor-pointer select-none items-start gap-1.5 rounded-sm text-left outline-none ring-offset-background",
-                "transition-colors hover:bg-muted/40",
-                "focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background",
-              )}
-              onClick={toggle}
-              onKeyDown={onKeyDown}
-              role="button"
-              tabIndex={0}
-            />
-          }
-        >
-          <div className="min-w-0 flex-1">
-            <Toast.Description
-              className={cn(
-                "min-w-0 select-none wrap-break-word text-muted-foreground",
-                errorDescriptionClampClass(toastType, toastDescription),
-                "underline-offset-2 decoration-muted-foreground/60 group-hover:underline",
-              )}
-              data-slot="toast-description"
-            />
-          </div>
-          <MorphIcon
-            aria-hidden
-            className="size-3.5 h-lh shrink-0 text-muted-foreground opacity-80"
-            icon={open ? ChevronUp : ChevronDown}
-            strokeWidth={2.25}
+      <SharedTooltipTrigger
+        render={
+          <div
+            aria-label={open ? collapseLabel : expandLabel}
+            aria-expanded={open}
+            className={cn(
+              "group flex min-w-0 w-full cursor-pointer select-none items-start gap-1.5 rounded-sm text-left outline-none ring-offset-background",
+              "transition-colors hover:bg-muted/40",
+              "focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background",
+            )}
+            onClick={toggle}
+            onKeyDown={onKeyDown}
+            role="button"
+            tabIndex={0}
           />
-        </TooltipTrigger>
-        <TooltipPopup side="top">{open ? collapseLabel : expandLabel}</TooltipPopup>
-      </Tooltip>
+        }
+        side="top"
+        label={open ? collapseLabel : expandLabel}
+      >
+        <div className="min-w-0 flex-1">
+          <Toast.Description
+            className={cn(
+              "min-w-0 select-none wrap-break-word text-muted-foreground",
+              errorDescriptionClampClass(toastType, toastDescription),
+              "underline-offset-2 decoration-muted-foreground/60 group-hover:underline",
+            )}
+            data-slot="toast-description"
+          />
+        </div>
+        <MorphIcon
+          aria-hidden
+          className="size-3.5 h-lh shrink-0 text-muted-foreground opacity-80"
+          icon={open ? ChevronUp : ChevronDown}
+          strokeWidth={2.25}
+        />
+      </SharedTooltipTrigger>
       {open ? <div className={toastExpandablePanelClassName}>{expandableContent}</div> : null}
     </>
   );

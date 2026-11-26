@@ -1,3 +1,4 @@
+import { SharedTooltipTrigger } from "./ui/shared-tooltip";
 import { useTranslation } from "../i18n";
 import { ComposerSelectControl } from "./chat/ComposerControl";
 import { ComposerContextLabel } from "./ComposerContextLabel";
@@ -20,7 +21,7 @@ import {
   SelectPopup,
   SelectValue,
 } from "./ui/select";
-import { Tooltip, TooltipPopup, TooltipTrigger } from "./ui/tooltip";
+
 import { useAtomValue } from "@effect/atom-react";
 import { shortcutLabelForCommand } from "../keybindings";
 import { primaryServerKeybindingsAtom } from "../state/server";
@@ -96,16 +97,18 @@ export const BranchToolbarEnvModeSelector = memo(function BranchToolbarEnvModeSe
     );
 
     return (
-      <Tooltip>
-        <TooltipTrigger render={lockedRow} />
-        <TooltipPopup>
-          {t(
-            forceNewWorktree
-              ? "Each model starts in its own worktree."
-              : (activeWorktreePath ?? resolveLockedWorkspaceLabel(null, effectiveEnvMode)),
-          )}
-        </TooltipPopup>
-      </Tooltip>
+      <SharedTooltipTrigger
+        render={lockedRow}
+        label={
+          <>
+            {t(
+              forceNewWorktree
+                ? "Each model starts in its own worktree."
+                : (activeWorktreePath ?? resolveLockedWorkspaceLabel(null, effectiveEnvMode)),
+            )}
+          </>
+        }
+      />
     );
   }
 
@@ -122,39 +125,39 @@ export const BranchToolbarEnvModeSelector = memo(function BranchToolbarEnvModeSe
       }}
       items={envModeItems}
     >
-      <Tooltip>
-        <TooltipTrigger
-          render={
-            <ComposerSelectControl
-              size="xs"
-              className="min-w-0 shrink"
-              aria-label={t("Workspace")}
-              data-composer-shortcut="composer.workspace"
-              data-composer-context-control
-              onMouseDownCapture={stopContextMenuMouseDown}
-            />
-          }
-        >
-          {effectiveEnvMode === "worktree" ? (
-            <FolderGit2Icon className="size-3" />
-          ) : activeWorktreePath ? (
-            <FolderGitIcon className="size-3" />
-          ) : (
-            <FolderIcon className="size-3" />
-          )}
-          <ComposerContextLabel>
-            <SelectValue />
-          </ComposerContextLabel>
-        </TooltipTrigger>
-        <TooltipPopup>
-          {t(
-            effectiveEnvMode === "worktree"
-              ? resolveEnvModeLabel("worktree")
-              : resolveCurrentWorkspaceLabel(activeWorktreePath),
-          )}
-          {shortcutLabel ? ` · ${shortcutLabel}` : null}
-        </TooltipPopup>
-      </Tooltip>
+      <SharedTooltipTrigger
+        render={
+          <ComposerSelectControl
+            size="xs"
+            className="min-w-0 shrink"
+            aria-label={t("Workspace")}
+            data-composer-shortcut="composer.workspace"
+            data-composer-context-control
+            onMouseDownCapture={stopContextMenuMouseDown}
+          />
+        }
+        label={
+          <>
+            {t(
+              effectiveEnvMode === "worktree"
+                ? resolveEnvModeLabel("worktree")
+                : resolveCurrentWorkspaceLabel(activeWorktreePath),
+            )}
+            {shortcutLabel ? ` · ${shortcutLabel}` : null}
+          </>
+        }
+      >
+        {effectiveEnvMode === "worktree" ? (
+          <FolderGit2Icon className="size-3" />
+        ) : activeWorktreePath ? (
+          <FolderGitIcon className="size-3" />
+        ) : (
+          <FolderIcon className="size-3" />
+        )}
+        <ComposerContextLabel>
+          <SelectValue />
+        </ComposerContextLabel>
+      </SharedTooltipTrigger>
       <SelectPopup alignItemWithTrigger={false} {...composerFloatingLayerProps}>
         <div className={showPreviousWorktree ? "w-[min(21rem,calc(100vw-2rem))]" : undefined}>
           <SelectGroup>

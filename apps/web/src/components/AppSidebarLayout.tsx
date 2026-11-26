@@ -1,3 +1,4 @@
+import { SharedTooltipTrigger } from "./ui/shared-tooltip";
 import { useTranslation } from "../i18n";
 import { useAtomValue } from "@effect/atom-react";
 import * as Schema from "effect/Schema";
@@ -63,7 +64,7 @@ import {
   useSidebar,
   useSidebarVisibility,
 } from "./ui/sidebar";
-import { Tooltip, TooltipPopup, TooltipTrigger } from "./ui/tooltip";
+
 import { appAtomRegistry } from "../rpc/atomRegistry";
 import { registerCommands } from "../shortcuts/dispatcher";
 import { resolveThreadRouteRef } from "../threadRoutes";
@@ -317,8 +318,7 @@ function SidebarControl() {
       )}
       data-sidebar-control=""
     >
-      <Tooltip>
-        <TooltipTrigger
+      <SharedTooltipTrigger
           render={
             <SidebarTrigger
               variant={isSidebarVisible && stageBackdropVariant ? "media-navigation" : "ghost"}
@@ -327,12 +327,14 @@ function SidebarControl() {
               aria-label={t("Toggle main sidebar")}
             />
           }
-        />
-        <TooltipPopup side="bottom">
+        side="bottom"
+        label={
+          <>
           {t("Toggle main sidebar")}
           {shortcutLabel ? ` (${shortcutLabel})` : ""}
-        </TooltipPopup>
-      </Tooltip>
+          </>
+        }
+      />
     </div>
   );
 }

@@ -1,5 +1,6 @@
+import { SharedTooltipTrigger } from "../ui/shared-tooltip";
 import { useTranslation } from "../../i18n";
-import { Tooltip, TooltipTrigger, TooltipPopup } from "../ui/tooltip";
+
 import type {
   EnvironmentId,
   PullRequestRef,
@@ -187,29 +188,29 @@ export function PullRequestStackMenu({
   return (
     <>
       <Menu open={open} onOpenChange={setOpen}>
-        <Tooltip>
-          <TooltipTrigger
-            render={
-              <MenuTrigger
-                render={
-                  <Button
-                    variant="ghost"
-                    size="xs"
-                    aria-label={`Stack ${stack.number}, layer ${position} of ${stack.layers.length}`}
-                  />
-                }
-              >
-                <PullRequestGlyph.stack aria-hidden className="size-3.5" /> {position}/
-                {stack.layers.length}
-                {onRetry ? <TriangleAlertIcon aria-hidden className="size-3 text-warning" /> : null}
-              </MenuTrigger>
-            }
-          />
-          <TooltipPopup>
-            View stack #{stack.number}, layer {position} of {stack.layers.length}
-            {notice ? ` · ${notice}` : null}
-          </TooltipPopup>
-        </Tooltip>
+        <SharedTooltipTrigger
+          render={
+            <MenuTrigger
+              render={
+                <Button
+                  variant="ghost"
+                  size="xs"
+                  aria-label={`Stack ${stack.number}, layer ${position} of ${stack.layers.length}`}
+                />
+              }
+            >
+              <PullRequestGlyph.stack aria-hidden className="size-3.5" /> {position}/
+              {stack.layers.length}
+              {onRetry ? <TriangleAlertIcon aria-hidden className="size-3 text-warning" /> : null}
+            </MenuTrigger>
+          }
+          label={
+            <>
+              View stack #{stack.number}, layer {position} of {stack.layers.length}
+              {notice ? ` · ${notice}` : null}
+            </>
+          }
+        />
         <MenuPopup align="start">
           <MenuGroup>
             <PullRequestStackHeader number={stack.number} notice={notice} stale={!!onRetry} />
@@ -269,34 +270,34 @@ export function PullRequestStackMenu({
         </MenuPopup>
       </Menu>
       {(leadsWithAutoMerge || canMerge) && !autoMergeArmed && selectedLayer?.state === "open" ? (
-        <Tooltip>
-          <TooltipTrigger
-            render={
-              <span className="inline-flex">
-                <Button
-                  variant="default"
-                  size="xs"
-                  disabled={mergeDisabled && !stale}
-                  aria-disabled={mergeDisabled || undefined}
-                  aria-description={stale ? (notice ?? undefined) : undefined}
-                  onClick={
-                    mergeDisabled
-                      ? undefined
-                      : () => setConfirmation(leadsWithAutoMerge ? "enable-auto-merge" : "merge")
-                  }
-                >
-                  <PullRequestGlyph.merged aria-hidden className="size-3.5" />
-                  {leadsWithAutoMerge ? "Auto-merge stack" : "Merge stack"}
-                </Button>
-              </span>
-            }
-          />
-          <TooltipPopup>
-            {stale
-              ? notice
-              : `Merge stack through #${reference.number} into ${stack.base} (${mergeLayers.length} ${mergeLayers.length === 1 ? terminology.singular : terminology.plural})`}
-          </TooltipPopup>
-        </Tooltip>
+        <SharedTooltipTrigger
+          render={
+            <span className="inline-flex">
+              <Button
+                variant="default"
+                size="xs"
+                disabled={mergeDisabled && !stale}
+                aria-disabled={mergeDisabled || undefined}
+                aria-description={stale ? (notice ?? undefined) : undefined}
+                onClick={
+                  mergeDisabled
+                    ? undefined
+                    : () => setConfirmation(leadsWithAutoMerge ? "enable-auto-merge" : "merge")
+                }
+              >
+                <PullRequestGlyph.merged aria-hidden className="size-3.5" />
+                {leadsWithAutoMerge ? "Auto-merge stack" : "Merge stack"}
+              </Button>
+            </span>
+          }
+          label={
+            <>
+              {stale
+                ? notice
+                : `Merge stack through #${reference.number} into ${stack.base} (${mergeLayers.length} ${mergeLayers.length === 1 ? terminology.singular : terminology.plural})`}
+            </>
+          }
+        />
       ) : null}
       <Dialog
         open={confirmation !== null}

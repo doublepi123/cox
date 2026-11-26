@@ -1,3 +1,4 @@
+import { SharedTooltipTrigger } from "../ui/shared-tooltip";
 import { useTranslation } from "../../i18n";
 import { InlineAudioPreview } from "../files/InlineAudioPreview";
 import { filePreviewKind } from "@t3tools/shared/filePreview";
@@ -58,7 +59,7 @@ import { promptLinkFor } from "../promptLinks/copyPromptLink";
 import { PierreEntryIcon } from "./PierreEntryIcon";
 import { formatBytes } from "../../lib/formatBytes";
 import { shouldCollapseUserMessage } from "./MessagesTimeline.logic";
-import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
+
 import {
   asKnownContextRecord,
   resolveUserMessageContext,
@@ -159,24 +160,25 @@ function UserFileCard({
           >
             {identity}
           </button>
-          <Tooltip>
-            <TooltipTrigger
-              render={
-                <Button
-                  size="icon-xs"
-                  variant="ghost-muted"
-                  aria-label={`Download ${label}`}
-                  onClick={() => ctx.onFileDownload(file)}
-                />
-              }
-            >
-              <DownloadIcon />
-            </TooltipTrigger>
-            <TooltipPopup side="top">
-              {t("Download")}
-              {label}
-            </TooltipPopup>
-          </Tooltip>
+          <SharedTooltipTrigger
+            render={
+              <Button
+                size="icon-xs"
+                variant="ghost-muted"
+                aria-label={`Download ${label}`}
+                onClick={() => ctx.onFileDownload(file)}
+              />
+            }
+            side="top"
+            label={
+              <>
+                {t("Download")}
+                {label}
+              </>
+            }
+          >
+            <DownloadIcon />
+          </SharedTooltipTrigger>
         </>
       )}
     </div>
@@ -803,14 +805,14 @@ function UserTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "message" 
           {t("Open thread")}
         </InlineButton>
       ) : null}
-      <Tooltip>
-        <TooltipTrigger render={<p className="text-muted-foreground text-xs tabular-nums" />}>
-          {formatDayAwareTimestamp(row.message.createdAt, ctx.timestampFormat, undefined, language)}
-        </TooltipTrigger>
-        <TooltipPopup>
-          {formatChatTimestampTooltip(row.message.createdAt, ctx.timestampFormat, language)}
-        </TooltipPopup>
-      </Tooltip>
+      <SharedTooltipTrigger
+        render={<p className="text-muted-foreground text-xs tabular-nums" />}
+        label={
+          <>{formatChatTimestampTooltip(row.message.createdAt, ctx.timestampFormat, language)}</>
+        }
+      >
+        {formatDayAwareTimestamp(row.message.createdAt, ctx.timestampFormat, undefined, language)}
+      </SharedTooltipTrigger>
       <div className={cn("flex items-center gap-0.5", floatActions && "flex-wrap justify-end")}>
         {typeof revertTurnCount === "number" && (
           <RevertUserMessageButton turnCount={revertTurnCount} messageId={row.message.id} />
@@ -984,24 +986,25 @@ function UserTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "message" 
                           {fileIdentity}
                           <EyeIcon className="size-4 shrink-0" />
                         </button>
-                        <Tooltip>
-                          <TooltipTrigger
-                            render={
-                              <Button
-                                size="icon-xs"
-                                variant="ghost-muted"
-                                aria-label={`Download ${label}`}
-                                onClick={() => ctx.onFileDownload(file)}
-                              />
-                            }
-                          >
-                            <DownloadIcon />
-                          </TooltipTrigger>
-                          <TooltipPopup side="top">
-                            {t("Download")}
-                            {label}
-                          </TooltipPopup>
-                        </Tooltip>
+                        <SharedTooltipTrigger
+                          render={
+                            <Button
+                              size="icon-xs"
+                              variant="ghost-muted"
+                              aria-label={`Download ${label}`}
+                              onClick={() => ctx.onFileDownload(file)}
+                            />
+                          }
+                          side="top"
+                          label={
+                            <>
+                              {t("Download")}
+                              {label}
+                            </>
+                          }
+                        >
+                          <DownloadIcon />
+                        </SharedTooltipTrigger>
                       </div>
                     );
                   }
@@ -1076,26 +1079,27 @@ function UserMessageIntentMarker({
 }) {
   const { t } = useTranslation();
   return (
-    <Tooltip>
-      <TooltipTrigger
-        render={
-          <div
-            className="me-1 flex items-center justify-end gap-1 text-xs leading-none text-muted-foreground"
-            data-user-message-intent={intent}
-          />
-        }
-      >
-        <Redo2Icon aria-hidden="true" className="size-3" />
-        {t(unread ? "Steer · waiting to be read" : "Steer")}
-      </TooltipTrigger>
-      <TooltipPopup side="top">
-        {unread
-          ? "Waiting for the agent to read this. It reads steers between steps, after a running command finishes."
-          : intent === "promoted_queued_to_steer"
-            ? "Originally queued, then promoted to steer the active turn"
-            : "Steered the active turn"}
-      </TooltipPopup>
-    </Tooltip>
+    <SharedTooltipTrigger
+      render={
+        <div
+          className="me-1 flex items-center justify-end gap-1 text-xs leading-none text-muted-foreground"
+          data-user-message-intent={intent}
+        />
+      }
+      side="top"
+      label={
+        <>
+          {unread
+            ? "Waiting for the agent to read this. It reads steers between steps, after a running command finishes."
+            : intent === "promoted_queued_to_steer"
+              ? "Originally queued, then promoted to steer the active turn"
+              : "Steered the active turn"}
+        </>
+      }
+    >
+      <Redo2Icon aria-hidden="true" className="size-3" />
+      {t(unread ? "Steer · waiting to be read" : "Steer")}
+    </SharedTooltipTrigger>
   );
 }
 
@@ -1111,23 +1115,22 @@ function RevertUserMessageButton({
   const activity = use(TimelineRowActivityCtx);
 
   return (
-    <Tooltip>
-      <TooltipTrigger
-        render={
-          <Button
-            type="button"
-            size="xs"
-            variant="ghost"
-            disabled={activity.isRevertingCheckpoint || activity.isWorking}
-            onClick={() => ctx.onRevertToTurnCount(turnCount, messageId)}
-            aria-label={t("Edit from here")}
-          />
-        }
-      >
-        <PencilIcon className="size-3" />
-      </TooltipTrigger>
-      <TooltipPopup side="top">{t("Edit from here")}</TooltipPopup>
-    </Tooltip>
+    <SharedTooltipTrigger
+      render={
+        <Button
+          type="button"
+          size="xs"
+          variant="ghost"
+          disabled={activity.isRevertingCheckpoint || activity.isWorking}
+          onClick={() => ctx.onRevertToTurnCount(turnCount, messageId)}
+          aria-label={t("Edit from here")}
+        />
+      }
+      side="top"
+      label={t("Edit from here")}
+    >
+      <PencilIcon className="size-3" />
+    </SharedTooltipTrigger>
   );
 }
 

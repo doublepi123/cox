@@ -1,3 +1,4 @@
+import { SharedTooltipTrigger } from "./ui/shared-tooltip";
 import { useTranslation } from "../i18n";
 import type { RuntimeMode } from "@t3tools/contracts";
 import { useAtomValue } from "@effect/atom-react";
@@ -7,7 +8,6 @@ import { primaryServerKeybindingsAtom } from "../state/server";
 import { ComposerControl } from "./chat/ComposerControl";
 import { runtimeModeConfig } from "./chat/runtimeModeConfig";
 import { ComposerContextLabel } from "./ComposerContextLabel";
-import { Tooltip, TooltipPopup, TooltipTrigger } from "./ui/tooltip";
 
 /** The new-thread strip names the permissions the first send will use; clicking opens them. */
 export function ComposerContextPermissions(props: {
@@ -21,26 +21,26 @@ export function ComposerContextPermissions(props: {
   );
   const { icon: Icon, label } = runtimeModeConfig[props.runtimeMode];
   return (
-    <Tooltip>
-      <TooltipTrigger
-        render={
-          <ComposerControl
-            size="xs"
-            className="ms-auto min-w-0 shrink-0"
-            aria-label={`Permissions: ${label}`}
-            aria-haspopup="menu"
-            data-composer-context-control
-            onClick={props.onOpen}
-          />
-        }
-      >
-        <Icon aria-hidden="true" className="size-3" />
-        <ComposerContextLabel>{label}</ComposerContextLabel>
-      </TooltipTrigger>
-      <TooltipPopup>
-        {t("Permissions")}
-        {shortcutLabel ? ` · ${shortcutLabel}` : null}
-      </TooltipPopup>
-    </Tooltip>
+    <SharedTooltipTrigger
+      render={
+        <ComposerControl
+          size="xs"
+          className="ms-auto min-w-0 shrink-0"
+          aria-label={`Permissions: ${label}`}
+          aria-haspopup="menu"
+          data-composer-context-control
+          onClick={props.onOpen}
+        />
+      }
+      label={
+        <>
+          {t("Permissions")}
+          {shortcutLabel ? ` · ${shortcutLabel}` : null}
+        </>
+      }
+    >
+      <Icon aria-hidden="true" className="size-3" />
+      <ComposerContextLabel>{label}</ComposerContextLabel>
+    </SharedTooltipTrigger>
   );
 }

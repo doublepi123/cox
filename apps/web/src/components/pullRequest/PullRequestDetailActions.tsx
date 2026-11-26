@@ -1,3 +1,4 @@
+import { SharedTooltipTrigger } from "../ui/shared-tooltip";
 import { useTranslation } from "../../i18n";
 import type {
   EnvironmentId,
@@ -22,7 +23,6 @@ import {
   MenuSeparator,
   MenuTrigger,
 } from "../ui/menu";
-import { SharedTooltipTrigger } from "../ui/shared-tooltip";
 import type { resolvePullRequestPrimaryControl } from "./pullRequestDetail.logic";
 import { PullRequestGlyph } from "./pullRequestIcons";
 import type { resolvePullRequestState } from "./pullRequestPresentation";

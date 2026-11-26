@@ -1,3 +1,4 @@
+import { SharedTooltipTrigger } from "../ui/shared-tooltip";
 import { scopedThreadKey, scopeThreadRef } from "@t3tools/client-runtime/environment";
 import { threadRuntimeIsActive } from "@t3tools/client-runtime/state/shell";
 import { resolveLatestMergeBackRun } from "@t3tools/client-runtime/state/thread-workflows";
@@ -30,7 +31,7 @@ import { useAtomCommand } from "../../state/use-atom-command";
 import ChatView from "../ChatView";
 import { Button } from "../ui/button";
 import { toastManager } from "../ui/toast";
-import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
+
 import { BackgroundThreadContext } from "./backgroundThread";
 import { closeThreadFindIn } from "./threadFindStore";
 
@@ -145,23 +146,25 @@ export default function SideChatPane(props: {
         </span>
         {isOwnSideChat ? (
           <>
-            <Tooltip>
-              <TooltipTrigger
-                render={
-                  <Button
-                    variant="ghost"
-                    size="xs"
-                    aria-disabled={bringBackBlockedReason !== null || bringingBack || undefined}
-                    onClick={() => void bringBack()}
-                  >
-                    {t("Bring back")}
-                  </Button>
-                }
-              />
-              <TooltipPopup side="bottom">
-                {bringBackBlockedReason ?? "Adds this side chat to the main thread's next message."}
-              </TooltipPopup>
-            </Tooltip>
+            <SharedTooltipTrigger
+              render={
+                <Button
+                  variant="ghost"
+                  size="xs"
+                  aria-disabled={bringBackBlockedReason !== null || bringingBack || undefined}
+                  onClick={() => void bringBack()}
+                >
+                  {t("Bring back")}
+                </Button>
+              }
+              side="bottom"
+              label={
+                <>
+                  {bringBackBlockedReason ??
+                    "Adds this side chat to the main thread's next message."}
+                </>
+              }
+            />
             <Button
               variant="ghost"
               size="icon-xs"

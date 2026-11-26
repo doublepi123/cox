@@ -1,3 +1,4 @@
+import { SharedTooltipTrigger } from "../ui/shared-tooltip";
 import { useTranslation } from "../../i18n";
 import { Spinner } from "~/components/ui/spinner";
 import type {
@@ -47,7 +48,7 @@ import {
   MenuSubTrigger,
   MenuTrigger,
 } from "../ui/menu";
-import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
+
 import {
   pullRequestAuthorChoices,
   selectedPullRequestAuthor,
@@ -214,10 +215,12 @@ function PullRequestFilterRadioGroup<Value extends string>({
         );
         if (!option.unavailable) return item;
         return (
-          <Tooltip key={option.value}>
-            <TooltipTrigger render={item} />
-            <TooltipPopup side="top">{option.unavailable}</TooltipPopup>
-          </Tooltip>
+          <SharedTooltipTrigger
+            key={option.value}
+            render={item}
+            side="top"
+            label={option.unavailable}
+          />
         );
       })}
     </MenuRadioGroup>

@@ -1,3 +1,4 @@
+import { SharedTooltipTrigger } from "../ui/shared-tooltip";
 import { useTranslation } from "../../i18n";
 import { shouldPreserveAssistantLineBreaks } from "@t3tools/shared/assistantInsights";
 import { canForkProjectedAssistantItem } from "@t3tools/client-runtime/state/thread-workflows";
@@ -15,7 +16,7 @@ import { MessageCopyButton } from "./MessageCopyButton";
 import { AnswerImageButton } from "./AnswerImageButton";
 import { AssistantCitationSource } from "./AssistantCitationSource";
 import { resolveAssistantMessageCopyState } from "./MessagesTimeline.logic";
-import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
+
 import { cn } from "~/lib/utils";
 import { formatChatTimestampTooltip, formatDayAwareTimestamp } from "../../timestampFormat";
 import { useV2ItemSupport } from "../../state/v2ItemSupport";
@@ -101,28 +102,27 @@ function AssistantForkButton({
   const runId = projectedItem.item.runId;
 
   return (
-    <Tooltip>
-      <TooltipTrigger
-        render={
-          <Button
-            type="button"
-            size="xs"
-            variant="ghost"
-            disabled={busy}
-            onClick={() => {
-              setBusy(true);
-              void onForkFromRun({ sourceThreadId: projectedItem.sourceThreadId, runId }).finally(
-                () => setBusy(false),
-              );
-            }}
-            aria-label={t("Fork from this response")}
-          />
-        }
-      >
-        <GitForkIcon className={cn("size-3", busy && "animate-pulse")} />
-      </TooltipTrigger>
-      <TooltipPopup side="top">{t("Fork from this response")}</TooltipPopup>
-    </Tooltip>
+    <SharedTooltipTrigger
+      render={
+        <Button
+          type="button"
+          size="xs"
+          variant="ghost"
+          disabled={busy}
+          onClick={() => {
+            setBusy(true);
+            void onForkFromRun({ sourceThreadId: projectedItem.sourceThreadId, runId }).finally(
+              () => setBusy(false),
+            );
+          }}
+          aria-label={t("Fork from this response")}
+        />
+      }
+      side="top"
+      label={t("Fork from this response")}
+    >
+      <GitForkIcon className={cn("size-3", busy && "animate-pulse")} />
+    </SharedTooltipTrigger>
   );
 }
 
@@ -197,14 +197,14 @@ function AssistantMessageMeta({
         <AssistantForkButton projectedItem={projectedItem} />
       ) : null}
       {!message.streaming && (
-        <Tooltip>
-          <TooltipTrigger render={<p className="text-muted-foreground text-xs tabular-nums" />}>
-            {formatDayAwareTimestamp(message.updatedAt, ctx.timestampFormat, undefined, language)}
-          </TooltipTrigger>
-          <TooltipPopup>
-            {formatChatTimestampTooltip(message.updatedAt, ctx.timestampFormat, language)}
-          </TooltipPopup>
-        </Tooltip>
+        <SharedTooltipTrigger
+          render={<p className="text-muted-foreground text-xs tabular-nums" />}
+          label={
+            <>{formatChatTimestampTooltip(message.updatedAt, ctx.timestampFormat, language)}</>
+          }
+        >
+          {formatDayAwareTimestamp(message.updatedAt, ctx.timestampFormat, undefined, language)}
+        </SharedTooltipTrigger>
       )}
     </div>
   );

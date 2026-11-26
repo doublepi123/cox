@@ -1,3 +1,4 @@
+import { SharedTooltipTrigger } from "~/components/ui/shared-tooltip";
 import { scopeProjectRef } from "@t3tools/client-runtime/environment";
 import { useTranslation } from "../i18n";
 import { ThreadDetailsControl } from "./chat/ThreadDetailsControl";
@@ -86,7 +87,7 @@ import { Popover, PopoverPopup, PopoverTrigger } from "~/components/ui/popover";
 import { ScrollArea } from "~/components/ui/scroll-area";
 import { Textarea } from "~/components/ui/textarea";
 import { stackedThreadToast, toastManager } from "~/components/ui/toast";
-import { Tooltip, TooltipPopup, TooltipTrigger } from "~/components/ui/tooltip";
+
 import { useOpenInPreferredEditor } from "~/editorPreferences";
 import {
   useGitStackedAction,
@@ -405,18 +406,16 @@ function GitActionProgressButtonContent({ progress }: { progress: GitActionProgr
         )}
       >
         <div className="min-h-0 overflow-hidden">
-          <Tooltip>
-            <TooltipTrigger
-              render={
-                <p className="truncate pt-0.5 text-left text-2xs font-normal text-muted-foreground" />
-              }
-            >
-              {progress.output}
-            </TooltipTrigger>
-            <TooltipPopup side="bottom" width="wide">
-              {progress.output}
-            </TooltipPopup>
-          </Tooltip>
+          <SharedTooltipTrigger
+            render={
+              <p className="truncate pt-0.5 text-left text-2xs font-normal text-muted-foreground" />
+            }
+            side="bottom"
+            width="wide"
+            label={<>{progress.output}</>}
+          >
+            {progress.output}
+          </SharedTooltipTrigger>
         </div>
       </div>
     </div>
@@ -443,18 +442,16 @@ function GitActionSuccessButtonContent({ success }: { success: InlineGitActionSu
         )}
       >
         <div className="min-h-0 overflow-hidden">
-          <Tooltip>
-            <TooltipTrigger
-              render={
-                <p className="truncate pt-0.5 text-left text-2xs font-normal text-muted-foreground" />
-              }
-            >
-              {success.description}
-            </TooltipTrigger>
-            <TooltipPopup side="bottom" width="wide">
-              {success.description}
-            </TooltipPopup>
-          </Tooltip>
+          <SharedTooltipTrigger
+            render={
+              <p className="truncate pt-0.5 text-left text-2xs font-normal text-muted-foreground" />
+            }
+            side="bottom"
+            width="wide"
+            label={<>{success.description}</>}
+          >
+            {success.description}
+          </SharedTooltipTrigger>
         </div>
       </div>
     </div>
@@ -666,27 +663,29 @@ function PublishRepositoryDialog(props: PublishRepositoryDialogProps) {
                       <span className="min-w-0 flex-1 truncate text-sm font-medium text-foreground">
                         {option.label}
                       </span>
-                      <Tooltip>
-                        <TooltipTrigger
-                          render={
-                            <Button
-                              variant="warning-outline"
-                              size="micro"
-                              onClick={(event) => {
-                                event.preventDefault();
-                                event.stopPropagation();
-                                openSourceControlSettings();
-                              }}
-                            >
-                              {t("Setup Required")}
-                            </Button>
-                          }
-                        />
-                        <TooltipPopup side="top" align="end">
-                          {readiness.hint ??
-                            "Open Settings -> Source control to configure this provider."}
-                        </TooltipPopup>
-                      </Tooltip>
+                      <SharedTooltipTrigger
+                        render={
+                          <Button
+                            variant="warning-outline"
+                            size="micro"
+                            onClick={(event) => {
+                              event.preventDefault();
+                              event.stopPropagation();
+                              openSourceControlSettings();
+                            }}
+                          >
+                            {t("Setup Required")}
+                          </Button>
+                        }
+                        side="top"
+                        align="end"
+                        label={
+                          <>
+                            {readiness.hint ??
+                              "Open Settings -> Source control to configure this provider."}
+                          </>
+                        }
+                      />
                     </div>
                   );
                 }
@@ -1601,18 +1600,19 @@ function CheckoutGitActionsControl({
           <span className="flex min-w-0 flex-1 items-baseline gap-1.5">
             <span className={cn("shrink-0", THREAD_DETAILS_PANEL_LABEL_CLASS)}>{t("Changes")}</span>
             {changesBaseLabel ? (
-              <Tooltip>
-                <TooltipTrigger
-                  render={
-                    <span className="pointer-events-auto min-w-0 truncate font-normal text-muted-foreground" />
-                  }
-                >
-                  {changesBaseLabel}
-                </TooltipTrigger>
-                <TooltipPopup side="top">
-                  <span className="block max-w-96 break-words">{changesBaseLabel}</span>
-                </TooltipPopup>
-              </Tooltip>
+              <SharedTooltipTrigger
+                render={
+                  <span className="pointer-events-auto min-w-0 truncate font-normal text-muted-foreground" />
+                }
+                side="top"
+                label={
+                  <>
+                    <span className="block max-w-96 break-words">{changesBaseLabel}</span>
+                  </>
+                }
+              >
+                {changesBaseLabel}
+              </SharedTooltipTrigger>
             ) : null}
             <span className="ml-auto flex shrink-0 items-baseline gap-2 ps-2 font-mono tabular-nums">
               <span

@@ -1,3 +1,4 @@
+import { SharedTooltipTrigger } from "../ui/shared-tooltip";
 import { ImageDownIcon } from "lucide-react";
 import { lazy, Suspense, useRef, useState } from "react";
 import { flushSync } from "react-dom";
@@ -5,7 +6,7 @@ import { flushSync } from "react-dom";
 import { useTranslation } from "../../i18n";
 import { Button } from "../ui/button";
 import { Spinner } from "../ui/spinner";
-import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
+
 import type { AnswerImageSource } from "./AnswerImageDialog";
 
 const AnswerImageDialog = lazy(() => import("./AnswerImageDialog"));
@@ -20,23 +21,21 @@ export function AnswerImageButton(source: AnswerImageSource) {
   };
   return (
     <>
-      <Tooltip>
-        <TooltipTrigger
-          render={
-            <Button
-              type="button"
-              size="xs"
-              variant="ghost-muted"
-              aria-label={t("Export response as image")}
-              ref={buttonRef}
-              onClick={() => setSnapshot(source)}
-            />
-          }
-        >
-          <ImageDownIcon className="size-3" />
-        </TooltipTrigger>
-        <TooltipPopup>{t("Export response as image")}</TooltipPopup>
-      </Tooltip>
+      <SharedTooltipTrigger
+        render={
+          <Button
+            type="button"
+            size="xs"
+            variant="ghost-muted"
+            aria-label={t("Export response as image")}
+            ref={buttonRef}
+            onClick={() => setSnapshot(source)}
+          />
+        }
+        label={t("Export response as image")}
+      >
+        <ImageDownIcon className="size-3" />
+      </SharedTooltipTrigger>
       {snapshot ? (
         <Suspense fallback={<Spinner />}>
           <AnswerImageDialog source={snapshot} onClose={close} />

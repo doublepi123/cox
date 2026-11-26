@@ -1,3 +1,5 @@
+import { SharedTooltipTrigger } from "../ui/shared-tooltip";
+import { Tooltip, TooltipTrigger, TooltipPopup } from "../ui/tooltip";
 import { useTranslation } from "../../i18n";
 import { useAtomValue } from "@effect/atom-react";
 import { scopeThreadRef } from "@t3tools/client-runtime/environment";
@@ -25,7 +27,7 @@ import { useAtomCommand } from "../../state/use-atom-command";
 import { openDiscoveredPort } from "../preview/openDiscoveredPort";
 import { Spinner } from "../ui/spinner";
 import { stackedThreadToast, toastManager } from "../ui/toast";
-import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
+
 import { ThreadDetailsControl } from "./ThreadDetailsControl";
 import { ThreadDetailsSection } from "./ThreadDetailsSection";
 import { THREAD_DETAILS_PANEL_ICON_CLASS } from "./threadDetailsPanelStyles";
@@ -154,28 +156,27 @@ function ThreadServersList(props: ThreadServersPanelProps) {
               </Tooltip>
               {stoppable ? (
                 <div className="pointer-events-none absolute right-1 top-1/2 -translate-y-1/2 opacity-0 group-hover:pointer-events-auto group-hover:opacity-100 group-focus-within:pointer-events-auto group-focus-within:opacity-100 pointer-coarse:pointer-events-auto pointer-coarse:opacity-100 [@media(hover:none)]:pointer-events-auto [@media(hover:none)]:opacity-100">
-                  <Tooltip>
-                    <TooltipTrigger
-                      render={
-                        <ThreadDetailsControl
-                          size="icon-xs"
-                          variant="ghost"
-                          part="icon"
-                          tone="destructive"
-                          aria-label={`Stop localhost:${server.port}`}
-                          disabled={stoppingKey !== null}
-                          onClick={() => void stop(server)}
-                        />
-                      }
-                    >
-                      {stoppingKey === key ? (
-                        <Spinner aria-hidden size="xs" />
-                      ) : (
-                        <SquareIcon aria-hidden className="size-3 fill-current" />
-                      )}
-                    </TooltipTrigger>
-                    <TooltipPopup side="left">{translateUi("Stop server")}</TooltipPopup>
-                  </Tooltip>
+                  <SharedTooltipTrigger
+                    render={
+                      <ThreadDetailsControl
+                        size="icon-xs"
+                        variant="ghost"
+                        part="icon"
+                        tone="destructive"
+                        aria-label={`Stop localhost:${server.port}`}
+                        disabled={stoppingKey !== null}
+                        onClick={() => void stop(server)}
+                      />
+                    }
+                    side="left"
+                    label={translateUi("Stop server")}
+                  >
+                    {stoppingKey === key ? (
+                      <Spinner aria-hidden size="xs" />
+                    ) : (
+                      <SquareIcon aria-hidden className="size-3 fill-current" />
+                    )}
+                  </SharedTooltipTrigger>
                 </div>
               ) : null}
             </li>

@@ -1,3 +1,4 @@
+import { SharedTooltipTrigger } from "./ui/shared-tooltip";
 import { useTranslation } from "../i18n";
 import { Check, Copy } from "lucide";
 import { useRef } from "react";
@@ -10,7 +11,6 @@ import {
 } from "./ui/anchoredCopyToast";
 import { Button } from "./ui/button";
 import { MorphIcon } from "~/components/MorphIcon";
-import { Tooltip, TooltipPopup, TooltipTrigger } from "./ui/tooltip";
 
 export function DiffFilePathCopyButton({ filePath }: { filePath: string }) {
   const { t } = useTranslation();
@@ -22,26 +22,26 @@ export function DiffFilePathCopyButton({ filePath }: { filePath: string }) {
   });
 
   return (
-    <Tooltip>
-      <TooltipTrigger
-        render={
-          <Button
-            ref={ref}
-            size="icon-micro"
-            variant="ghost-muted"
-            aria-label="Copy file path"
-            onClick={() => copyToClipboard(filePath, undefined)}
-          />
-        }
-      >
-        <MorphIcon
-          className={cn("size-3", isCopied && "text-success")}
-          icon={isCopied ? Check : Copy}
+    <SharedTooltipTrigger
+      render={
+        <Button
+          ref={ref}
+          size="icon-micro"
+          variant="ghost-muted"
+          aria-label="Copy file path"
+          onClick={() => copyToClipboard(filePath, undefined)}
         />
-      </TooltipTrigger>
-      <TooltipPopup>
-        <p>{isCopied ? t("Copied") : t("Copy path")}</p>
-      </TooltipPopup>
-    </Tooltip>
+      }
+      label={
+        <>
+          <p>{isCopied ? t("Copied") : t("Copy path")}</p>
+        </>
+      }
+    >
+      <MorphIcon
+        className={cn("size-3", isCopied && "text-success")}
+        icon={isCopied ? Check : Copy}
+      />
+    </SharedTooltipTrigger>
   );
 }

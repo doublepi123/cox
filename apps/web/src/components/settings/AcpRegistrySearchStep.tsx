@@ -1,3 +1,4 @@
+import { SharedTooltipTrigger } from "../ui/shared-tooltip";
 import { translateCurrent, useTranslation } from "../../i18n";
 import { pipe } from "effect/Function";
 import { ACP_REGISTRY_MAX_AGENTS, AuthProvidersManageScope } from "@t3tools/contracts";
@@ -23,7 +24,7 @@ import { Alert, AlertDescription } from "../ui/alert";
 import { Button } from "../ui/button";
 import { InputGroup, InputGroupAddon, InputGroupInput } from "../ui/input-group";
 import { ScrollArea } from "../ui/scroll-area";
-import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
+
 import { isConfiguredAcpRegistryAgent } from "./AddProviderInstanceDialog.logic";
 import { ProviderDriverKind } from "@t3tools/contracts";
 import { ProviderInstanceIcon } from "../chat/ProviderInstanceIcon";
@@ -312,24 +313,24 @@ function AcpRegistryAgentRow({
         </div>
         <div className="flex shrink-0 items-center gap-1.5">
           {aboutUrl ? (
-            <Tooltip>
-              <TooltipTrigger
-                render={
-                  <Button
-                    size="icon-xs"
-                    variant="ghost-muted"
-                    aria-label={t("About {name}", { name: agent.name })}
-                    render={<a href={aboutUrl} target="_blank" rel="noreferrer" />}
-                  >
-                    <ExternalLinkIcon />
-                  </Button>
-                }
-              />
-              <TooltipPopup>
-                {t("About")}
-                {agent.name}
-              </TooltipPopup>
-            </Tooltip>
+            <SharedTooltipTrigger
+              render={
+                <Button
+                  size="icon-xs"
+                  variant="ghost-muted"
+                  aria-label={t("About {name}", { name: agent.name })}
+                  render={<a href={aboutUrl} target="_blank" rel="noreferrer" />}
+                >
+                  <ExternalLinkIcon />
+                </Button>
+              }
+              label={
+                <>
+                  {t("About")}
+                  {agent.name}
+                </>
+              }
+            />
           ) : null}
           <Button
             aria-label={`${alreadyAdded ? t("Already added") : isPreparing ? progressLabel : t("Add")} ${agent.name}`}

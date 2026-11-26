@@ -1,3 +1,5 @@
+import { SharedTooltipTrigger } from "~/components/ui/shared-tooltip";
+import { TooltipPopup, Tooltip, TooltipTrigger } from "~/components/ui/tooltip";
 import { useTranslation } from "../../i18n";
 import { mergeProps } from "@base-ui/react/merge-props";
 import { useRender } from "@base-ui/react/use-render";
@@ -16,7 +18,7 @@ import {
   SheetPopup,
   SheetTitle,
 } from "~/components/ui/sheet";
-import { Tooltip, TooltipPopup, TooltipTrigger } from "~/components/ui/tooltip";
+
 import { useResizeDrag } from "~/hooks/useResizeDrag";
 import { useMediaQuery } from "~/hooks/useMediaQuery";
 import { useClientSettings } from "~/hooks/useSettings";
@@ -729,10 +731,7 @@ function SidebarRail({
   if (canResize && resolvedResizable.collapseOnResize) return rail;
 
   return (
-    <Tooltip>
-      <TooltipTrigger render={rail} />
-      <TooltipPopup side="right">{railTitle}</TooltipPopup>
-    </Tooltip>
+    <SharedTooltipTrigger render={rail} side="right" label={railTitle} />
   );
 }
 

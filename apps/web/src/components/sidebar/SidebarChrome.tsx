@@ -1,3 +1,4 @@
+import { SharedTooltipTrigger } from "../ui/shared-tooltip";
 import { useAtomValue } from "@effect/atom-react";
 import { AuthEnvironmentMaintainScope } from "@t3tools/contracts";
 import { useTranslation } from "../../i18n";
@@ -28,7 +29,7 @@ import {
   SidebarTrigger,
   useSidebar,
 } from "../ui/sidebar";
-import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
+
 import { readPullRequestListPreferences } from "../pullRequest/pullRequestListPreferences";
 import { isSidebarUtilityPage, useNavigateToMainApp } from "./mainAppLocation";
 import { SidebarThreadUndoNotice } from "./SidebarThreadUndoNotice";
@@ -133,21 +134,20 @@ function SidebarUtilityItem({
 }) {
   return (
     <SidebarMenuItem grow>
-      <Tooltip>
-        <TooltipTrigger
-          render={
-            <SidebarMenuButton
-              aria-label={description ? `${label}. ${description}` : label}
-              onClick={onClick}
-              size="utility"
-            >
-              {icon}
-              <span className="md:hidden">{label}</span>
-            </SidebarMenuButton>
-          }
-        />
-        <TooltipPopup side="top">{description ?? label}</TooltipPopup>
-      </Tooltip>
+      <SharedTooltipTrigger
+        render={
+          <SidebarMenuButton
+            aria-label={description ? `${label}. ${description}` : label}
+            onClick={onClick}
+            size="utility"
+          >
+            {icon}
+            <span className="md:hidden">{label}</span>
+          </SidebarMenuButton>
+        }
+        side="top"
+        label={description ?? label}
+      />
     </SidebarMenuItem>
   );
 }

@@ -1,3 +1,5 @@
+import { SharedTooltipTrigger } from "./ui/shared-tooltip";
+import { Tooltip, TooltipTrigger, TooltipPopup } from "./ui/tooltip";
 import { useTranslation } from "../i18n";
 import { RefreshIcon } from "~/components/ui/refresh-icon";
 import { useAtomValue } from "@effect/atom-react";
@@ -106,7 +108,7 @@ import {
   DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from "./ui/menu";
-import { Tooltip, TooltipPopup, TooltipTrigger } from "./ui/tooltip";
+
 import { useEnvironmentQuery, useEnvironmentQueryRefresh } from "../state/query";
 import { useAtomCommand } from "../state/use-atom-command";
 import { serverEnvironment } from "../state/server";
@@ -1000,8 +1002,7 @@ export default function DiffPanel({
           </span>
           {headerCommitSha !== null ? (
             selectedCommitUrl ? (
-              <Tooltip>
-                <TooltipTrigger
+              <SharedTooltipTrigger
                   render={
                     <a
                       href={selectedCommitUrl}
@@ -1011,11 +1012,11 @@ export default function DiffPanel({
                       onClick={(event) => openCommitUrl(event, selectedCommitUrl)}
                     />
                   }
+                side="top"
+                label={selectedCommitUrl}
                 >
                   {headerCommitSha.slice(0, 7)}
-                </TooltipTrigger>
-                <TooltipPopup side="top">{selectedCommitUrl}</TooltipPopup>
-              </Tooltip>
+              </SharedTooltipTrigger>
             ) : (
               <span className="shrink-0 font-mono text-xs text-muted-foreground">
                 {headerCommitSha.slice(0, 7)}
@@ -1090,14 +1091,12 @@ export default function DiffPanel({
                             selectedCommitSha === commit.sha && "bg-foreground/[0.08]",
                           )}
                         >
-                          <Tooltip>
-                            <TooltipTrigger
+                          <SharedTooltipTrigger
                               render={
-                                <DropdownMenuRadioItem
-                                  value={`commit:${commit.sha}`}
-                                  closeOnClick
-                                />
+                              <DropdownMenuRadioItem value={`commit:${commit.sha}`} closeOnClick />
                               }
+                            side="right"
+                            label={commit.subject}
                             >
                               <span className="flex items-center gap-3">
                                 <span className="min-w-0 flex-1 truncate">{commit.subject}</span>
@@ -1105,9 +1104,7 @@ export default function DiffPanel({
                                   {formatRelativeTimeLabel(commit.committedAt, undefined, language)}
                                 </span>
                               </span>
-                            </TooltipTrigger>
-                            <TooltipPopup side="right">{commit.subject}</TooltipPopup>
-                          </Tooltip>
+                          </SharedTooltipTrigger>
                           {commitUrl ? (
                             <DropdownMenuItem
                               className="shrink-0"
@@ -1239,31 +1236,25 @@ export default function DiffPanel({
             className="flex min-w-0 max-w-full items-center gap-2 overflow-hidden text-xs text-muted-foreground"
             aria-label={`Comparing ${comparisonHeadRef} against ${comparisonBaseRef}`}
           >
-            <Tooltip>
-              <TooltipTrigger
+            <SharedTooltipTrigger
                 render={
                   // Too narrow for both refs, keep the target readable and drop the head, which
                   // is the thread's own branch.
                   <span className="flex min-w-[min(3rem,calc(100%-2.75rem))] items-center gap-2 overflow-hidden @max-[20rem]/diff-refs:hidden" />
                 }
+              side="top"
+              label={<>{`${comparisonHeadRef} → ${comparisonBaseRef}`}</>}
               >
                 <span className="min-w-0 max-w-48 truncate">{comparisonHeadRef}</span>
                 <ArrowRightIcon className="size-3.5 shrink-0 opacity-70" />
-              </TooltipTrigger>
-              <TooltipPopup side="top">
-                {`${comparisonHeadRef} → ${comparisonBaseRef}`}
-              </TooltipPopup>
-            </Tooltip>
-            <Tooltip>
-              <TooltipTrigger
+            </SharedTooltipTrigger>
+            <SharedTooltipTrigger
                 render={<span aria-hidden className="hidden @max-[20rem]/diff-refs:inline" />}
+              side="top"
+              label={<>{`${comparisonHeadRef} → ${comparisonBaseRef}`}</>}
               >
                 vs
-              </TooltipTrigger>
-              <TooltipPopup side="top">
-                {`${comparisonHeadRef} → ${comparisonBaseRef}`}
-              </TooltipPopup>
-            </Tooltip>
+            </SharedTooltipTrigger>
             <Combobox
               items={baseRefItems}
               filteredItems={filteredBaseRefItems}
@@ -1330,8 +1321,7 @@ export default function DiffPanel({
                               />
                             </div>
                           ) : choice.remote ? (
-                            <Tooltip>
-                              <TooltipTrigger
+                            <SharedTooltipTrigger
                                 render={
                                   <span className="flex justify-end text-muted-foreground">
                                     <CheckIcon
@@ -1341,9 +1331,9 @@ export default function DiffPanel({
                                     />
                                   </span>
                                 }
+                              side="top"
+                              label={"Remote only"}
                               />
-                              <TooltipPopup side="top">Remote only</TooltipPopup>
-                            </Tooltip>
                           ) : null}
                         </div>
                       </ComboboxItem>
@@ -1372,8 +1362,7 @@ export default function DiffPanel({
           </span>
         ) : null}
         {canRefreshGitDiff && (
-          <Tooltip>
-            <TooltipTrigger
+          <SharedTooltipTrigger
               render={
                 <Button
                   type="button"
@@ -1383,17 +1372,14 @@ export default function DiffPanel({
                   onClick={refreshDiffFromUserAction}
                 />
               }
+            side="top"
+            label={<>{isRefreshingDiff ? "Refreshing diff…" : "Refresh diff"}</>}
             >
               <RefreshIcon size="sm" refreshing={isRefreshingDiff} />
-            </TooltipTrigger>
-            <TooltipPopup side="top">
-              {isRefreshingDiff ? "Refreshing diff…" : "Refresh diff"}
-            </TooltipPopup>
-          </Tooltip>
+          </SharedTooltipTrigger>
         )}
         {diffFileKeys.length > 0 && (
-          <Tooltip>
-            <TooltipTrigger
+          <SharedTooltipTrigger
               render={
                 <Button
                   type="button"
@@ -1403,16 +1389,14 @@ export default function DiffPanel({
                   onClick={toggleDiffFileCollapse}
                 />
               }
+            side="top"
+            label={<>{allDiffFilesCollapsed ? "Expand all files" : "Collapse all files"}</>}
             >
               <MorphIcon
                 className="size-3.5"
                 icon={allDiffFilesCollapsed ? ChevronsUpDown : ChevronsDownUp}
               />
-            </TooltipTrigger>
-            <TooltipPopup side="top">
-              {allDiffFilesCollapsed ? "Expand all files" : "Collapse all files"}
-            </TooltipPopup>
-          </Tooltip>
+          </SharedTooltipTrigger>
         )}
         <span className="inline-flex min-w-0 shrink-0">
           <ToggleGroup
@@ -1443,8 +1427,7 @@ export default function DiffPanel({
             </Toggle>
           </ToggleGroup>
         </span>
-        <Tooltip>
-          <TooltipTrigger
+        <SharedTooltipTrigger
             render={
               <Toggle
                 aria-label={wordWrap ? "Disable diff line wrapping" : "Enable diff line wrapping"}
@@ -1456,15 +1439,12 @@ export default function DiffPanel({
                 }}
               />
             }
+          side="top"
+          label={<>{wordWrap ? "Disable line wrapping" : "Enable line wrapping"}</>}
           >
             <TextWrapIcon className="size-3.5" />
-          </TooltipTrigger>
-          <TooltipPopup side="top">
-            {wordWrap ? "Disable line wrapping" : "Enable line wrapping"}
-          </TooltipPopup>
-        </Tooltip>
-        <Tooltip>
-          <TooltipTrigger
+        </SharedTooltipTrigger>
+        <SharedTooltipTrigger
             render={
               <Toggle
                 aria-label={
@@ -1478,16 +1458,15 @@ export default function DiffPanel({
                 }}
               />
             }
+          side="top"
+          label={
+            <>{diffIgnoreWhitespace ? "Show whitespace changes" : t("Hide whitespace changes")}</>
+          }
           >
             <PilcrowIcon className="size-3.5" />
-          </TooltipTrigger>
-          <TooltipPopup side="top">
-            {diffIgnoreWhitespace ? "Show whitespace changes" : t("Hide whitespace changes")}
-          </TooltipPopup>
-        </Tooltip>
+        </SharedTooltipTrigger>
         {testFileCount > 0 && (
-          <Tooltip>
-            <TooltipTrigger
+          <SharedTooltipTrigger
               render={
                 <Toggle
                   aria-label={t("Hide test files")}
@@ -1497,19 +1476,20 @@ export default function DiffPanel({
                   onPressedChange={(pressed) => setHideTestFiles(Boolean(pressed))}
                 />
               }
-            >
-              <FlaskConicalOffIcon className="size-3.5" />
-            </TooltipTrigger>
-            <TooltipPopup side="top">
+            side="top"
+            label={
+              <>
               {hideTestFiles
                 ? `Show ${testFileCount} hidden test ${testFileCount === 1 ? "file" : "files"}`
                 : t("Hide test files")}
-            </TooltipPopup>
-          </Tooltip>
+              </>
+            }
+          >
+            <FlaskConicalOffIcon className="size-3.5" />
+          </SharedTooltipTrigger>
         )}
         {diffFileKeys.length > 0 && !mobileDiff && (
-          <Tooltip>
-            <TooltipTrigger
+          <SharedTooltipTrigger
               render={
                 <Toggle
                   aria-label={fileTreeOpen ? "Hide file tree" : "Show file tree"}
@@ -1519,13 +1499,11 @@ export default function DiffPanel({
                   onPressedChange={(pressed) => setFileTreeOpen(Boolean(pressed))}
                 />
               }
+            side="top"
+            label={<>{fileTreeOpen ? "Hide file tree" : "Show file tree"}</>}
             >
               <FolderTreeIcon className="size-3.5" />
-            </TooltipTrigger>
-            <TooltipPopup side="top">
-              {fileTreeOpen ? "Hide file tree" : "Show file tree"}
-            </TooltipPopup>
-          </Tooltip>
+          </SharedTooltipTrigger>
         )}
       </div>
     </>

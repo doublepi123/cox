@@ -1,3 +1,4 @@
+import { SharedTooltipTrigger } from "../ui/shared-tooltip";
 import { translateCurrent, useTranslation } from "../../i18n";
 import { ProcessSignalActions } from "./ProcessSignalActions";
 import { AuthEnvironmentMaintainScope } from "@t3tools/contracts";
@@ -52,7 +53,7 @@ import { Button } from "../ui/button";
 import { MorphIcon } from "~/components/MorphIcon";
 import { ScrollArea } from "../ui/scroll-area";
 import { Toggle, ToggleGroup } from "../ui/toggle-group";
-import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
+
 import { toastManager } from "../ui/toast";
 import {
   processIdentityKey,
@@ -435,44 +436,47 @@ function ResourceHistoryChart({
             minimumVisiblePercent: 1,
           });
           return (
-            <Tooltip key={DateTime.formatIso(bucket.startedAt)}>
-              <TooltipTrigger
-                render={
-                  <div className="grid h-full min-w-1 flex-1 grid-cols-3 items-end gap-px">
-                    <span
-                      className="block rounded-t-sm bg-foreground/65"
-                      style={{ height: `${cpuHeight}%` }}
-                    />
-                    <span
-                      className="block rounded-t-sm bg-info/70"
-                      style={{ height: `${readHeight}%` }}
-                    />
-                    <span
-                      className="block rounded-t-sm bg-warning/80"
-                      style={{ height: `${writeHeight}%` }}
-                    />
-                  </div>
-                }
-              />
-              <TooltipPopup side="top" textFormat="left">
-                <div className="space-y-0.5">
-                  <div>
-                    {t("CPU avg")} {bucket.avgCpuPercent.toFixed(1)}%
-                  </div>
-                  <div>
-                    {t("CPU peak")} {bucket.maxCpuPercent.toFixed(1)}%
-                  </div>
-                  <div>
-                    {t("Read")}
-                    {formatBytes(bucket.ioReadBytes)}
-                  </div>
-                  <div>
-                    {t("Write")}
-                    {formatBytes(bucket.ioWriteBytes)}
-                  </div>
+            <SharedTooltipTrigger
+              key={DateTime.formatIso(bucket.startedAt)}
+              render={
+                <div className="grid h-full min-w-1 flex-1 grid-cols-3 items-end gap-px">
+                  <span
+                    className="block rounded-t-sm bg-foreground/65"
+                    style={{ height: `${cpuHeight}%` }}
+                  />
+                  <span
+                    className="block rounded-t-sm bg-info/70"
+                    style={{ height: `${readHeight}%` }}
+                  />
+                  <span
+                    className="block rounded-t-sm bg-warning/80"
+                    style={{ height: `${writeHeight}%` }}
+                  />
                 </div>
-              </TooltipPopup>
-            </Tooltip>
+              }
+              side="top"
+              textFormat="left"
+              label={
+                <>
+                  <div className="space-y-0.5">
+                    <div>
+                      {t("CPU avg")} {bucket.avgCpuPercent.toFixed(1)}%
+                    </div>
+                    <div>
+                      {t("CPU peak")} {bucket.maxCpuPercent.toFixed(1)}%
+                    </div>
+                    <div>
+                      {t("Read")}
+                      {formatBytes(bucket.ioReadBytes)}
+                    </div>
+                    <div>
+                      {t("Write")}
+                      {formatBytes(bucket.ioWriteBytes)}
+                    </div>
+                  </div>
+                </>
+              }
+            />
           );
         })}
       </div>
@@ -512,14 +516,12 @@ function ProcessTreeName({
         <span className="size-5" aria-hidden />
       )}
       <span className={cn("size-1.5 rounded-full", categoryDotClass(process.category))} />
-      <Tooltip>
-        <TooltipTrigger
-          render={<span className="min-w-0 truncate font-medium text-foreground">{name}</span>}
-        />
-        <TooltipPopup side="top" variant="code">
-          {process.command || process.name}
-        </TooltipPopup>
-      </Tooltip>
+      <SharedTooltipTrigger
+        render={<span className="min-w-0 truncate font-medium text-foreground">{name}</span>}
+        side="top"
+        variant="code"
+        label={<>{process.command || process.name}</>}
+      />
     </div>
   );
 }
@@ -653,10 +655,11 @@ function ProcessTable({
                   {formatBytes(process.ioReadBytes)}
                 </td>
                 <td className="px-3 py-2 text-right font-mono tabular-nums text-muted-foreground">
-                  <Tooltip>
-                    <TooltipTrigger render={<span>{formatBytes(process.ioWriteBytes)}</span>} />
-                    <TooltipPopup side="top">{ioSemanticsLabel(process.ioSemantics)}</TooltipPopup>
-                  </Tooltip>
+                  <SharedTooltipTrigger
+                    render={<span>{formatBytes(process.ioWriteBytes)}</span>}
+                    side="top"
+                    label={ioSemanticsLabel(process.ioSemantics)}
+                  />
                 </td>
                 <td className="px-3 py-2 text-right font-mono tabular-nums text-muted-foreground">
                   {process.identity.pid}
@@ -723,18 +726,16 @@ function HistoryProcessTable({
             {processes.map((process) => (
               <tr key={processIdentityKey(process)} className="hover:bg-muted/20">
                 <td className="px-4 py-2 sm:pl-5">
-                  <Tooltip>
-                    <TooltipTrigger
-                      render={
-                        <span className="block truncate font-medium text-foreground">
-                          {process.name || process.command}
-                        </span>
-                      }
-                    />
-                    <TooltipPopup side="top" variant="code">
-                      {process.command || process.name}
-                    </TooltipPopup>
-                  </Tooltip>
+                  <SharedTooltipTrigger
+                    render={
+                      <span className="block truncate font-medium text-foreground">
+                        {process.name || process.command}
+                      </span>
+                    }
+                    side="top"
+                    variant="code"
+                    label={<>{process.command || process.name}</>}
+                  />
                 </td>
                 <td className="truncate px-3 py-2 text-2xs text-muted-foreground">
                   {categoryLabel(process.category)}
@@ -1016,22 +1017,21 @@ function ResourceTelemetryDiagnosticsBody({
             ) : null}
             <span className="inline-flex items-center gap-2">
               <LastSampleLabel sampledAt={snapshot?.readAt ?? null} />
-              <Tooltip>
-                <TooltipTrigger
-                  render={
-                    <Button
-                      size="icon-micro"
-                      variant="ghost"
-                      disabled={telemetry.isPending}
-                      onClick={telemetry.refresh}
-                      aria-label={translateUi("Refresh resource telemetry")}
-                    >
-                      <RefreshIcon size="xs" refreshing={telemetry.isPending} />
-                    </Button>
-                  }
-                />
-                <TooltipPopup side="top">{translateUi("Refresh telemetry snapshot")}</TooltipPopup>
-              </Tooltip>
+              <SharedTooltipTrigger
+                render={
+                  <Button
+                    size="icon-micro"
+                    variant="ghost"
+                    disabled={telemetry.isPending}
+                    onClick={telemetry.refresh}
+                    aria-label={translateUi("Refresh resource telemetry")}
+                  >
+                    <RefreshIcon size="xs" refreshing={telemetry.isPending} />
+                  </Button>
+                }
+                side="top"
+                label={translateUi("Refresh telemetry snapshot")}
+              />
             </span>
           </div>
         }

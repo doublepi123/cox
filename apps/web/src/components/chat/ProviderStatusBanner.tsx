@@ -1,3 +1,4 @@
+import { SharedTooltipTrigger } from "../ui/shared-tooltip";
 import { useTranslation } from "../../i18n";
 import {
   type EnvironmentId,
@@ -10,7 +11,7 @@ import { InfoIcon, XIcon } from "lucide-react";
 import { Alert, AlertAction, AlertDescription, AlertTitle } from "../ui/alert";
 import { Button, InlineButton } from "../ui/button";
 import { formatProviderDriverKindLabel } from "../../providerModels";
-import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
+
 import { serverEnvironment } from "../../state/server";
 import { useAtomCommand } from "../../state/use-atom-command";
 import { RefreshIcon } from "../ui/refresh-icon";
@@ -153,12 +154,14 @@ export const ProviderStatusBanner = memo(function ProviderStatusBanner({
         <AlertTitle>{title}</AlertTitle>
         <AlertDescription>
           <div className="flex flex-col gap-2">
-            <Tooltip>
-              <TooltipTrigger render={<div className="line-clamp-3" />}>{message}</TooltipTrigger>
-              <TooltipPopup side="top" textFormat="pre">
-                {message}
-              </TooltipPopup>
-            </Tooltip>
+            <SharedTooltipTrigger
+              render={<div className="line-clamp-3" />}
+              side="top"
+              textFormat="pre"
+              label={<>{message}</>}
+            >
+              {message}
+            </SharedTooltipTrigger>
             <div className="flex flex-wrap items-center justify-end gap-3">
               {onOpenProviderSetup && hasProviderSetup(status) ? (
                 <InlineButton onClick={() => onOpenProviderSetup(status.instanceId)}>

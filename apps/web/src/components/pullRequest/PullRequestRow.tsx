@@ -1,3 +1,4 @@
+import { SharedTooltipTrigger } from "../ui/shared-tooltip";
 import type { PullRequestAction } from "@t3tools/contracts";
 import { contextMenuSourceOf } from "../../contextMenuSource";
 import { sourceControlClients } from "@t3tools/client-runtime/source-control-clients";
@@ -13,7 +14,6 @@ import { memo, type RefCallback } from "react";
 import { cn } from "~/lib/utils";
 import { getSourceControlPresentationForKind } from "~/sourceControlPresentation";
 
-import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { PullRequestChecksPopover } from "./PullRequestChecksPopover";
 import type { EnvironmentPullRequestEntry } from "./pullRequestList.logic";
 import { openOnHostLabel, showPullRequestLinkContextMenu } from "./pullRequestLinkContextMenu";
@@ -213,28 +213,27 @@ function PullRequestRowImpl({
           meta={
             <>
               {matchedElsewhere ? (
-                <Tooltip>
-                  <TooltipTrigger
-                    render={
-                      <span className="flex min-w-6 items-center gap-1 overflow-hidden rounded-full border border-border/60 px-1 text-3xs" />
-                    }
-                  >
-                    <span className="sr-only">matched in the description</span>
-                    <SearchIcon aria-hidden className="size-3 shrink-0" />
-                    <span aria-hidden className="hidden truncate @xs/pr-row-meta:block">
-                      matched in the description
-                    </span>
-                  </TooltipTrigger>
-                  <TooltipPopup side="top">Matched in the description</TooltipPopup>
-                </Tooltip>
+                <SharedTooltipTrigger
+                  render={
+                    <span className="flex min-w-6 items-center gap-1 overflow-hidden rounded-full border border-border/60 px-1 text-3xs" />
+                  }
+                  side="top"
+                  label={"Matched in the description"}
+                >
+                  <span className="sr-only">matched in the description</span>
+                  <SearchIcon aria-hidden className="size-3 shrink-0" />
+                  <span aria-hidden className="hidden truncate @xs/pr-row-meta:block">
+                    matched in the description
+                  </span>
+                </SharedTooltipTrigger>
               ) : null}
               {showProvider ? (
-                <Tooltip>
-                  <TooltipTrigger render={<span className="inline-flex shrink-0" />}>
-                    <Icon aria-label={providerName} className="size-3" />
-                  </TooltipTrigger>
-                  <TooltipPopup>{providerName}</TooltipPopup>
-                </Tooltip>
+                <SharedTooltipTrigger
+                  render={<span className="inline-flex shrink-0" />}
+                  label={providerName}
+                >
+                  <Icon aria-label={providerName} className="size-3" />
+                </SharedTooltipTrigger>
               ) : null}
               <PullRequestRowAuthor
                 actor={entry.author}

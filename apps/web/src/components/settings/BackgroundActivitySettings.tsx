@@ -1,3 +1,4 @@
+import { SharedTooltipTrigger } from "../ui/shared-tooltip";
 import { useTranslation } from "../../i18n";
 import { useScopedSettingsWriteAllowed } from "./useScopedSettings";
 import { SettingsIcon } from "lucide-react";
@@ -33,7 +34,7 @@ import {
 } from "../ui/number-field";
 import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "../ui/select";
 import { Switch } from "../ui/switch";
-import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
+
 import {
   backgroundActivityOverrideSettings,
   backgroundActivitySharedPolicySettings,
@@ -485,8 +486,7 @@ export function BackgroundActivitySettingsRow() {
             </SelectPopup>
           </Select>
           {backgroundActivityProfileOption === "advanced" && isEnvironmentScope ? (
-            <Tooltip>
-              <TooltipTrigger
+            <SharedTooltipTrigger
                 render={
                   <Button
                     size="icon-sm"
@@ -497,9 +497,9 @@ export function BackgroundActivitySettingsRow() {
                     <SettingsIcon className="size-4" />
                   </Button>
                 }
+              side="top"
+              label={translateUi("Configure background activity")}
               />
-              <TooltipPopup side="top">{translateUi("Configure background activity")}</TooltipPopup>
-            </Tooltip>
           ) : null}
           <BackgroundActivityAdvancedDialog
             open={backgroundActivityDialogOpen && isEnvironmentScope}

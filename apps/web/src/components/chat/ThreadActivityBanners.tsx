@@ -1,3 +1,4 @@
+import { SharedTooltipTrigger } from "../ui/shared-tooltip";
 import type {
   EnvironmentId,
   OrchestrationV2ProviderSession,
@@ -33,7 +34,7 @@ import { tickTextContent } from "~/lib/tickTextContent";
 import { cn } from "~/lib/utils";
 import { Button, InlineButton } from "../ui/button";
 import { Popover, PopoverPopup, PopoverTitle, PopoverTrigger } from "../ui/popover";
-import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
+
 import { ComposerBanner } from "./ComposerBanner";
 import { BackgroundWorkDetails } from "./BackgroundWorkDetails";
 import type { ComposerBannerStackItem } from "./ComposerBannerStack";
@@ -423,19 +424,20 @@ export function branchMismatchBannerItem(input: {
     title: (
       <span className="flex min-w-0 items-baseline gap-1.5">
         <span className="shrink-0 font-normal text-muted-foreground">Branch changed from</span>
-        <Tooltip>
-          <TooltipTrigger
-            render={
-              <code className="min-w-0 truncate font-medium text-foreground">
-                {mismatch.threadBranch}
-              </code>
-            }
-          />
-          <TooltipPopup side="top">
-            This thread last ran on {mismatch.threadBranch}. Sending will continue on{" "}
-            {mismatch.currentBranch}.
-          </TooltipPopup>
-        </Tooltip>
+        <SharedTooltipTrigger
+          render={
+            <code className="min-w-0 truncate font-medium text-foreground">
+              {mismatch.threadBranch}
+            </code>
+          }
+          side="top"
+          label={
+            <>
+              This thread last ran on {mismatch.threadBranch}. Sending will continue on{" "}
+              {mismatch.currentBranch}.
+            </>
+          }
+        />
       </span>
     ),
     actions: (

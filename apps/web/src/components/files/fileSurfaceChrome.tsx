@@ -1,10 +1,11 @@
+import { SharedTooltipTrigger } from "~/components/ui/shared-tooltip";
 import { useTranslation } from "../../i18n";
 import type { ReactNode } from "react";
 
 import { Spinner } from "~/components/ui/spinner";
 import { Button } from "~/components/ui/button";
 import { Toggle } from "~/components/ui/toggle";
-import { Tooltip, TooltipPopup, TooltipTrigger } from "~/components/ui/tooltip";
+
 import { DIFF_SURFACE_THEME_UNSAFE_CSS } from "~/lib/diffRendering";
 import { cn } from "~/lib/utils";
 
@@ -68,36 +69,34 @@ export function FileSurfaceAction(props: {
 }) {
   const pressed = props.pressed;
   return (
-    <Tooltip>
-      <TooltipTrigger
-        render={
-          pressed === undefined ? (
-            <Button
-              type="button"
-              disabled={props.disabled ?? false}
-              onClick={props.onPress}
-              aria-label={props.label}
-              variant="ghost"
-              size="icon-sm"
-            >
-              {props.children}
-            </Button>
-          ) : (
-            <Toggle
-              pressed={pressed}
-              disabled={props.disabled ?? false}
-              onPressedChange={props.onPress}
-              aria-label={props.label}
-              variant="ghost"
-              size="sm"
-            >
-              {props.children}
-            </Toggle>
-          )
-        }
-      />
-      <TooltipPopup>{props.label}</TooltipPopup>
-    </Tooltip>
+    <SharedTooltipTrigger
+      render={
+        pressed === undefined ? (
+          <Button
+            type="button"
+            disabled={props.disabled ?? false}
+            onClick={props.onPress}
+            aria-label={props.label}
+            variant="ghost"
+            size="icon-sm"
+          >
+            {props.children}
+          </Button>
+        ) : (
+          <Toggle
+            pressed={pressed}
+            disabled={props.disabled ?? false}
+            onPressedChange={props.onPress}
+            aria-label={props.label}
+            variant="ghost"
+            size="sm"
+          >
+            {props.children}
+          </Toggle>
+        )
+      }
+      label={props.label}
+    />
   );
 }
 

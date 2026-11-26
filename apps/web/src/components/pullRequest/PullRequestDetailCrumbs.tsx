@@ -1,3 +1,5 @@
+import { SharedTooltipTrigger } from "../ui/shared-tooltip";
+import { Tooltip, TooltipTrigger, TooltipPopup } from "../ui/tooltip";
 import type { ScopedThreadRef } from "@t3tools/contracts";
 import { contextMenuSourceOf } from "../../contextMenuSource";
 import { useOpenLink } from "~/browser/useOpenLink";
@@ -7,7 +9,7 @@ import type { MouseEvent as ReactMouseEvent } from "react";
 
 import { cn } from "~/lib/utils";
 import { Button } from "../ui/button";
-import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
+
 import { openOnHostLabel, showPullRequestLinkContextMenu } from "./pullRequestLinkContextMenu";
 
 interface CrumbsPullRequest {
@@ -70,30 +72,29 @@ function NumberLink({
 }) {
   const openLink = useOpenLink(threadRef);
   return (
-    <Tooltip>
-      <TooltipTrigger
-        render={
-          <button
-            type="button"
-            {...(focusable ? {} : { tabIndex: -1 })}
-            onClick={(event) => void openLink(detail.url, { event }).catch(console.error)}
-            onAuxClick={(event) => {
-              if (event.button === 1) void openLink(detail.url, { event }).catch(console.error);
-            }}
-            onContextMenu={(event) => openNumberContextMenu(event, detail)}
-            className={cn(
-              "inline-flex shrink-0 cursor-pointer items-center gap-0.5 font-medium underline-offset-2 hover:underline",
-              toneClassName,
-            )}
-            aria-label={`Open ${sourceControlClients.get(detail.provider).changeRequest.singular} #${detail.number} on host`}
-          >
-            #{detail.number}
-            <ExternalLinkIcon aria-hidden className="size-2.5" />
-          </button>
-        }
-      />
-      <TooltipPopup side="top">{openOnHostText}</TooltipPopup>
-    </Tooltip>
+    <SharedTooltipTrigger
+      render={
+        <button
+          type="button"
+          {...(focusable ? {} : { tabIndex: -1 })}
+          onClick={(event) => void openLink(detail.url, { event }).catch(console.error)}
+          onAuxClick={(event) => {
+            if (event.button === 1) void openLink(detail.url, { event }).catch(console.error);
+          }}
+          onContextMenu={(event) => openNumberContextMenu(event, detail)}
+          className={cn(
+            "inline-flex shrink-0 cursor-pointer items-center gap-0.5 font-medium underline-offset-2 hover:underline",
+            toneClassName,
+          )}
+          aria-label={`Open ${sourceControlClients.get(detail.provider).changeRequest.singular} #${detail.number} on host`}
+        >
+          #{detail.number}
+          <ExternalLinkIcon aria-hidden className="size-2.5" />
+        </button>
+      }
+      side="top"
+      label={openOnHostText}
+    />
   );
 }
 
@@ -136,34 +137,33 @@ export function PullRequestDetailCrumbs({
         {ready ? (
           <>
             {onBack ? <BackButton onBack={onBack} focusable /> : null}
-            <Tooltip>
-              <TooltipTrigger
-                render={
-                  repositoryUrl ? (
-                    <button
-                      type="button"
-                      onClick={(event) =>
-                        void openLink(repositoryUrl, { event }).catch(console.error)
-                      }
-                      onAuxClick={(event) => {
-                        if (event.button === 1)
-                          void openLink(repositoryUrl, { event }).catch(console.error);
-                      }}
-                      className="min-w-0 cursor-pointer truncate text-left font-medium text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
-                    >
-                      {detail.repository}
-                    </button>
-                  ) : (
-                    <span className="min-w-0 truncate font-medium text-muted-foreground">
-                      {detail.repository}
-                    </span>
-                  )
-                }
-              />
-              <TooltipPopup side="top">
-                {repositoryUrl ? `Open ${detail.repository} repository` : detail.repository}
-              </TooltipPopup>
-            </Tooltip>
+            <SharedTooltipTrigger
+              render={
+                repositoryUrl ? (
+                  <button
+                    type="button"
+                    onClick={(event) =>
+                      void openLink(repositoryUrl, { event }).catch(console.error)
+                    }
+                    onAuxClick={(event) => {
+                      if (event.button === 1)
+                        void openLink(repositoryUrl, { event }).catch(console.error);
+                    }}
+                    className="min-w-0 cursor-pointer truncate text-left font-medium text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
+                  >
+                    {detail.repository}
+                  </button>
+                ) : (
+                  <span className="min-w-0 truncate font-medium text-muted-foreground">
+                    {detail.repository}
+                  </span>
+                )
+              }
+              side="top"
+              label={
+                <>{repositoryUrl ? `Open ${detail.repository} repository` : detail.repository}</>
+              }
+            />
             <NumberLink
               detail={detail}
               threadRef={threadRef}
@@ -195,16 +195,13 @@ export function PullRequestDetailCrumbs({
               threadRef={threadRef}
               focusable={condensed}
             />
-            <Tooltip>
-              <TooltipTrigger
-                render={
-                  <span className="min-w-0 truncate font-medium text-foreground">
-                    {detail.title}
-                  </span>
-                }
-              />
-              <TooltipPopup side="top">{detail.title}</TooltipPopup>
-            </Tooltip>
+            <SharedTooltipTrigger
+              render={
+                <span className="min-w-0 truncate font-medium text-foreground">{detail.title}</span>
+              }
+              side="top"
+              label={detail.title}
+            />
           </>
         ) : null}
       </div>

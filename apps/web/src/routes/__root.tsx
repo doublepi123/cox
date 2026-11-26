@@ -29,6 +29,7 @@ import { useCopyToClipboard } from "../hooks/useCopyToClipboard";
 import { Button } from "../components/ui/button";
 import { MorphIcon } from "~/components/MorphIcon";
 import { StandalonePage, StandalonePageHeader } from "../components/ui/standalone-page";
+import { SharedTooltipProvider } from "../components/ui/shared-tooltip";
 import { AnchoredToastProvider, ToastProvider } from "../components/ui/toast";
 import { cn } from "../lib/utils";
 import { useClientSettings } from "../hooks/useSettings";
@@ -92,11 +93,13 @@ function RootRouteView() {
   // Above every branch: app services raise toasts for the whole page, so the surface they write to
   // must not unmount when the root switches branches (for example /welcome to the app shell).
   return (
+    <SharedTooltipProvider>
     <ToastProvider>
       <AnchoredToastProvider>
         <RootRouteBranch />
       </AnchoredToastProvider>
     </ToastProvider>
+    </SharedTooltipProvider>
   );
 }
 

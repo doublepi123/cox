@@ -1,3 +1,5 @@
+import { SharedTooltipTrigger } from "../ui/shared-tooltip";
+import { Tooltip, TooltipTrigger, TooltipPopup } from "../ui/tooltip";
 import { useTranslation } from "../../i18n";
 import type {
   ChatAttachment,
@@ -26,7 +28,7 @@ import { AttachmentFilePreview } from "../files/AttachmentFilePreview";
 import { AttachmentImage } from "../media/AttachmentImage";
 import { Button } from "../ui/button";
 import { Dialog, DialogPopup, DialogTitle } from "../ui/dialog";
-import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
+
 import { ComposerImageThumbnail } from "./ComposerImageThumbnail";
 import { composerFloatingLayerProps } from "./composerEventScope";
 import type { PreparingComposerImage } from "./preparingComposerImages";
@@ -195,24 +197,25 @@ export function ComposerAttachmentMediaRow({
               />
             ) : null}
             {nonPersistedImageIdSet.has(image.id) && (
-              <Tooltip>
-                <TooltipTrigger
-                  render={
-                    <span
-                      role="img"
-                      aria-label={translateUi("Draft attachment may not persist")}
-                      className="absolute left-1 top-1 inline-flex items-center justify-center rounded bg-background/85 p-0.5 text-warning-foreground"
-                    >
-                      <CircleAlertIcon className="size-3" />
-                    </span>
-                  }
-                />
-                <TooltipPopup side="top">
-                  {translateUi(
-                    "Draft attachment could not be saved locally and may be lost on navigation.",
-                  )}
-                </TooltipPopup>
-              </Tooltip>
+              <SharedTooltipTrigger
+                render={
+                  <span
+                    role="img"
+                    aria-label={translateUi("Draft attachment may not persist")}
+                    className="absolute left-1 top-1 inline-flex items-center justify-center rounded bg-background/85 p-0.5 text-warning-foreground"
+                  >
+                    <CircleAlertIcon className="size-3" />
+                  </span>
+                }
+                side="top"
+                label={
+                  <>
+                    {translateUi(
+                      "Draft attachment could not be saved locally and may be lost on navigation.",
+                    )}
+                  </>
+                }
+              />
             )}
             {(!ready || upload?.status === "uploading") && (
               <span className="pointer-events-none absolute inset-x-0 bottom-0 bg-background/85 px-1 text-center text-3xs text-foreground">
@@ -416,28 +419,27 @@ export function ComposerAttachmentFileList({
               )}
             </span>
             {!needsReattach && upload?.status === "failed" ? (
-              <Tooltip>
-                <TooltipTrigger
-                  render={
-                    <Button
-                      variant="ghost"
-                      size="icon-xs"
-                      onClick={() =>
-                        retryAttachmentUpload({
-                          environmentId,
-                          image: file,
-                          draftTarget: attachmentDraftTarget,
-                        })
-                      }
-                      disabled={!canOperateThread}
-                      aria-label={`Retry upload for ${file.name}`}
-                    />
-                  }
-                >
-                  <RefreshIcon />
-                </TooltipTrigger>
-                <TooltipPopup side="top">{upload.reason}</TooltipPopup>
-              </Tooltip>
+              <SharedTooltipTrigger
+                render={
+                  <Button
+                    variant="ghost"
+                    size="icon-xs"
+                    onClick={() =>
+                      retryAttachmentUpload({
+                        environmentId,
+                        image: file,
+                        draftTarget: attachmentDraftTarget,
+                      })
+                    }
+                    disabled={!canOperateThread}
+                    aria-label={`Retry upload for ${file.name}`}
+                  />
+                }
+                side="top"
+                label={upload.reason}
+              >
+                <RefreshIcon />
+              </SharedTooltipTrigger>
             ) : null}
             <Button
               variant="ghost"
@@ -651,24 +653,22 @@ export function ComposerAttachButton({
           });
         }}
       />
-      <Tooltip>
-        <TooltipTrigger
-          render={
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon-sm"
-              onPointerDown={(event) => event.preventDefault()}
-              onClick={() => inputRef.current?.click()}
-              aria-label={t("Attach files")}
-            />
-          }
-        >
-          {/* The clip's weight sits in its upper loop; 1px down reads as centered on the row. */}
-          <PaperclipIcon className="translate-y-px" />
-        </TooltipTrigger>
-        <TooltipPopup>{t("Attach files")}</TooltipPopup>
-      </Tooltip>
+      <SharedTooltipTrigger
+        render={
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-sm"
+            onPointerDown={(event) => event.preventDefault()}
+            onClick={() => inputRef.current?.click()}
+            aria-label={t("Attach files")}
+          />
+        }
+        label={t("Attach files")}
+      >
+        {/* The clip's weight sits in its upper loop; 1px down reads as centered on the row. */}
+        <PaperclipIcon className="translate-y-px" />
+      </SharedTooltipTrigger>
     </>
   );
 }

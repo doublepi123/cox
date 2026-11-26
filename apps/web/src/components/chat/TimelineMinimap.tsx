@@ -1,3 +1,4 @@
+import { SharedTooltipTrigger } from "../ui/shared-tooltip";
 import { resolveTimelineMinimapPreview, type TimelineMinimapItem } from "./timelineMinimapItems";
 import { useRef, useState, type MouseEvent } from "react";
 import { ChevronDownIcon, ChevronUpIcon } from "lucide-react";
@@ -9,7 +10,7 @@ import {
   resolveTimelineMinimapTopPercent,
   TIMELINE_MINIMAP_MIN_ITEMS,
 } from "./MessagesTimeline.logic";
-import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
+
 import { cn } from "~/lib/utils";
 
 // A release outside the window can skip `mouseup`, so the next button-free
@@ -279,8 +280,7 @@ function TimelineMinimapNavigationButton({
   const Icon = previous ? ChevronUpIcon : ChevronDownIcon;
 
   return (
-    <Tooltip>
-      <TooltipTrigger
+    <SharedTooltipTrigger
         render={
           <span
             className={cn(
@@ -290,6 +290,8 @@ function TimelineMinimapNavigationButton({
             )}
           />
         }
+      side={previous ? "top" : "bottom"}
+      label={label}
       >
         <Button
           aria-label={label}
@@ -301,8 +303,6 @@ function TimelineMinimapNavigationButton({
         >
           <Icon className="size-4 text-foreground/90" />
         </Button>
-      </TooltipTrigger>
-      <TooltipPopup side={previous ? "top" : "bottom"}>{label}</TooltipPopup>
-    </Tooltip>
+    </SharedTooltipTrigger>
   );
 }

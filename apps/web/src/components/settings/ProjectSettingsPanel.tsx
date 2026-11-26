@@ -1,3 +1,4 @@
+import { SharedTooltipTrigger } from "../ui/shared-tooltip";
 import { useTranslation } from "../../i18n";
 import { useComposerMenuState } from "../chat/useComposerMenuState";
 import { useOrchestrationCommand } from "../../state/use-orchestration-command";
@@ -32,7 +33,7 @@ import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { Switch } from "../ui/switch";
 import { toastManager } from "../ui/toast";
-import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
+
 import {
   SettingResetButton,
   SettingsPageContainer,
@@ -358,12 +359,12 @@ function ProjectDetail({
                   <span className="block truncate">{labels.secondary}</span>
                 ) : null}
                 {!hasMultiple ? (
-                  <Tooltip>
-                    <TooltipTrigger render={<span className="block truncate" />}>
+                  <SharedTooltipTrigger
+                    render={<span className="block truncate" />}
+                    label={firstMember.workspaceRoot}
+                  >
                       {firstMember.workspaceRoot}
-                    </TooltipTrigger>
-                    <TooltipPopup>{firstMember.workspaceRoot}</TooltipPopup>
-                  </Tooltip>
+                  </SharedTooltipTrigger>
                 ) : null}
               </>
             }
@@ -376,16 +377,14 @@ function ProjectDetail({
                     key={member.physicalProjectKey}
                     className="flex min-w-0 items-center justify-between gap-3"
                   >
-                    <Tooltip>
-                      <TooltipTrigger
+                    <SharedTooltipTrigger
                         render={
                           <span className="min-w-0 truncate text-xs text-muted-foreground/80" />
                         }
+                      label={member.workspaceRoot}
                       >
                         {member.workspaceRoot}
-                      </TooltipTrigger>
-                      <TooltipPopup>{member.workspaceRoot}</TooltipPopup>
-                    </Tooltip>
+                    </SharedTooltipTrigger>
                     <div className="shrink-0">{checkoutRemoveButton(member)}</div>
                   </div>
                 ))}

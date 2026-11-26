@@ -1,4 +1,5 @@
-import { Tooltip, TooltipTrigger, TooltipPopup } from "../ui/tooltip";
+import { SharedTooltipTrigger } from "../ui/shared-tooltip";
+
 import type { EnvironmentId, PullRequestRef, PullRequestStackMembership } from "@t3tools/contracts";
 import { useState } from "react";
 import { usePullRequestStack } from "~/state/usePullRequestStack";
@@ -58,31 +59,31 @@ export function PullRequestStackPopover({
   const [open, setOpen] = useState(false);
   return (
     <Menu open={open} onOpenChange={setOpen}>
-      <Tooltip>
-        <TooltipTrigger
-          render={
-            <MenuTrigger
-              nativeButton={false}
-              render={
-                <span
-                  role="button"
-                  tabIndex={0}
-                  className="inline-flex shrink-0 cursor-pointer items-center gap-1 text-xs font-normal text-muted-foreground"
-                />
-              }
-              aria-label={`Stack ${membership.number}, layer ${membership.position} of ${membership.size}`}
-              onClick={(event) => event.stopPropagation()}
-              onKeyDown={(event) => event.stopPropagation()}
-            >
-              <PullRequestGlyph.stack aria-hidden className="size-3" />
-              {membership.position}/{membership.size}
-            </MenuTrigger>
-          }
-        />
-        <TooltipPopup>
-          View stack #{membership.number}, layer {membership.position} of {membership.size}
-        </TooltipPopup>
-      </Tooltip>
+      <SharedTooltipTrigger
+        render={
+          <MenuTrigger
+            nativeButton={false}
+            render={
+              <span
+                role="button"
+                tabIndex={0}
+                className="inline-flex shrink-0 cursor-pointer items-center gap-1 text-xs font-normal text-muted-foreground"
+              />
+            }
+            aria-label={`Stack ${membership.number}, layer ${membership.position} of ${membership.size}`}
+            onClick={(event) => event.stopPropagation()}
+            onKeyDown={(event) => event.stopPropagation()}
+          >
+            <PullRequestGlyph.stack aria-hidden className="size-3" />
+            {membership.position}/{membership.size}
+          </MenuTrigger>
+        }
+        label={
+          <>
+            View stack #{membership.number}, layer {membership.position} of {membership.size}
+          </>
+        }
+      />
       <MenuPopup
         align="start"
         onClick={(event) => event.stopPropagation()}

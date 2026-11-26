@@ -1,3 +1,4 @@
+import { SharedTooltipTrigger } from "../ui/shared-tooltip";
 import { useTranslation } from "../../i18n";
 import {
   CheckIcon,
@@ -40,7 +41,7 @@ import {
 } from "../ui/alert-dialog";
 import { Button } from "../ui/button";
 import { stackedThreadToast, toastManager } from "../ui/toast";
-import { Tooltip, TooltipPopup, TooltipProvider, TooltipTrigger } from "../ui/tooltip";
+import { TooltipProvider, Tooltip, TooltipTrigger, TooltipPopup } from "../ui/tooltip";
 import { ThemeImportDialog } from "./ThemeImportDialog";
 import { searchableSetting } from "./settingsSearch";
 import { useThemeEditorStore } from "./themeEditorStore";
@@ -89,12 +90,7 @@ function downloadThemeFile(filename: string, contents: string): void {
 }
 
 function ThemeVariantTooltip({ label, children }: { label: string; children: ReactElement }) {
-  return (
-    <Tooltip>
-      <TooltipTrigger render={children} />
-      <TooltipPopup>{label}</TooltipPopup>
-    </Tooltip>
-  );
+  return <SharedTooltipTrigger render={children} label={label} />;
 }
 
 function ThemeLibraryCard({
@@ -337,92 +333,82 @@ function ThemeLibraryCard({
               {onEdit || onDuplicate || onDownload || onRemove ? (
                 <div className="flex shrink-0 items-center gap-1">
                   {onDuplicate ? (
-                    <Tooltip>
-                      <TooltipTrigger
-                        render={
-                          <Button
-                            aria-label={t("Duplicate {name}", { name: theme.label })}
-                            size="icon-xs"
-                            variant="ghost"
-                            onClick={(event) => {
-                              event.stopPropagation();
-                              onDuplicate();
-                            }}
-                          >
-                            <CopyIcon />
-                          </Button>
-                        }
-                      />
-                      <TooltipPopup>{t("Duplicate theme")}</TooltipPopup>
-                    </Tooltip>
+                    <SharedTooltipTrigger
+                      render={
+                        <Button
+                          aria-label={t("Duplicate {name}", { name: theme.label })}
+                          size="icon-xs"
+                          variant="ghost"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            onDuplicate();
+                          }}
+                        >
+                          <CopyIcon />
+                        </Button>
+                      }
+                      label={t("Duplicate theme")}
+                    />
                   ) : null}
                   {onEdit ? (
-                    <Tooltip>
-                      <TooltipTrigger
-                        render={
-                          <Button
-                            aria-label={t("Edit {name}", { name: theme.label })}
-                            size="icon-xs"
-                            variant="ghost"
-                            onClick={(event) => {
-                              event.stopPropagation();
-                              onEdit();
-                            }}
-                          >
-                            <PenLineIcon />
-                          </Button>
-                        }
-                      />
-                      <TooltipPopup>{t("Edit theme")}</TooltipPopup>
-                    </Tooltip>
+                    <SharedTooltipTrigger
+                      render={
+                        <Button
+                          aria-label={t("Edit {name}", { name: theme.label })}
+                          size="icon-xs"
+                          variant="ghost"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            onEdit();
+                          }}
+                        >
+                          <PenLineIcon />
+                        </Button>
+                      }
+                      label={t("Edit theme")}
+                    />
                   ) : null}
                   {onDownload ? (
-                    <Tooltip>
-                      <TooltipTrigger
-                        render={
-                          <Button
-                            aria-label={t("Export {name}", { name: theme.label })}
-                            size="icon-xs"
-                            variant="ghost"
-                            onClick={(event) => {
-                              event.stopPropagation();
-                              onDownload();
-                            }}
-                          >
-                            <UploadIcon />
-                          </Button>
-                        }
-                      />
-                      <TooltipPopup>{t("Export theme file")}</TooltipPopup>
-                    </Tooltip>
+                    <SharedTooltipTrigger
+                      render={
+                        <Button
+                          aria-label={t("Export {name}", { name: theme.label })}
+                          size="icon-xs"
+                          variant="ghost"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            onDownload();
+                          }}
+                        >
+                          <UploadIcon />
+                        </Button>
+                      }
+                      label={t("Export theme file")}
+                    />
                   ) : null}
                   {onRemove ? (
-                    <Tooltip>
-                      <TooltipTrigger
-                        render={
-                          <Button
-                            aria-label={
-                              variantNavigation
-                                ? t("Remove themes from {name}", {
-                                    name: variantNavigation.collectionLabel,
-                                  })
-                                : t("Remove {name}", { name: theme.label })
-                            }
-                            size="icon-xs"
-                            variant="ghost-destructive"
-                            onClick={(event) => {
-                              event.stopPropagation();
-                              onRemove();
-                            }}
-                          >
-                            <Trash2Icon />
-                          </Button>
-                        }
-                      />
-                      <TooltipPopup>
-                        {variantNavigation ? t("Remove themes") : t("Remove theme")}
-                      </TooltipPopup>
-                    </Tooltip>
+                    <SharedTooltipTrigger
+                      render={
+                        <Button
+                          aria-label={
+                            variantNavigation
+                              ? t("Remove themes from {name}", {
+                                  name: variantNavigation.collectionLabel,
+                                })
+                              : t("Remove {name}", { name: theme.label })
+                          }
+                          size="icon-xs"
+                          variant="ghost-destructive"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            onRemove();
+                          }}
+                        >
+                          <Trash2Icon />
+                        </Button>
+                      }
+                      label={<>{variantNavigation ? t("Remove themes") : t("Remove theme")}</>}
+                    />
                   ) : null}
                 </div>
               ) : null}

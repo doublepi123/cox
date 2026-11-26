@@ -1,3 +1,4 @@
+import { SharedTooltipTrigger } from "../ui/shared-tooltip";
 import { useTranslation } from "../../i18n";
 import {
   isAtomCommandInterrupted,
@@ -21,7 +22,7 @@ import { useAtomCommand } from "../../state/use-atom-command";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "../ui/select";
-import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
+
 import { SettingsRow } from "./settingsLayout";
 import { RedactedSensitiveText } from "./RedactedSensitiveText";
 const ProviderAuthTerminal = lazy(() => import("./ProviderAuthTerminal"));
@@ -243,31 +244,29 @@ export function ProviderAuthenticationSection({
               >
                 {t("Open browser")}
               </Button>
-              <Tooltip>
-                <TooltipTrigger
-                  render={
-                    <Button
-                      aria-label={t("Copy sign-in link")}
-                      size="icon-sm"
-                      variant="ghost-muted"
-                      disabled={disabled}
-                      onClick={() => {
-                        // Copy during the click to retain clipboard activation; consent must still be
-                        // recorded before use.
-                        const copied = writeTextToClipboard(url, t("Provider sign-in link"));
-                        void (async () => {
-                          await copied;
-                          if (interaction?.type === "browser" && interaction.requiresConsent)
-                            await send({ type: "browser", action: "accept" });
-                        })().catch(() => setError(t("Could not copy the sign-in link.")));
-                      }}
-                    >
-                      <CopyIcon />
-                    </Button>
-                  }
-                />
-                <TooltipPopup>{t("Copy sign-in link")}</TooltipPopup>
-              </Tooltip>
+              <SharedTooltipTrigger
+                render={
+                  <Button
+                    aria-label={t("Copy sign-in link")}
+                    size="icon-sm"
+                    variant="ghost-muted"
+                    disabled={disabled}
+                    onClick={() => {
+                      // Copy during the click to retain clipboard activation; consent must still be
+                      // recorded before use.
+                      const copied = writeTextToClipboard(url, t("Provider sign-in link"));
+                      void (async () => {
+                        await copied;
+                        if (interaction?.type === "browser" && interaction.requiresConsent)
+                          await send({ type: "browser", action: "accept" });
+                      })().catch(() => setError(t("Could not copy the sign-in link.")));
+                    }}
+                  >
+                    <CopyIcon />
+                  </Button>
+                }
+                label={t("Copy sign-in link")}
+              />
             </>
           ) : null}
           <>

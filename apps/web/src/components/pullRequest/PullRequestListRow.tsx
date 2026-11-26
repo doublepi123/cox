@@ -1,3 +1,4 @@
+import { SharedTooltipTrigger } from "../ui/shared-tooltip";
 import type {
   PullRequestActor,
   PullRequestMergeability,
@@ -9,7 +10,7 @@ import { cn } from "~/lib/utils";
 import { RelativeTime } from "~/components/RelativeTime";
 
 import { MiddleTruncate } from "../ui/middle-truncate";
-import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
+
 import {
   PullRequestActorAvatar,
   PullRequestConflictGlyph,
@@ -114,17 +115,14 @@ export function PullRequestRowAuthor({
 }) {
   const login = actor?.login ?? "ghost";
   return (
-    <Tooltip>
-      <TooltipTrigger
-        render={<span className={cn("inline-flex min-w-0 items-center gap-1", className)} />}
-      >
-        <PullRequestActorAvatar actor={actor} className="size-3.5" />
-        <span className={cn("truncate", labelClassName)}>{login}</span>
-      </TooltipTrigger>
-      <TooltipPopup side="top">
-        {actor?.name && actor.name !== login ? `${actor.name} (@${login})` : login}
-      </TooltipPopup>
-    </Tooltip>
+    <SharedTooltipTrigger
+      render={<span className={cn("inline-flex min-w-0 items-center gap-1", className)} />}
+      side="top"
+      label={<>{actor?.name && actor.name !== login ? `${actor.name} (@${login})` : login}</>}
+    >
+      <PullRequestActorAvatar actor={actor} className="size-3.5" />
+      <span className={cn("truncate", labelClassName)}>{login}</span>
+    </SharedTooltipTrigger>
   );
 }
 

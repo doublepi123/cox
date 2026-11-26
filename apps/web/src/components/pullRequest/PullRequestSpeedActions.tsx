@@ -1,3 +1,4 @@
+import { SharedTooltipTrigger } from "../ui/shared-tooltip";
 import { useAtomValue } from "@effect/atom-react";
 import type { PullRequestAction, PullRequestSummary } from "@t3tools/contracts";
 import { createContext, use, type ReactNode } from "react";
@@ -8,7 +9,7 @@ import { pullRequestEnvironment } from "~/state/pullRequests";
 import { useUiStateStore } from "~/uiStateStore";
 import { Button } from "../ui/button";
 import { Spinner } from "../ui/spinner";
-import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
+
 import { resolvePullRequestMergeMethod } from "./pullRequestDetail.logic";
 import { PullRequestGlyph } from "./pullRequestIcons";
 import { pullRequestQuickActions, type EnvironmentPullRequestEntry } from "./pullRequestList.logic";
@@ -90,34 +91,35 @@ export function PullRequestSpeedActions<Entry extends PullRequestSpeedActionEntr
         const label = ACTIONS[action].label;
         const Icon = ACTIONS[action].Icon;
         return (
-          <Tooltip key={action}>
-            <TooltipTrigger
-              render={
-                <Button
-                  variant={action === "close" ? "destructive-outline" : "outline"}
-                  size="xs"
-                  disabled={!canWrite || busy || (action === "merge" && entry.stack !== undefined)}
-                  aria-label={`${label} #${entry.number}`}
-                  onClick={() => void perform(action)}
-                  onPointerDown={(event) => {
-                    if (action !== "close" || !event.isPrimary || event.button !== 0) return;
-                    event.stopPropagation();
-                    onCloseSweepStart?.(entry, event.nativeEvent);
-                  }}
-                />
-              }
-            >
-              {busy ? <Spinner size="xs" /> : <Icon aria-hidden className="size-3" />}
-              {label}
-            </TooltipTrigger>
-            <TooltipPopup>
-              {action === "merge" && entry.stack
-                ? `Open this ${terminology.singular} to merge its stack`
-                : action === "close" && onCloseSweepStart
-                  ? "Close immediately, or drag across rows to close several"
-                  : `${label} immediately`}
-            </TooltipPopup>
-          </Tooltip>
+          <SharedTooltipTrigger
+            key={action}
+            render={
+              <Button
+                variant={action === "close" ? "destructive-outline" : "outline"}
+                size="xs"
+                disabled={!canWrite || busy || (action === "merge" && entry.stack !== undefined)}
+                aria-label={`${label} #${entry.number}`}
+                onClick={() => void perform(action)}
+                onPointerDown={(event) => {
+                  if (action !== "close" || !event.isPrimary || event.button !== 0) return;
+                  event.stopPropagation();
+                  onCloseSweepStart?.(entry, event.nativeEvent);
+                }}
+              />
+            }
+            label={
+              <>
+                {action === "merge" && entry.stack
+                  ? `Open this ${terminology.singular} to merge its stack`
+                  : action === "close" && onCloseSweepStart
+                    ? "Close immediately, or drag across rows to close several"
+                    : `${label} immediately`}
+              </>
+            }
+          >
+            {busy ? <Spinner size="xs" /> : <Icon aria-hidden className="size-3" />}
+            {label}
+          </SharedTooltipTrigger>
         );
       })}
     </SpeedModeGroup>

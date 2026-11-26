@@ -1,3 +1,5 @@
+import { SharedTooltipTrigger } from "../ui/shared-tooltip";
+import { Tooltip, TooltipTrigger, TooltipPopup } from "../ui/tooltip";
 import { useTranslation } from "../../i18n";
 import { useEnvironmentScope } from "../../state/session";
 import { useEnvironmentsWithScope, readEnvironmentScope } from "../../state/session";
@@ -93,7 +95,7 @@ import {
 import { SettingsGroup } from "./SettingsGroup";
 import { SettingsPageContainer, SettingsRow, SettingsSection } from "./settingsLayout";
 import { keybindingSearchAnchorId, searchableSetting } from "./settingsSearch";
-import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
+
 import { useAtomCommand } from "../../state/use-atom-command";
 function KeybindingPill({ shortcut }: { shortcut: KeybindingShortcut }) {
   const isMac = navigator.platform.toLowerCase().includes("mac");
@@ -236,8 +238,7 @@ function WarningTooltipIcon({
   children: ReactNode;
 }) {
   return (
-    <Tooltip>
-      <TooltipTrigger
+    <SharedTooltipTrigger
         render={
           <span
             tabIndex={focusable ? 0 : undefined}
@@ -248,11 +249,11 @@ function WarningTooltipIcon({
             )}
           />
         }
+      side="top"
+      label={children}
       >
         <TriangleAlertIcon className="size-3.5" />
-      </TooltipTrigger>
-      <TooltipPopup side="top">{children}</TooltipPopup>
-    </Tooltip>
+    </SharedTooltipTrigger>
   );
 }
 function UnknownWhenVariableWarning({
@@ -960,13 +961,14 @@ function KeybindingSourceBadge({ source }: { source: KeybindingRow["source"] }) 
 function KeybindingRowTitle({ row }: { row: KeybindingRow }) {
   const { t } = useTranslation();
   return (
-    <Tooltip>
-      <TooltipTrigger render={<span className="flex items-center gap-2" />}>
+    <SharedTooltipTrigger
+      render={<span className="flex items-center gap-2" />}
+      side="top"
+      label={row.command}
+    >
         {t(commandLabel(row.command))}
         <KeybindingSourceBadge source={row.source} />
-      </TooltipTrigger>
-      <TooltipPopup side="top">{row.command}</TooltipPopup>
-    </Tooltip>
+    </SharedTooltipTrigger>
   );
 }
 function KeybindingRowWhen({
@@ -1232,8 +1234,7 @@ function NewKeybindingCancelIcon({
 }) {
   const { t } = useTranslation();
   return (
-    <Tooltip>
-      <TooltipTrigger
+    <SharedTooltipTrigger
         render={
           <Button
             type="button"
@@ -1244,11 +1245,11 @@ function NewKeybindingCancelIcon({
             onClick={onCancel}
           />
         }
+      side="top"
+      label={t("Cancel")}
       >
         <XIcon className="size-3.5" />
-      </TooltipTrigger>
-      <TooltipPopup side="top">{t("Cancel")}</TooltipPopup>
-    </Tooltip>
+    </SharedTooltipTrigger>
   );
 }
 function NewKeybindingSettingsRow(props: NewKeybindingProps) {
@@ -1513,8 +1514,7 @@ export function KeybindingsSettingsPanel() {
             <PlusIcon aria-hidden className="size-4" />
             {t("Add keybinding")}
           </Button>
-          <Tooltip>
-            <TooltipTrigger
+          <SharedTooltipTrigger
               render={
                 <Button
                   type="button"
@@ -1527,9 +1527,9 @@ export function KeybindingsSettingsPanel() {
                   <FileJsonIcon aria-hidden className="size-4" />
                 </Button>
               }
+            side="top"
+            label={t("Open keybindings.json")}
             />
-            <TooltipPopup side="top">{t("Open keybindings.json")}</TooltipPopup>
-          </Tooltip>
         </div>
       </SettingsSection>
 

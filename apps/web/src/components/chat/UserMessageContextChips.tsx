@@ -1,3 +1,4 @@
+import { SharedTooltipTrigger } from "../ui/shared-tooltip";
 import { useTranslation } from "../../i18n";
 import { documentChipKindForFileName } from "~/pierre-icons";
 import { isSvgAttachment } from "@t3tools/shared/image";
@@ -30,7 +31,7 @@ import type { ComposerContextId, KnownComposerContextRecord } from "@t3tools/con
 import { buildExpandedImagePreview } from "./ExpandedImagePreview";
 import { WorkspaceEntryIcon, WorkspaceEntryTooltip } from "./WorkspaceEntryIcon";
 import { TerminalContextInlineChip } from "./TerminalContextInlineChip";
-import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
+
 import {
   ContextChipPopover as UserMessageContextPopover,
   FileChip,
@@ -69,37 +70,37 @@ function UserMessageMentionChip(props: {
 }) {
   const ctx = use(TimelineRowCtx);
   return (
-    <Tooltip>
-      <TooltipTrigger
-        render={
-          <ContextChip
-            kind={documentChipKindForFileName(props.record.path) ?? "mention"}
-            render={<button type="button" />}
-            aria-label={`Preview ${props.record.path}`}
-            data-markdown-copy={props.copyMarkdown}
-            onClick={() => {
-              if (ctx.threadRef)
-                useRightPanelStore.getState().openFile(ctx.threadRef, props.record.path);
-            }}
-          >
-            <WorkspaceEntryIcon
-              path={props.record.path}
-              environmentId={ctx.activeThreadEnvironmentId}
-              cwd={ctx.workspaceRoot}
-              theme={ctx.resolvedTheme}
-            />
-            <ContextChipLabel>{props.record.label}</ContextChipLabel>
-          </ContextChip>
-        }
-      />
-      <TooltipPopup interactive>
-        <WorkspaceEntryTooltip
-          path={props.record.path}
-          environmentId={ctx.activeThreadEnvironmentId}
-          cwd={ctx.workspaceRoot}
-        />
-      </TooltipPopup>
-    </Tooltip>
+    <SharedTooltipTrigger
+      render={
+        <ContextChip
+          kind={documentChipKindForFileName(props.record.path) ?? "mention"}
+          render={<button type="button" />}
+          aria-label={`Preview ${props.record.path}`}
+          data-markdown-copy={props.copyMarkdown}
+          onClick={() => {
+            if (ctx.threadRef)
+              useRightPanelStore.getState().openFile(ctx.threadRef, props.record.path);
+          }}
+        >
+          <WorkspaceEntryIcon
+            path={props.record.path}
+            environmentId={ctx.activeThreadEnvironmentId}
+            cwd={ctx.workspaceRoot}
+            theme={ctx.resolvedTheme}
+          />
+          <ContextChipLabel>{props.record.label}</ContextChipLabel>
+        </ContextChip>
+      }
+      label={
+        <>
+          <WorkspaceEntryTooltip
+            path={props.record.path}
+            environmentId={ctx.activeThreadEnvironmentId}
+            cwd={ctx.workspaceRoot}
+          />
+        </>
+      }
+    />
   );
 }
 

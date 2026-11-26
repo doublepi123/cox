@@ -1,3 +1,4 @@
+import { SharedTooltipTrigger } from "./ui/shared-tooltip";
 import { useTranslation } from "../i18n";
 import { Dialog as DialogPrimitive } from "@base-ui/react/dialog";
 import { XIcon } from "lucide-react";
@@ -16,7 +17,6 @@ import { useNativeTitlebarHeight } from "../lib/windowControlsOverlay";
 import { useCloseAppModal } from "./sidebar/mainAppLocation";
 import { Button } from "./ui/button";
 import { DialogBackdrop } from "./ui/dialog";
-import { Tooltip, TooltipPopup, TooltipTrigger } from "./ui/tooltip";
 
 /**
  * Large modal for the Settings and Usage routes. Esc, the close button, or a press on the
@@ -130,18 +130,17 @@ export function AppRouteModalClose({
 }) {
   const { t } = useTranslation();
   return (
-    <Tooltip>
-      <TooltipTrigger
+    <SharedTooltipTrigger
         render={
           <DialogPrimitive.Close
             aria-label={t("Close")}
             render={<Button size={size} variant="ghost" />}
           />
         }
+      side="bottom"
+      label={"Close (Esc)"}
       >
         <XIcon />
-      </TooltipTrigger>
-      <TooltipPopup side="bottom">Close (Esc)</TooltipPopup>
-    </Tooltip>
+    </SharedTooltipTrigger>
   );
 }

@@ -1,3 +1,5 @@
+import { SharedTooltipTrigger } from "../ui/shared-tooltip";
+import { Tooltip, TooltipTrigger, TooltipPopup } from "../ui/tooltip";
 import { translateCurrent, useTranslation } from "../../i18n";
 import { SettingsGroup } from "./SettingsGroup";
 import { AuthSettingsWriteScope } from "@t3tools/contracts";
@@ -16,7 +18,7 @@ import {
 import { cn } from "../../lib/utils";
 import { WorkspacePageContainer, type WorkspacePageWidth } from "../WorkspacePageContainer";
 import { Button } from "../ui/button";
-import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
+
 import { useOptionalSettingsScope } from "./SettingsScopeContext";
 import { SettingsScopeSentence } from "./SettingsScopeSentence";
 import {
@@ -387,24 +389,23 @@ export function SettingsRow({
     resetAction
   );
   const inertControl = (message: string) => (
-    <Tooltip>
-      <TooltipTrigger
-        render={
-          <span
-            tabIndex={0}
-            className="flex w-full items-center rounded-md outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring @min-[32rem]/settings-row:w-auto"
-          />
-        }
+    <SharedTooltipTrigger
+      render={
+        <span
+          tabIndex={0}
+          className="flex w-full items-center rounded-md outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring @min-[32rem]/settings-row:w-auto"
+        />
+      }
+      side="top"
+      label={message}
+    >
+      <div
+        inert
+        className="flex w-full items-center gap-2 opacity-50 @min-[32rem]/settings-row:w-auto"
       >
-        <div
-          inert
-          className="flex w-full items-center gap-2 opacity-50 @min-[32rem]/settings-row:w-auto"
-        >
-          {control}
-        </div>
-      </TooltipTrigger>
-      <TooltipPopup side="top">{message}</TooltipPopup>
-    </Tooltip>
+        {control}
+      </div>
+    </SharedTooltipTrigger>
   );
   const renderedControl =
     unavailable && control
@@ -545,30 +546,29 @@ export function SettingResetButton({
 }) {
   const { t } = useTranslation();
   return (
-    <Tooltip>
-      <TooltipTrigger
-        render={
-          <Button
-            size="icon-micro"
-            variant="ghost-muted"
-            aria-label={t("Reset {setting} to default", { setting: t(label) })}
-            disabled={disabled}
-            onClick={(event) => {
-              event.stopPropagation();
-              // A reset usually unmounts this button. Keep focus beside the setting, or focus
-              // recovery sends it to the area's default control and scrolls that into view.
-              event.currentTarget.parentElement
-                ?.closest<HTMLElement>("[tabindex]")
-                ?.focus({ preventScroll: true });
-              onClick();
-            }}
-          >
-            <Undo2Icon className="size-3" />
-          </Button>
-        }
-      />
-      <TooltipPopup side="top">{t(tooltip)}</TooltipPopup>
-    </Tooltip>
+    <SharedTooltipTrigger
+      render={
+        <Button
+          size="icon-micro"
+          variant="ghost-muted"
+          aria-label={t("Reset {setting} to default", { setting: t(label) })}
+          disabled={disabled}
+          onClick={(event) => {
+            event.stopPropagation();
+            // A reset usually unmounts this button. Keep focus beside the setting, or focus
+            // recovery sends it to the area's default control and scrolls that into view.
+            event.currentTarget.parentElement
+              ?.closest<HTMLElement>("[tabindex]")
+              ?.focus({ preventScroll: true });
+            onClick();
+          }}
+        >
+          <Undo2Icon className="size-3" />
+        </Button>
+      }
+      side="top"
+      label={t(tooltip)}
+    />
   );
 }
 

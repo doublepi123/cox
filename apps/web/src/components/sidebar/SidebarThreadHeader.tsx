@@ -1,3 +1,4 @@
+import { SharedTooltipTrigger } from "../ui/shared-tooltip";
 import { useTranslation } from "../../i18n";
 import { SearchIcon, SquarePenIcon, XIcon } from "lucide-react";
 import {
@@ -9,7 +10,6 @@ import {
 } from "react";
 
 import { SidebarInput, SidebarMenuButton } from "../ui/sidebar";
-import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 
 export interface SidebarThreadHeaderProps {
   searchFieldRef?: RefObject<HTMLDivElement | null>;
@@ -139,25 +139,24 @@ export function SidebarHeaderIconButton({
   "children" | "className" | "tooltip" | "isActive" | "aria-label"
 >) {
   return (
-    <Tooltip>
-      <TooltipTrigger
-        render={
-          <SidebarMenuButton
-            size="touch-icon"
-            type="button"
-            aria-label={label}
-            {...rest}
-            className={className}
-          />
-        }
-      >
-        {children}
-        <span
-          aria-hidden
-          className="pointer-events-none absolute left-1/2 top-1/2 hidden size-[max(100%,3rem)] -translate-1/2 md:pointer-coarse:block"
+    <SharedTooltipTrigger
+      render={
+        <SidebarMenuButton
+          size="touch-icon"
+          type="button"
+          aria-label={label}
+          {...rest}
+          className={className}
         />
-      </TooltipTrigger>
-      <TooltipPopup side="top">{tooltip}</TooltipPopup>
-    </Tooltip>
+      }
+      side="top"
+      label={tooltip}
+    >
+      {children}
+      <span
+        aria-hidden
+        className="pointer-events-none absolute left-1/2 top-1/2 hidden size-[max(100%,3rem)] -translate-1/2 md:pointer-coarse:block"
+      />
+    </SharedTooltipTrigger>
   );
 }

@@ -1,3 +1,5 @@
+import { SharedTooltipTrigger } from "../ui/shared-tooltip";
+import { Tooltip, TooltipTrigger, TooltipPopup } from "../ui/tooltip";
 import { useTranslation } from "../../i18n";
 import { MousePointer2Icon, PaintbrushIcon, PlusIcon, XIcon } from "lucide-react";
 import { ChevronDown, ChevronUp } from "lucide";
@@ -30,7 +32,7 @@ import { MorphIcon } from "~/components/MorphIcon";
 import { Input } from "../ui/input";
 import { Switch } from "../ui/switch";
 import { Toggle, ToggleGroup } from "../ui/toggle-group";
-import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
+
 import { getThemeRoleLabel, ThemeColorField } from "./ThemeColorPicker";
 import {
   clearThemeInspectorHover,
@@ -917,12 +919,7 @@ export function ThemeEditorPanel({
       </Toggle>
     );
     if (lockReason === null) return button;
-    return (
-      <Tooltip>
-        <TooltipTrigger render={button} />
-        <TooltipPopup>{lockReason}</TooltipPopup>
-      </Tooltip>
-    );
+    return <SharedTooltipTrigger render={button} label={lockReason} />;
   };
 
   const renderAppearanceButtons = () => (

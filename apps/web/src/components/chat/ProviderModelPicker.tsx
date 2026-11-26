@@ -1,3 +1,4 @@
+import { SharedTooltipTrigger } from "../ui/shared-tooltip";
 import { useTranslation } from "../../i18n";
 import {
   ANTIGRAVITY_DEFAULT_MODEL,
@@ -19,7 +20,7 @@ import {
 } from "react";
 import { Badge } from "../ui/badge";
 import { Popover, PopoverPopup, PopoverTrigger } from "../ui/popover";
-import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
+
 import { cn } from "~/lib/utils";
 import { ModelPickerContent, resolveModelPickerSelectedModel } from "./ModelPickerContent";
 import { ChatGptSharingControl } from "./ChatGptSharingControl";
@@ -411,10 +412,13 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
       {props.isComposerOwned ? (
         <span {...triggerTextProps}>{triggerText}</span>
       ) : (
-        <Tooltip>
-          <TooltipTrigger render={<span {...triggerTextProps} />}>{triggerText}</TooltipTrigger>
-          <TooltipPopup side="top">{triggerTooltipContent}</TooltipPopup>
-        </Tooltip>
+        <SharedTooltipTrigger
+          render={<span {...triggerTextProps} />}
+          side="top"
+          label={triggerTooltipContent}
+        >
+          {triggerText}
+        </SharedTooltipTrigger>
       )}
       {props.triggerSuffix}
       {selectedModel?.isUnavailable && !selectedEntries && props.triggerLabel === undefined ? (

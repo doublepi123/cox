@@ -1,3 +1,4 @@
+import { SharedTooltipTrigger } from "./ui/shared-tooltip";
 import * as DateTime from "effect/DateTime";
 import { effectiveSnoozed } from "@t3tools/client-runtime/state/thread-settled";
 import { useTranslation } from "../i18n";
@@ -231,7 +232,7 @@ import { CommandDialog, CommandDialogPopup } from "./ui/command";
 import { Button } from "./ui/button";
 import { stackedThreadToast, toastManager } from "./ui/toast";
 import { suggestAppAccessForRemote } from "./sourceControlAppAccessToast";
-import { Tooltip, TooltipPopup, TooltipTrigger } from "./ui/tooltip";
+
 import { ComposerHandleContext, useComposerHandleContext } from "../composerHandleContext";
 import type { ChatComposerHandle } from "./chat/ChatComposer";
 import { pickableProjectGroups } from "@t3tools/client-runtime/state/project-grouping";
@@ -994,8 +995,7 @@ function OpenCommandPaletteDialog(props: {
 
       const titleTrailingContent = readiness.ready ? undefined : (
         <span className="ml-auto">
-          <Tooltip>
-            <TooltipTrigger
+          <SharedTooltipTrigger
               render={
                 <Button
                   variant="warning-outline"
@@ -1007,11 +1007,12 @@ function OpenCommandPaletteDialog(props: {
                   {t("Setup Required")}
                 </Button>
               }
+            align="end"
+            side="left"
+            label={
+              <>{disabledHint ?? "Open Settings -> Source control to configure this provider."}</>
+            }
             />
-            <TooltipPopup align="end" side="left">
-              {disabledHint ?? "Open Settings -> Source control to configure this provider."}
-            </TooltipPopup>
-          </Tooltip>
         </span>
       );
 

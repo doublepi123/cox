@@ -1,3 +1,4 @@
+import { SharedTooltipTrigger } from "../ui/shared-tooltip";
 import { useLiveRefresh } from "../../hooks/useLiveRefresh";
 import { translateCurrent } from "../../i18n";
 import { RefreshIcon } from "~/components/ui/refresh-icon";
@@ -30,7 +31,6 @@ import {
 } from "../ui/empty";
 import { Skeleton } from "../ui/skeleton";
 import { Switch } from "../ui/switch";
-import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 
 import { GitIcon, JujutsuIcon, type Icon } from "../Icons";
 import { SourceControlHostSettings } from "./SourceControlHostSettings";
@@ -479,22 +479,21 @@ export function SourceControlSettingsPanel() {
     );
   };
   const scanButton = (
-    <Tooltip>
-      <TooltipTrigger
-        render={
-          <Button
-            size="icon-xs"
-            variant="ghost-muted"
-            onClick={handleScan}
-            disabled={discovery.isPending}
-            aria-label={t("Rescan server environment")}
-          >
-            <RefreshIcon refreshing={discovery.isPending} />
-          </Button>
-        }
-      />
-      <TooltipPopup side="top">{t("Rescan Git and hosting integrations")}</TooltipPopup>
-    </Tooltip>
+    <SharedTooltipTrigger
+      render={
+        <Button
+          size="icon-xs"
+          variant="ghost-muted"
+          onClick={handleScan}
+          disabled={discovery.isPending}
+          aria-label={t("Rescan server environment")}
+        >
+          <RefreshIcon refreshing={discovery.isPending} />
+        </Button>
+      }
+      side="top"
+      label={t("Rescan Git and hosting integrations")}
+    />
   );
 
   return (

@@ -1,3 +1,4 @@
+import { SharedTooltipTrigger } from "./ui/shared-tooltip";
 import { AuthProvidersManageScope, PROVIDER_DISPLAY_NAMES } from "@t3tools/contracts";
 import { settlePromise } from "@t3tools/client-runtime/state/runtime";
 import { useRef, useState } from "react";
@@ -15,7 +16,6 @@ import {
 } from "./ProviderUpdateLaunchNotification.logic";
 import { Button } from "./ui/button";
 import { stackedThreadToast, toastManager } from "./ui/toast";
-import { Tooltip, TooltipPopup, TooltipTrigger } from "./ui/tooltip";
 
 export function useProviderUpdates() {
   const { environments } = useEnvironments();
@@ -89,29 +89,30 @@ export function ProviderUpdatesAction() {
   };
 
   return (
-    <Tooltip>
-      <TooltipTrigger
-        render={
-          <Button
-            size="xs"
-            variant="ghost-muted"
-            disabled={isPending}
-            onClick={() => void handleUpdate()}
-          >
-            {t(isPending ? "Updating…" : "Update all")}
-          </Button>
-        }
-      />
-      <TooltipPopup side="top">
-        {machines.map((machine) => (
-          <div key={machine.environmentId}>
-            {machine.label}:{" "}
-            {machine.candidates
-              .map((candidate) => PROVIDER_DISPLAY_NAMES[candidate.driver] ?? candidate.driver)
-              .join(", ")}
-          </div>
-        ))}
-      </TooltipPopup>
-    </Tooltip>
+    <SharedTooltipTrigger
+      render={
+        <Button
+          size="xs"
+          variant="ghost-muted"
+          disabled={isPending}
+          onClick={() => void handleUpdate()}
+        >
+          {t(isPending ? "Updating…" : "Update all")}
+        </Button>
+      }
+      side="top"
+      label={
+        <>
+          {machines.map((machine) => (
+            <div key={machine.environmentId}>
+              {machine.label}:{" "}
+              {machine.candidates
+                .map((candidate) => PROVIDER_DISPLAY_NAMES[candidate.driver] ?? candidate.driver)
+                .join(", ")}
+            </div>
+          ))}
+        </>
+      }
+    />
   );
 }

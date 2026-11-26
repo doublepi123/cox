@@ -1,3 +1,5 @@
+import { SharedTooltipTrigger } from "~/components/ui/shared-tooltip";
+import { Tooltip, TooltipTrigger, TooltipPopup } from "~/components/ui/tooltip";
 import { contextMenuSourceOf } from "../contextMenuSource";
 import { useTranslation } from "../i18n";
 import { sourceControlClients } from "@t3tools/client-runtime/source-control-clients";
@@ -67,7 +69,6 @@ import { readLocalApi } from "~/localApi";
 import { useStableCallback } from "~/hooks/useStableCallback";
 import { Button } from "~/components/ui/button";
 
-import { Tooltip, TooltipPopup, TooltipTrigger } from "~/components/ui/tooltip";
 import { Kbd } from "~/components/ui/kbd";
 import {
   Menu,
@@ -850,8 +851,7 @@ function RightPanelTab(
           }}
         />
       ) : (
-        <Tooltip>
-          <TooltipTrigger
+        <SharedTooltipTrigger
             render={
               <button
                 type="button"
@@ -863,9 +863,8 @@ function RightPanelTab(
                 <span className="truncate">{title}</span>
               </button>
             }
+          label={title}
           />
-          <TooltipPopup>{title}</TooltipPopup>
-        </Tooltip>
       )}
     </>
   );
@@ -1290,8 +1289,7 @@ export function RightPanelTabs(props: RightPanelTabsProps) {
             role="group"
             aria-label="Scroll panel tabs"
           >
-            <Tooltip>
-              <TooltipTrigger
+            <SharedTooltipTrigger
                 render={
                   <span className="inline-flex">
                     <Button
@@ -1305,11 +1303,9 @@ export function RightPanelTabs(props: RightPanelTabsProps) {
                     </Button>
                   </span>
                 }
+              label={"Scroll tabs left"}
               />
-              <TooltipPopup>Scroll tabs left</TooltipPopup>
-            </Tooltip>
-            <Tooltip>
-              <TooltipTrigger
+            <SharedTooltipTrigger
                 render={
                   <span className="inline-flex">
                     <Button
@@ -1323,9 +1319,8 @@ export function RightPanelTabs(props: RightPanelTabsProps) {
                     </Button>
                   </span>
                 }
+              label={"Scroll tabs right"}
               />
-              <TooltipPopup>Scroll tabs right</TooltipPopup>
-            </Tooltip>
           </div>
         ) : null}
         {props.layoutControls}

@@ -1,3 +1,4 @@
+import { SharedTooltipTrigger } from "../ui/shared-tooltip";
 import { useTranslation } from "../../i18n";
 import type { GitStatusEntry } from "@pierre/trees";
 import { FileTree, useFileTree } from "@pierre/trees/react";
@@ -16,7 +17,7 @@ import {
 import { areAllDirectoriesExpanded, setAllDirectoriesExpanded } from "../files/fileTreeExpansion";
 import { Button } from "../ui/button";
 import { MorphIcon } from "~/components/MorphIcon";
-import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
+
 import {
   buildDiffFileTreeUpdates,
   compareDiffFileTreeEntries,
@@ -212,31 +213,25 @@ export function DiffFileTree({
         <span className="ml-auto tabular-nums">{entries.length}</span>
         {headerAccessory}
         {directoryPaths.length > 0 ? (
-          <Tooltip>
-            <TooltipTrigger
-              render={
-                <Button
-                  type="button"
-                  size="icon-xs"
-                  variant="ghost"
-                  aria-label={
-                    allDirectoriesExpanded ? "Collapse all folders" : "Expand all folders"
-                  }
-                  onClick={() =>
-                    setAllDirectoriesExpanded(model, directoryPaths, !allDirectoriesExpanded)
-                  }
-                />
-              }
-            >
-              <MorphIcon
-                className="size-3.5"
-                icon={allDirectoriesExpanded ? ChevronsDownUp : ChevronsUpDown}
+          <SharedTooltipTrigger
+            render={
+              <Button
+                type="button"
+                size="icon-xs"
+                variant="ghost"
+                aria-label={allDirectoriesExpanded ? "Collapse all folders" : "Expand all folders"}
+                onClick={() =>
+                  setAllDirectoriesExpanded(model, directoryPaths, !allDirectoriesExpanded)
+                }
               />
-            </TooltipTrigger>
-            <TooltipPopup>
-              {allDirectoriesExpanded ? "Collapse all folders" : "Expand all folders"}
-            </TooltipPopup>
-          </Tooltip>
+            }
+            label={<>{allDirectoriesExpanded ? "Collapse all folders" : "Expand all folders"}</>}
+          >
+            <MorphIcon
+              className="size-3.5"
+              icon={allDirectoriesExpanded ? ChevronsDownUp : ChevronsUpDown}
+            />
+          </SharedTooltipTrigger>
         ) : null}
       </div>
       <FileTree

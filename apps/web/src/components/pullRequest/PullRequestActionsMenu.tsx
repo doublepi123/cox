@@ -1,3 +1,4 @@
+import { SharedTooltipTrigger } from "../ui/shared-tooltip";
 import { useTranslation } from "../../i18n";
 import { useAtomValue } from "@effect/atom-react";
 import {
@@ -48,7 +49,7 @@ import {
 } from "../ui/menu";
 import { RefreshIcon } from "../ui/refresh-icon";
 import { toastManager } from "../ui/toast";
-import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
+
 import { ActOnEnvironmentPicker, type PerformPullRequestAction } from "./PullRequestDetailActions";
 import {
   PULL_REQUEST_MERGE_METHOD_LABELS,
@@ -208,8 +209,7 @@ export function PullRequestActionsMenu({
   };
   return (
     <Menu>
-      <Tooltip>
-        <TooltipTrigger
+      <SharedTooltipTrigger
           render={
             <MenuTrigger
               render={
@@ -231,13 +231,14 @@ export function PullRequestActionsMenu({
               )}
             </MenuTrigger>
           }
-        />
-        <TooltipPopup>
+        label={
+          <>
           {refreshing
             ? `Refreshing ${terminology.singular}`
             : `More ${terminology.singular} actions`}
-        </TooltipPopup>
-      </Tooltip>
+          </>
+        }
+      />
       <MenuPopup align="end" side="bottom">
         <PullRequestThreadLinks
           display="menu-item"

@@ -1,3 +1,4 @@
+import { SharedTooltipTrigger } from "../ui/shared-tooltip";
 import { translateCurrent, useTranslation } from "../../i18n";
 import { memo, useEffect, useRef, useState } from "react";
 import { isThemeColor, themeColorToHex, type ThemeColorRole } from "../../themePalette";
@@ -6,7 +7,7 @@ import { hexToHsv, hsvToHex, type HsvColor } from "../../lib/color";
 import { ColorHueSlider, ColorSaturationValuePlane } from "../ui/color-picker";
 import { Input } from "../ui/input";
 import { Popover, PopoverPopup, PopoverTrigger } from "../ui/popover";
-import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
+
 export function getThemeRoleLabel(role: ThemeColorRole): string {
   const labels: Partial<Record<ThemeColorRole, string>> = {
     canvas: "Background",
@@ -278,8 +279,7 @@ function ThemeColorPicker({
         if (cancelledRef.current) onEditCancel?.();
       }}
     >
-      <Tooltip>
-        <TooltipTrigger
+      <SharedTooltipTrigger
           render={
             <PopoverTrigger
               render={
@@ -298,9 +298,9 @@ function ThemeColorPicker({
               }
             />
           }
+        side="top"
+        label={t("Choose {name} color", { name: label })}
         />
-        <TooltipPopup side="top">{t("Choose {name} color", { name: label })}</TooltipPopup>
-      </Tooltip>
       <PopoverPopup
         align="end"
         padding="none"
@@ -358,8 +358,7 @@ export const ThemeColorField = memo(function ThemeColorField({
       )}
       data-theme-color-role={role}
     >
-      <Tooltip>
-        <TooltipTrigger
+      <SharedTooltipTrigger
           render={
             <button
               aria-label={t("{action} {name} usage", {
@@ -374,14 +373,16 @@ export const ThemeColorField = memo(function ThemeColorField({
               <span className="min-w-0 flex-1 truncate">{label}</span>
             </button>
           }
-        />
-        <TooltipPopup side="top">
+        side="top"
+        label={
+          <>
           {t("{action} where {name} is used", {
             action: selected ? t("Hide") : t("Show"),
             name: label,
           })}
-        </TooltipPopup>
-      </Tooltip>
+          </>
+        }
+      />
       <div className="ml-auto flex shrink-0 items-center gap-2">
         <ThemeColorPicker
           label={label}

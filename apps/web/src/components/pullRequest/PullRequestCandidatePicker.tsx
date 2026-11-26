@@ -1,3 +1,4 @@
+import { SharedTooltipTrigger } from "../ui/shared-tooltip";
 // Menu typeahead consumes search keystrokes; use a combobox.
 import type { ReactNode } from "react";
 
@@ -10,7 +11,7 @@ import {
   ComboboxPopup,
   ComboboxTrigger,
 } from "../ui/combobox";
-import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
+
 import { PullRequestPeopleGhost } from "./PullRequestGhosts";
 
 export function PullRequestCandidatePicker<T>({
@@ -60,16 +61,15 @@ export function PullRequestCandidatePicker<T>({
 }) {
   if (!allowed) {
     return (
-      <Tooltip>
-        <TooltipTrigger
-          render={
-            <Button size="icon-xs" variant="ghost" aria-disabled="true" aria-label={label}>
-              {icon}
-            </Button>
-          }
-        />
-        <TooltipPopup side="bottom">{disabledReason}</TooltipPopup>
-      </Tooltip>
+      <SharedTooltipTrigger
+        render={
+          <Button size="icon-xs" variant="ghost" aria-disabled="true" aria-label={label}>
+            {icon}
+          </Button>
+        }
+        side="bottom"
+        label={disabledReason}
+      />
     );
   }
 

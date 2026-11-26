@@ -1,3 +1,4 @@
+import { SharedTooltipTrigger } from "../ui/shared-tooltip";
 import type { TimestampFormat } from "@t3tools/contracts/settings";
 import { useClientSettings } from "../../hooks/useSettings";
 import { translateCurrent, useTranslation } from "../../i18n";
@@ -143,7 +144,7 @@ import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "../
 import { Switch } from "../ui/switch";
 import { Textarea } from "../ui/textarea";
 import { stackedThreadToast, toastManager } from "../ui/toast";
-import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
+
 import {
   SettingsPageContainer,
   SettingsRow,
@@ -633,19 +634,18 @@ function ScheduledTaskEnvironmentList({
         if (entries.length === 0) return null;
         const summary = `${t(label)} ${entries.join(", ")}`;
         return (
-          <Tooltip key={label}>
-            <TooltipTrigger
-              render={
-                <p
-                  className="truncate px-3 py-2.5 text-xs text-muted-foreground sm:px-4"
-                  role="status"
-                />
-              }
-            >
-              {summary}
-            </TooltipTrigger>
-            <TooltipPopup>{summary}</TooltipPopup>
-          </Tooltip>
+          <SharedTooltipTrigger
+            key={label}
+            render={
+              <p
+                className="truncate px-3 py-2.5 text-xs text-muted-foreground sm:px-4"
+                role="status"
+              />
+            }
+            label={summary}
+          >
+            {summary}
+          </SharedTooltipTrigger>
         );
       })}
     </SettingsGroup>

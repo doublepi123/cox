@@ -1,3 +1,5 @@
+import { SharedTooltipTrigger } from "~/components/ui/shared-tooltip";
+import { Tooltip, TooltipTrigger } from "~/components/ui/tooltip";
 import { useTranslation } from "../../i18n";
 import { RefreshIcon } from "~/components/ui/refresh-icon";
 import { ArrowLeft, ArrowRight, ExternalLink, PictureInPicture2 } from "lucide-react";
@@ -11,7 +13,7 @@ import {
 
 import { Button } from "~/components/ui/button";
 import { InputGroup, InputGroupAddon, InputGroupInput } from "~/components/ui/input-group";
-import { Tooltip, TooltipPopup, TooltipTrigger } from "~/components/ui/tooltip";
+
 import { cn } from "~/lib/utils";
 
 interface Props {
@@ -76,57 +78,51 @@ export function PreviewChromeRow({
         data-surface-subheader
       >
         <div className="flex items-center gap-0.5" role="group" aria-label={t("Navigation")}>
-          <Tooltip>
-            <TooltipTrigger
-              render={
-                <Button
-                  variant="ghost"
-                  size="icon-xs"
-                  onClick={canGoBack ? onBack : NOOP}
-                  disabled={!canGoBack}
-                  aria-label={t("Back")}
-                  type="button"
-                />
-              }
-            >
-              <ArrowLeft />
-            </TooltipTrigger>
-            <TooltipPopup>{t("Back")}</TooltipPopup>
-          </Tooltip>
-          <Tooltip>
-            <TooltipTrigger
-              render={
-                <Button
-                  variant="ghost"
-                  size="icon-xs"
-                  onClick={canGoForward ? onForward : NOOP}
-                  disabled={!canGoForward}
-                  aria-label={t("Forward")}
-                  type="button"
-                />
-              }
-            >
-              <ArrowRight />
-            </TooltipTrigger>
-            <TooltipPopup>{t("Forward")}</TooltipPopup>
-          </Tooltip>
-          <Tooltip>
-            <TooltipTrigger
-              render={
-                <Button
-                  variant="ghost"
-                  size="icon-xs"
-                  onClick={refreshDisabled ? NOOP : onRefresh}
-                  disabled={refreshDisabled}
-                  aria-label={loading ? t("Stop") : t("Refresh")}
-                  type="button"
-                />
-              }
-            >
-              <RefreshIcon refreshing={loading} />
-            </TooltipTrigger>
-            <TooltipPopup>{loading ? t("Loading…") : t("Refresh")}</TooltipPopup>
-          </Tooltip>
+          <SharedTooltipTrigger
+            render={
+              <Button
+                variant="ghost"
+                size="icon-xs"
+                onClick={canGoBack ? onBack : NOOP}
+                disabled={!canGoBack}
+                aria-label={t("Back")}
+                type="button"
+              />
+            }
+            label={t("Back")}
+          >
+            <ArrowLeft />
+          </SharedTooltipTrigger>
+          <SharedTooltipTrigger
+            render={
+              <Button
+                variant="ghost"
+                size="icon-xs"
+                onClick={canGoForward ? onForward : NOOP}
+                disabled={!canGoForward}
+                aria-label={t("Forward")}
+                type="button"
+              />
+            }
+            label={t("Forward")}
+          >
+            <ArrowRight />
+          </SharedTooltipTrigger>
+          <SharedTooltipTrigger
+            render={
+              <Button
+                variant="ghost"
+                size="icon-xs"
+                onClick={refreshDisabled ? NOOP : onRefresh}
+                disabled={refreshDisabled}
+                aria-label={loading ? t("Stop") : t("Refresh")}
+                type="button"
+              />
+            }
+            label={loading ? t("Loading…") : t("Refresh")}
+          >
+            <RefreshIcon refreshing={loading} />
+          </SharedTooltipTrigger>
         </div>
 
         {leadingActions}
@@ -171,22 +167,20 @@ export function PreviewChromeRow({
               <InputGroupAddon align="inline-end">
                 {}
                 <span className="pointer-events-none flex opacity-0 transition-opacity focus-within:pointer-events-auto focus-within:opacity-100 group-hover/address:pointer-events-auto group-hover/address:opacity-100 max-sm:hidden">
-                  <Tooltip>
-                    <TooltipTrigger
-                      render={
-                        <Button
-                          variant="ghost"
-                          size="icon-xs"
-                          onClick={onOpenInBrowser}
-                          aria-label={t("Open in system browser")}
-                          type="button"
-                        />
-                      }
-                    >
-                      <ExternalLink />
-                    </TooltipTrigger>
-                    <TooltipPopup>{t("Open in system browser")}</TooltipPopup>
-                  </Tooltip>
+                  <SharedTooltipTrigger
+                    render={
+                      <Button
+                        variant="ghost"
+                        size="icon-xs"
+                        onClick={onOpenInBrowser}
+                        aria-label={t("Open in system browser")}
+                        type="button"
+                      />
+                    }
+                    label={t("Open in system browser")}
+                  >
+                    <ExternalLink />
+                  </SharedTooltipTrigger>
                 </span>
               </InputGroupAddon>
             ) : null}
@@ -194,28 +188,26 @@ export function PreviewChromeRow({
         </div>
 
         {onPictureInPicture ? (
-          <Tooltip>
-            <TooltipTrigger
-              render={
-                <Button
-                  variant={pictureInPicture ? "secondary" : "ghost"}
-                  size="icon-xs"
-                  onClick={onPictureInPicture}
-                  aria-label={
-                    pictureInPicture ? t("Close floating preview") : t("Float preview over chat")
-                  }
-                  aria-pressed={pictureInPicture ? "true" : "false"}
-                  type="button"
-                  disabled={pictureInPictureDisabled}
-                />
-              }
-            >
-              <PictureInPicture2 className={cn(pictureInPicture && "text-primary")} />
-            </TooltipTrigger>
-            <TooltipPopup>
-              {pictureInPicture ? t("Close floating preview") : t("Float preview over chat")}
-            </TooltipPopup>
-          </Tooltip>
+          <SharedTooltipTrigger
+            render={
+              <Button
+                variant={pictureInPicture ? "secondary" : "ghost"}
+                size="icon-xs"
+                onClick={onPictureInPicture}
+                aria-label={
+                  pictureInPicture ? t("Close floating preview") : t("Float preview over chat")
+                }
+                aria-pressed={pictureInPicture ? "true" : "false"}
+                type="button"
+                disabled={pictureInPictureDisabled}
+              />
+            }
+            label={
+              <>{pictureInPicture ? t("Close floating preview") : t("Float preview over chat")}</>
+            }
+          >
+            <PictureInPicture2 className={cn(pictureInPicture && "text-primary")} />
+          </SharedTooltipTrigger>
         ) : null}
         {trailingActions}
       </form>

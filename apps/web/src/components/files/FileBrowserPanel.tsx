@@ -1,3 +1,4 @@
+import { SharedTooltipTrigger } from "~/components/ui/shared-tooltip";
 import { contextMenuSourceOf } from "../../contextMenuSource";
 import { isMacPlatform } from "~/lib/utils";
 import { useTranslation } from "../../i18n";
@@ -19,7 +20,7 @@ import { Button } from "~/components/ui/button";
 import { InputGroup, InputGroupInput } from "~/components/ui/input-group";
 import { MorphIcon } from "~/components/MorphIcon";
 import { toastManager } from "~/components/ui/toast";
-import { Tooltip, TooltipPopup, TooltipTrigger } from "~/components/ui/tooltip";
+
 import { useComposerHandleContext } from "~/composerHandleContext";
 import { writeTextToClipboard } from "~/hooks/useCopyToClipboard";
 import { useStableCallback } from "~/hooks/useStableCallback";
@@ -68,8 +69,7 @@ function treePath(entry: ProjectEntry): string {
 
 function RefreshFilesButton(props: { isPending: boolean; onRefresh: () => void }) {
   return (
-    <Tooltip>
-      <TooltipTrigger
+    <SharedTooltipTrigger
         render={
           <Button
             type="button"
@@ -79,11 +79,10 @@ function RefreshFilesButton(props: { isPending: boolean; onRefresh: () => void }
             onClick={props.onRefresh}
           />
         }
+      label={props.isPending ? "Refreshing…" : "Refresh files"}
       >
         <RefreshIcon refreshing={props.isPending} />
-      </TooltipTrigger>
-      <TooltipPopup>{props.isPending ? "Refreshing…" : "Refresh files"}</TooltipPopup>
-    </Tooltip>
+    </SharedTooltipTrigger>
   );
 }
 
@@ -634,8 +633,7 @@ export default function FileBrowserPanel({
           onClose={closeSearch}
         />
         {directoryPaths.length > 0 && !hostFolder ? (
-          <Tooltip>
-            <TooltipTrigger
+          <SharedTooltipTrigger
               render={
                 <Button
                   type="button"
@@ -649,16 +647,19 @@ export default function FileBrowserPanel({
                   onClick={toggleAllDirectories}
                 />
               }
+            label={
+              <>
+                {expandAll || allDirectoriesExpanded
+                  ? "Collapse all folders"
+                  : "Expand all folders"}
+              </>
+            }
             >
               <MorphIcon
                 className="size-3.5"
                 icon={allDirectoriesExpanded ? ChevronsDownUp : ChevronsUpDown}
               />
-            </TooltipTrigger>
-            <TooltipPopup>
-              {expandAll || allDirectoriesExpanded ? "Collapse all folders" : "Expand all folders"}
-            </TooltipPopup>
-          </Tooltip>
+          </SharedTooltipTrigger>
         ) : null}
       </div>
       {error || pathSearch.error ? (

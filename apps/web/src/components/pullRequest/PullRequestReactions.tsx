@@ -1,3 +1,4 @@
+import { SharedTooltipTrigger } from "../ui/shared-tooltip";
 import { useAtomCommand } from "~/state/use-atom-command";
 import type {
   EnvironmentId,
@@ -13,7 +14,6 @@ import { pullRequestEnvironment } from "~/state/pullRequests";
 
 import { Popover, PopoverPopup, PopoverTrigger } from "../ui/popover";
 import { toastManager } from "../ui/toast";
-import { SharedTooltipTrigger } from "../ui/shared-tooltip";
 import {
   applyPendingPullRequestReactions,
   type PendingPullRequestReaction,
@@ -93,7 +93,6 @@ export function PullRequestReactionBar({
       {shown.map((reaction) => (
         <SharedTooltipTrigger
           key={reaction.content}
-          label={pullRequestReactionTooltip(reaction)}
           render={
             <button
               type="button"
@@ -110,6 +109,8 @@ export function PullRequestReactionBar({
               onClick={() => void toggle(reaction.content, !reaction.viewerHasReacted)}
             />
           }
+          side="top"
+          label={pullRequestReactionTooltip(reaction)}
         >
           <span aria-hidden>{pullRequestReactionEmoji(reaction.content)}</span>
           <span className="tabular-nums">{reaction.count}</span>

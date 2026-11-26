@@ -1,3 +1,4 @@
+import { SharedTooltipTrigger } from "../ui/shared-tooltip";
 import { memo, useRef } from "react";
 import { Check, Copy } from "lucide";
 import { Button } from "../ui/button";
@@ -9,7 +10,6 @@ import {
   showAnchoredCopyErrorToast,
   showAnchoredCopySuccessToast,
 } from "../ui/anchoredCopyToast";
-import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 
 export const MessageCopyButton = memo(function MessageCopyButton({
   text,
@@ -37,29 +37,29 @@ export const MessageCopyButton = memo(function MessageCopyButton({
   });
 
   return (
-    <Tooltip>
-      <TooltipTrigger
-        render={
-          <Button
-            aria-label={label}
-            disabled={isCopied}
-            onClick={() => copyToClipboard(text)}
-            ref={ref}
-            type="button"
-            size={size}
-            variant={variant === "ghost" ? "ghost-muted" : variant}
-            className={className}
-          />
-        }
-      >
-        <MorphIcon
-          className={cn("size-3", isCopied && "text-primary")}
-          icon={isCopied ? Check : icon}
+    <SharedTooltipTrigger
+      render={
+        <Button
+          aria-label={label}
+          disabled={isCopied}
+          onClick={() => copyToClipboard(text)}
+          ref={ref}
+          type="button"
+          size={size}
+          variant={variant === "ghost" ? "ghost-muted" : variant}
+          className={className}
         />
-      </TooltipTrigger>
-      <TooltipPopup>
-        <p>{label}</p>
-      </TooltipPopup>
-    </Tooltip>
+      }
+      label={
+        <>
+          <p>{label}</p>
+        </>
+      }
+    >
+      <MorphIcon
+        className={cn("size-3", isCopied && "text-primary")}
+        icon={isCopied ? Check : icon}
+      />
+    </SharedTooltipTrigger>
   );
 });

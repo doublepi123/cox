@@ -1,3 +1,4 @@
+import { SharedTooltipTrigger } from "~/components/ui/shared-tooltip";
 import { useTranslation } from "../i18n";
 import {
   PREVIEW_VIEWPORT_MAX_AREA,
@@ -11,7 +12,7 @@ import { useState } from "react";
 
 import { Button } from "~/components/ui/button";
 import { Input } from "~/components/ui/input";
-import { Tooltip, TooltipPopup, TooltipTrigger } from "~/components/ui/tooltip";
+
 import {
   Select,
   SelectGroup,
@@ -288,33 +289,30 @@ export function BrowserDeviceToolbar({
         </div>
       </form>
 
-      <Tooltip>
-        <TooltipTrigger
-          render={
-            <Button
-              variant={aspectRatio === null ? "ghost" : "secondary"}
-              size="icon-xs"
-              type="button"
-              aria-label={
-                aspectRatio === null ? "Lock viewport aspect ratio" : "Unlock viewport aspect ratio"
-              }
-              aria-pressed={aspectRatio !== null}
-              disabled={pending || !customValid}
-              onPointerDown={(event) => event.preventDefault()}
-              onClick={toggleAspectRatio}
-            />
-          }
-        >
-          {aspectRatio === null ? (
-            <Unlink2 className={cn(aspectRatio !== null && "text-foreground")} />
-          ) : (
-            <Link2 className={cn(aspectRatio !== null && "text-foreground")} />
-          )}
-        </TooltipTrigger>
-        <TooltipPopup side="top">
-          {aspectRatio === null ? "Lock aspect ratio" : "Unlock aspect ratio"}
-        </TooltipPopup>
-      </Tooltip>
+      <SharedTooltipTrigger
+        render={
+          <Button
+            variant={aspectRatio === null ? "ghost" : "secondary"}
+            size="icon-xs"
+            type="button"
+            aria-label={
+              aspectRatio === null ? "Lock viewport aspect ratio" : "Unlock viewport aspect ratio"
+            }
+            aria-pressed={aspectRatio !== null}
+            disabled={pending || !customValid}
+            onPointerDown={(event) => event.preventDefault()}
+            onClick={toggleAspectRatio}
+          />
+        }
+        side="top"
+        label={<>{aspectRatio === null ? "Lock aspect ratio" : "Unlock aspect ratio"}</>}
+      >
+        {aspectRatio === null ? (
+          <Unlink2 className={cn(aspectRatio !== null && "text-foreground")} />
+        ) : (
+          <Link2 className={cn(aspectRatio !== null && "text-foreground")} />
+        )}
+      </SharedTooltipTrigger>
       <Button
         variant="ghost"
         size="icon-xs"

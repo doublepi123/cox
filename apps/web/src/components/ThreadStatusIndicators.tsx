@@ -1,3 +1,4 @@
+import { SharedTooltipTrigger } from "./ui/shared-tooltip";
 import { pipe } from "effect/Function";
 import {
   scopeProjectRef,
@@ -49,7 +50,7 @@ import {
 } from "./Sidebar.logic";
 
 import type { SidebarThreadSummary } from "../types";
-import { Tooltip, TooltipPopup, TooltipTrigger } from "./ui/tooltip";
+
 import {
   PULL_REQUEST_STATE_PRESENTATION,
   PullRequestGlyph,
@@ -280,25 +281,20 @@ function PullRequestBadge({
     },
   });
   return (
-    <Tooltip key={opensList ? "list" : "link"}>
-      <TooltipTrigger render={control}>
-        <span
-          className={cn("contents font-normal text-xs tabular-nums", presentation.toneClassName)}
-        >
-          <presentation.Icon aria-hidden className="size-3 shrink-0" />
-          <span className="max-w-16 truncate">{presentation.text}</span>
-        </span>
-      </TooltipTrigger>
-      <TooltipPopup
+    <SharedTooltipTrigger
+      key={opensList ? "list" : "link"}
+      render={control}
         side="top"
         sideOffset={0}
         variant="glass"
         width="card"
         textFormat="left"
-        interactive
-        onContextMenu={(event) => event.stopPropagation()}
-      >
-        <div className="-mx-1 max-h-[calc(var(--available-height)-0.5rem-2px)] overflow-y-auto overscroll-contain">
+      label={
+        <>
+        <div
+          className="-mx-1 max-h-[calc(var(--available-height)-0.5rem-2px)] overflow-y-auto overscroll-contain"
+          onContextMenu={(event) => event.stopPropagation()}
+        >
           {visibleThreadPullRequests(pullRequests).length > 0 ? (
             <ThreadPullRequestsMiniList
               pullRequests={pullRequests}
@@ -316,8 +312,14 @@ function PullRequestBadge({
             </ul>
           ) : null}
         </div>
-      </TooltipPopup>
-    </Tooltip>
+        </>
+      }
+    >
+      <span className={cn("contents font-normal text-xs tabular-nums", presentation.toneClassName)}>
+        <presentation.Icon aria-hidden className="size-3 shrink-0" />
+        <span className="max-w-16 truncate">{presentation.text}</span>
+      </span>
+    </SharedTooltipTrigger>
   );
 }
 
@@ -539,8 +541,7 @@ export function ThreadTerminalStatusButton({
       ? "1 terminal process running. Open terminal"
       : `${terminalIds.length} terminal processes running. Open terminal`;
   return (
-    <Tooltip>
-      <TooltipTrigger
+    <SharedTooltipTrigger
         render={
           <button
             type="button"
@@ -560,14 +561,14 @@ export function ThreadTerminalStatusButton({
             }}
           />
         }
+      side="top"
+      label={label}
       >
         <TerminalIcon
           className="size-3.5 motion-safe:animate-status-pulse"
           onAnimationStart={synchronizeTerminalPulse}
         />
-      </TooltipTrigger>
-      <TooltipPopup side="top">{label}</TooltipPopup>
-    </Tooltip>
+    </SharedTooltipTrigger>
   );
 }
 
@@ -580,8 +581,7 @@ function ThreadStatusLabel({
 }) {
   if (compact) {
     return (
-      <Tooltip>
-        <TooltipTrigger
+      <SharedTooltipTrigger
           render={
             <span
               role="img"
@@ -589,21 +589,20 @@ function ThreadStatusLabel({
               className={`inline-flex size-3.5 shrink-0 items-center justify-center ${status.colorClass}`}
             />
           }
+        side="top"
+        label={status.label}
         >
           <span
             className={`size-[9px] rounded-full ${status.dotClass} ${
               status.pulse ? "motion-safe:animate-status-pulse" : ""
             }`}
           />
-        </TooltipTrigger>
-        <TooltipPopup side="top">{status.label}</TooltipPopup>
-      </Tooltip>
+      </SharedTooltipTrigger>
     );
   }
 
   return (
-    <Tooltip>
-      <TooltipTrigger
+    <SharedTooltipTrigger
         render={
           <span
             role="img"
@@ -611,6 +610,8 @@ function ThreadStatusLabel({
             className={`inline-flex items-center gap-1 text-3xs ${status.colorClass}`}
           />
         }
+      side="top"
+      label={status.label}
       >
         <span
           className={`h-1.5 w-1.5 rounded-full ${status.dotClass} ${
@@ -618,9 +619,7 @@ function ThreadStatusLabel({
           }`}
         />
         <span className="hidden md:inline">{status.label}</span>
-      </TooltipTrigger>
-      <TooltipPopup side="top">{status.label}</TooltipPopup>
-    </Tooltip>
+    </SharedTooltipTrigger>
   );
 }
 
@@ -687,21 +686,22 @@ export function ThreadRowLeadingStatus({ thread }: { thread: SidebarThreadSummar
       }
     >
       {prStatus && pr ? (
-        <Tooltip>
-          <TooltipTrigger
+        <SharedTooltipTrigger
             render={
               <span
                 aria-label={prStatus.tooltip}
                 className={`inline-flex items-center justify-center ${prStatus.colorClass}`}
               />
             }
+          side="top"
+          label={
+            <>
+              <PrStatusTooltipContent status={prStatus} />
+            </>
+          }
           >
             <ChangeRequestStatusIcon state={pr.state} isDraft={pr.isDraft} className="size-3" />
-          </TooltipTrigger>
-          <TooltipPopup side="top">
-            <PrStatusTooltipContent status={prStatus} />
-          </TooltipPopup>
-        </Tooltip>
+        </SharedTooltipTrigger>
       ) : null}
       {pendingLink ? (
         <PullRequestGlyph.pullRequest
@@ -734,8 +734,7 @@ export function ThreadRowTrailingStatus({ thread }: { thread: SidebarThreadSumma
   return (
     <span className="inline-flex shrink-0 items-center gap-1.5">
       {terminalStatus ? (
-        <Tooltip>
-          <TooltipTrigger
+        <SharedTooltipTrigger
             render={
               <span
                 role="img"
@@ -743,32 +742,31 @@ export function ThreadRowTrailingStatus({ thread }: { thread: SidebarThreadSumma
                 className={`inline-flex items-center justify-center ${terminalStatus.colorClass}`}
               />
             }
+          side="top"
+          label={terminalStatus.label}
           >
             <TerminalIcon
               className={`size-3 ${terminalStatus.pulse ? "motion-safe:animate-status-pulse" : ""}`}
               onAnimationStart={synchronizeTerminalPulse}
             />
-          </TooltipTrigger>
-          <TooltipPopup side="top">{terminalStatus.label}</TooltipPopup>
-        </Tooltip>
+        </SharedTooltipTrigger>
       ) : null}
       {isRemoteThread ? (
-        <Tooltip>
-          <TooltipTrigger
+        <SharedTooltipTrigger
             render={
               <span
                 aria-label={threadEnvironmentLabel ?? "Remote"}
                 className="inline-flex items-center justify-center"
               />
             }
+          side="top"
+          label={threadEnvironmentLabel}
           >
             <EnvironmentMachineIcon
               kind={remoteMachine}
               className="size-3 text-muted-foreground/60"
             />
-          </TooltipTrigger>
-          <TooltipPopup side="top">{threadEnvironmentLabel}</TooltipPopup>
-        </Tooltip>
+        </SharedTooltipTrigger>
       ) : null}
     </span>
   );
