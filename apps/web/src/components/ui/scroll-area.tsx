@@ -52,9 +52,12 @@ function ScrollArea({
     | "checks"
     | "picker"
     | "composer-suggestions"
+    | "picker-candidates"
+    | "picker-threads"
     | "diagnostics"
     | "resources"
-    | "processes";
+    | "processes"
+    | undefined;
 }) {
   return (
     <ScrollAreaPrimitive.Root
@@ -70,7 +73,9 @@ function ScrollArea({
         preset === "banner" && "h-auto max-h-[min(24rem,40dvh)]",
         preset === "checks" && "-me-3 w-auto max-h-64",
         preset === "picker" && "max-h-64",
-        preset === "composer-suggestions" && "flex flex-col",
+        preset === "composer-suggestions" && "flex max-h-72 flex-col",
+        preset === "picker-candidates" && "max-h-72",
+        preset === "picker-threads" && "flex max-h-80 flex-col",
         preset === "diagnostics" && "max-h-[min(64vh,44rem)] w-full max-w-full",
         preset === "resources" && "max-h-[min(68vh,48rem)] w-full max-w-full",
         preset === "processes" && "max-h-[28rem] w-full max-w-full",

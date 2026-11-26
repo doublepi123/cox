@@ -215,7 +215,14 @@ function AutocompleteList({
 }) {
   return (
     <ScrollArea
-      {...(spacing === "composer" ? { preset: "composer-suggestions" } : {})}
+      preset={
+        maxHeight === "threads"
+          ? "picker-threads"
+          : spacing === "composer"
+            ? "composer-suggestions"
+            : undefined
+      }
+      observeContent
       scrollbarGutter
       scrollFade
     >
@@ -223,8 +230,7 @@ function AutocompleteList({
         className={cn(
           "not-empty:scroll-py-1 not-empty:p-1",
           spacing === "command" && "not-empty:scroll-py-2 not-empty:p-2",
-          spacing === "composer" && "max-h-72 min-h-0 scroll-pb-6",
-          maxHeight === "threads" && "max-h-80 overflow-y-auto",
+          spacing === "composer" && "min-h-0 scroll-pb-6",
           className,
         )}
         data-slot="autocomplete-list"
