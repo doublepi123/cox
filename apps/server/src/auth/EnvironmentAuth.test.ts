@@ -83,6 +83,7 @@ it.layer(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))("EnvironmentAuth.
         request({}, { [sessions.cookieName]: issued.sessionToken }),
       );
       expect(state.authenticated).toBe(true);
+      expect(state.sessionId).toBe((yield* sessions.verify(issued.sessionToken)).sessionId);
       expect(state.auth.loginMode).toBe("local");
       expect(
         (yield* auth.getSessionState(

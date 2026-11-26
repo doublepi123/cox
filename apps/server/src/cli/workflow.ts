@@ -1,10 +1,12 @@
 import { WorkflowHook, WorkflowRunStatus } from "@t3tools/contracts";
+import * as HostProcess from "@t3tools/shared/HostProcess";
 import * as Console from "effect/Console";
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 import { Argument, Command, Flag } from "effect/cli";
 
+import { AGENT_THREAD_ENV } from "../preview/PortScanner.ts";
 import * as Workflows from "../workflows/Workflows.ts";
 import { WorkflowRun, WorkflowStep } from "../workflows/WorkflowStore.ts";
 import { projectLocationFlags } from "./config.ts";
@@ -21,6 +23,7 @@ const RunResult = Schema.Struct({ run: WorkflowRun, steps: Schema.Array(Workflow
 const RunsResult = Schema.Struct({ runs: Schema.Array(WorkflowRun) });
 const QuestionsResult = Schema.Struct({ questions: Schema.Array(Workflows.WorkflowQuestion) });
 const HooksResult = Schema.Struct({ hooks: Schema.Array(WorkflowHook) });
+const ThreadTitleResult = Schema.Struct({ thread: Schema.Struct({ title: Schema.String }) });
 const SignalResult = Schema.Struct({ delivery: Schema.Literals(["delivered", "buffered"]) });
 
 const decodeJson = Schema.decodeUnknownEffect(Schema.fromJsonString(Schema.Json));
@@ -256,8 +259,24 @@ const signalCommand = Command.make("signal", {
           detail: "Address a signal with --run and --wait, or with --workflow and --channel.",
         });
       }
+      // An agent answers through this command, so its answer is named after its thread.
+      const callingThread = (yield* HostProcess.Environment)[AGENT_THREAD_ENV]?.trim();
+      const threadTitle =
+        callingThread === undefined || callingThread === ""
+          ? undefined
+          : yield* withThreadTools({ ...flags, json: false }, (tools) =>
+              tools.call(
+                "cox_thread_read",
+                { threadId: callingThread, limit: 1, runLimit: 1 },
+                ThreadTitleResult,
+              ),
+            ).pipe(
+              Effect.map(({ thread }) => thread.title.trim()),
+              Effect.orElseSucceed(() => undefined),
+            );
       yield* withThreadTools(
-        { ...flags, json: false },
+        // Named on the answer to a question it sends.
+        { ...flags, json: false, clientLabel: threadTitle || "cox workflow signal" },
         Effect.fn("cli.workflow.signal")(function* (tools) {
           const { delivery } = yield* tools.call(
             "cox_workflow",

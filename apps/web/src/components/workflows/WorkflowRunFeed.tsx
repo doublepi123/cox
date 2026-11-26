@@ -18,6 +18,7 @@ import { useTranslation } from "../../i18n";
 import {
   ArrowLeftIcon,
   ArrowUpRightIcon,
+  ExternalLinkIcon,
   ChevronRightIcon,
   BotIcon,
   CheckIcon,
@@ -43,6 +44,7 @@ import { useQuietThreadShell } from "../../state/entities";
 import { useEnvironment, useEnvironmentProviders } from "../../state/environments";
 import { useEnvironmentQuery } from "../../state/query";
 import { serverEnvironment } from "../../state/server";
+import { useEnvironmentSessionId } from "../../state/session";
 import { useAtomCommand } from "../../state/use-atom-command";
 import { formatRelativeTimeLabel } from "../../timestampFormat";
 import ChatMarkdown from "../ChatMarkdown";
@@ -55,6 +57,7 @@ import {
   buildWorkflowTimeline,
   readWorkflowQuestion,
   workflowAgentSummary,
+  isOwnWorkflowAnswer,
   workflowAnswer,
   workflowChip,
   workflowFlowFocus,
@@ -69,6 +72,7 @@ import {
   type WorkflowMessageResolver,
   type WorkflowBeat,
   type WorkflowFeedRow,
+  type WorkflowQuestionChoice,
   type WorkflowQuickSteps,
   type WorkflowRunNode,
   type WorkflowRunTone,
@@ -1225,6 +1229,7 @@ function WorkflowBeatRow({
   const failed = beat.status === "failed";
   const said = workflowAgentSummary(beat).said;
   const answer = beat.kind === "ask" ? workflowAnswer(beat.result) : null;
+  const sessionId = useEnvironmentSessionId(environmentId);
   const wakes = beat.detail === null ? Number.NaN : Date.parse(beat.detail);
   // An agent's own approval or question needs a person as much as the workflow's does.
   const agentAsks =
@@ -1271,7 +1276,9 @@ function WorkflowBeatRow({
       case "ask":
         return answer === null
           ? gt("nobody answered")
-          : gt("You said {choice}", { choice: answer.choice });
+          : answer.answeredBy === null || isOwnWorkflowAnswer(answer, sessionId)
+            ? gt("You said {choice}", { choice: answer.choice })
+            : gt("{who} said {choice}", { who: answer.answeredBy, choice: answer.choice });
       case "sleep":
       case "wait":
         return null;
@@ -1483,6 +1490,7 @@ function WorkflowBeatCard({
 }) {
   const { t: gt } = useTranslation();
   const { t: m } = useTranslation();
+  const sessionId = useEnvironmentSessionId(environmentId);
   const under = beat.status === "running";
   const length = formatDuration(elapsedOf(beat));
   const tries = beat.attempts > 1 ? ` · ${nthTry(beat.attempts, m)}` : "";
@@ -1500,14 +1508,28 @@ function WorkflowBeatCard({
       const answer = workflowAnswer(beat.result);
       if (answer === null)
         return <Note label={beat.name}>{`${gt("nobody answered")} · ${length}`}</Note>;
+      const who = isOwnWorkflowAnswer(answer, sessionId) ? null : answer.answeredBy;
+      const say =
+        who === null
+          ? answer.reason === null
+            ? gt("You said {choice}.", { choice: answer.choice })
+            : gt("You said {choice}: {reason}", { choice: answer.choice, reason: answer.reason })
+          : answer.reason === null
+            ? gt("{who} said {choice}.", { who, choice: answer.choice })
+            : gt("{who} said {choice}: {reason}", {
+                who,
+                choice: answer.choice,
+                reason: answer.reason,
+              });
       return (
         <FeedCard label={beat.name}>
           <CardHead mark={null} name={beat.name} sub={length} />
-          <p className="mt-3 text-sm">
-            {answer.reason === null
-              ? gt("You said {choice}.", { choice: answer.choice })
-              : gt("You said {choice}: {reason}", { choice: answer.choice, reason: answer.reason })}
-          </p>
+          <p className="mt-3 text-sm">{say}</p>
+          {answer.answeredAt === null ? null : (
+            <p className="mt-1 text-xs text-muted-foreground">
+              {gt("Answered")} <RelativeLabel value={answer.answeredAt} />
+            </p>
+          )}
         </FeedCard>
       );
     }
@@ -1804,16 +1826,22 @@ function WorkflowQuestionCard({
       ? environmentId
       : EnvironmentId.make(question.thread.environmentId);
   const reachable = useEnvironment(threadEnvironmentId) !== null;
-  const choose = async (choice: string) => {
+  const [reasonFor, setReasonFor] = useState<string | null>(null);
+  const choose = async (choice: WorkflowQuestionChoice) => {
     if (busy) return;
-    setBusy(true);
     const given = reason?.trim() ?? "";
+    if (choice.requireReason && given === "") {
+      setReasonFor(choice.value);
+      if (reason === null) setReason("");
+      return;
+    }
+    setBusy(true);
     const result = await answer({
       environmentId,
       input: {
         runId: question.runId,
         name: question.name,
-        choice,
+        choice: choice.value,
         ...(given === "" ? {} : { reason: given }),
       },
     });
@@ -1839,17 +1867,36 @@ function WorkflowQuestionCard({
       {view.body ? (
         <ChatMarkdown text={view.body} cwd={undefined} className="mt-1 text-sm" />
       ) : null}
-      <div className="mt-2.5 flex flex-wrap items-center gap-2">
+      {view.links.length === 0 ? null : (
+        <div className="mt-2 flex flex-wrap items-center gap-2">
+          {view.links.map((link) => (
+            <Button
+              key={`${link.label}:${link.url}`}
+              size="sm"
+              variant="outline"
+              render={<a href={link.url} target="_blank" rel="noreferrer" />}
+            >
+              {link.label}
+              <ExternalLinkIcon aria-hidden />
+            </Button>
+          ))}
+        </div>
+      )}
+      <div className="mt-2.5 flex flex-wrap items-start gap-2">
         {view.choices.map((choice, index) => (
-          <Button
-            key={choice}
-            size="sm"
-            variant={index === 0 ? "default" : "outline"}
-            disabled={busy || !canAnswer}
-            onClick={() => void choose(choice)}
-          >
-            {choice}
-          </Button>
+          <div key={choice.value} className="flex flex-col items-start gap-1">
+            <Button
+              size="sm"
+              variant={index === 0 ? "default" : "outline"}
+              disabled={busy || !canAnswer}
+              onClick={() => void choose(choice)}
+            >
+              {choice.value}
+            </Button>
+            {choice.description === null ? null : (
+              <span className="max-w-60 text-xs text-muted-foreground">{choice.description}</span>
+            )}
+          </div>
         ))}
       </div>
       {reason === null || (question.thread !== null && reachable) ? (
@@ -1886,6 +1933,11 @@ function WorkflowQuestionCard({
             placeholder={gt("Why, in a sentence. It goes with whichever answer you pick.")}
             onChange={(event) => setReason(event.currentTarget.value)}
           />
+          {reasonFor === null || (reason?.trim() ?? "") !== "" ? null : (
+            <p className="mt-1 text-xs text-muted-foreground">
+              {gt("{choice} needs a reason.", { choice: reasonFor })}
+            </p>
+          )}
         </div>
       )}
     </FeedCard>

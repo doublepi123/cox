@@ -73,6 +73,7 @@ describe("V2 preview upgrade", () => {
         [91, "WorkflowSkippedRuns"],
         [92, "WorkflowRunIndexes"],
         [93, "WorkflowRunTags"],
+        [94, "WorkflowMailSender"],
       ]);
       assert.deepStrictEqual(yield* runMigrations(), []);
       assert.deepStrictEqual(yield* sql`SELECT * FROM orchestration_v2_legacy_imports`, imports);
@@ -189,6 +190,7 @@ describe("V2 preview upgrade", () => {
         [91, "WorkflowSkippedRuns"],
         [92, "WorkflowRunIndexes"],
         [93, "WorkflowRunTags"],
+        [94, "WorkflowMailSender"],
       ]);
     }).pipe(Effect.provide(NodeSqliteClient.layer({ filename: ":memory:" }))),
   );

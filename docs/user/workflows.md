@@ -91,6 +91,24 @@ Under **Needs you**, a picker then shows each kind with how many questions of it
 
 `tags([...])` labels a run for `cox workflow list --tag backlog`, whether or not it waits on anyone.
 
+## Choices, reasons and links
+
+A choice can be plain text, or `{ value, description, requireReason }` to say what picking it does or to take it only with a reason. `links` puts what to look at before answering on the question:
+
+```ts
+yield *
+  ask("wanted", {
+    title: "Build this?",
+    links: [{ label: "The request", url: pullRequest.url }],
+    choices: [
+      { value: "Yes", description: "Work starts on it" },
+      { value: "No", description: "It is closed with a note", requireReason: true },
+    ],
+  });
+```
+
+The app asks for the reason before it sends a choice that requires one, and `cox workflow signal` refuses that choice without a `reason`. Links open in your browser and are part of `cox workflow questions --json`. The answer also records when it was given and who sent it (`answeredAt`, `answeredBy`): the device's name as **Connections** lists it, the tool that sent it, or for `cox workflow signal` run by an agent, that agent's thread. What a signal's own value says for these is ignored; a signal sent before its question opens answers it as whoever sent it, at the time it was received. The run shows both on the question's step, and says **You** only in the session that gave the answer; every other session, even another one on the same device, sees that device's name.
+
 ## Triggers
 
 - **Schedules:** `every` runs on an interval, starting one interval after the workflow loads; `daily` runs at a local time of day (a time missed by more than 10 minutes while the server is down is skipped).

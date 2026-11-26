@@ -7,6 +7,9 @@ export const en = {
   "Kind of question": "Kind of question",
   "No questions of this kind wait on you.": "No questions of this kind wait on you.",
   "All kinds": "All kinds",
+  "{who} said {choice}.": "{who} said {choice}.",
+  "{who} said {choice}: {reason}": "{who} said {choice}: {reason}",
+  "{choice} needs a reason.": "{choice} needs a reason.",
   ", or ask an agent to.": ", or ask an agent to.",
   "Line {line}:": "Line {line}:",
   "Leave without saving? Your changes to this file are lost.":
