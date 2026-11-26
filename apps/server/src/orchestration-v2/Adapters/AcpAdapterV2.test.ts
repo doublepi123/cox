@@ -2283,6 +2283,11 @@ describe("AcpAdapterV2", () => {
     },
   ];
 
+  const optionalOpenCodeQuestions = openCodeQuestions.map((question) => ({
+    ...question,
+    required: false,
+  }));
+
   // regression: #20417 Droid AskUser answers were sent as a cancel
   it.live.each([
     {
@@ -2335,15 +2340,39 @@ describe("AcpAdapterV2", () => {
     {
       scenario: "falls back for an unrelated form",
       schema: { type: "object", properties: { name: { type: "string" } } },
-      questions: [{ id: "name", header: "Question 1", question: "Your answer?", options: [] }],
+      questions: [
+        {
+          id: "name",
+          header: "Question 1",
+          question: "Your answer?",
+          options: [],
+          required: false,
+        },
+      ],
       answers: { name: "Ada" },
       result: { action: "accept", content: { name: "Ada" } },
+    },
+    {
+      scenario: "OpenCode skipped optional choice",
+      settings: OPENCODE_SETTINGS,
+      schema: openCodeSchema,
+      questions: optionalOpenCodeQuestions,
+      answers: {},
+      result: { action: "accept", content: {} },
+    },
+    {
+      scenario: "OpenCode required choice left unanswered is cancelled",
+      settings: OPENCODE_SETTINGS,
+      schema: { ...openCodeSchema, required: ["q0"] },
+      questions: openCodeQuestions,
+      answers: {},
+      result: { action: "cancel" },
     },
     {
       scenario: "OpenCode keeps the selected option and hides the custom companion",
       settings: OPENCODE_SETTINGS,
       schema: openCodeSchema,
-      questions: openCodeQuestions,
+      questions: optionalOpenCodeQuestions,
       answers: { q0: "blue" },
       result: { action: "accept", content: { q0: "blue" } },
     },
