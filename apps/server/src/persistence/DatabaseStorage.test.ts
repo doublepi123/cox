@@ -83,7 +83,7 @@ it.effect("remembers completion only after the paced pass finishes", () =>
     const fs = yield* FileSystem.FileSystem;
     const path = yield* Path.Path;
     const config = yield* ServerConfig.ServerConfig;
-    const timestampPath = path.join(path.dirname(config.dbPath), "compacted-at");
+    const timestampPath = path.join(path.dirname(config.dbPath), "compacted-at-v2");
     const betweenPagesReached = yield* Deferred.make<void>();
     const completed = yield* Deferred.make<void>();
     const timestampWritten = yield* Deferred.make<void>();
@@ -119,4 +119,29 @@ it.effect("remembers completion only after the paced pass finishes", () =>
       }),
     );
   }).pipe(Effect.provide(testConfig.pipe(Layer.provideMerge(NodeServices.layer)))),
+);
+
+it.effect(
+  "runs startup compaction despite a recent stamp from before the deleted-thread purge",
+  () =>
+    Effect.gen(function* () {
+      yield* TestClock.setTime(startupTime);
+      const fs = yield* FileSystem.FileSystem;
+      const path = yield* Path.Path;
+      const config = yield* ServerConfig.ServerConfig;
+      const directory = path.dirname(config.dbPath);
+      yield* fs.writeFileString(path.join(directory, "compacted-at"), String(startupTime - minute));
+      const compacted = yield* Deferred.make<void>();
+      yield* Effect.gen(function* () {
+        yield* TestClock.adjust(minute);
+        assert.isTrue(yield* Deferred.isDone(compacted));
+        assert.isTrue(yield* fs.exists(path.join(directory, "compacted-at-v2")));
+      }).pipe(
+        Effect.provide(
+          compactionLayer(() =>
+            Deferred.succeed(compacted, undefined).pipe(Effect.as(emptyCompaction)),
+          ),
+        ),
+      );
+    }).pipe(Effect.provide(testConfig.pipe(Layer.provideMerge(NodeServices.layer)))),
 );
