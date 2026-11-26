@@ -347,6 +347,11 @@ function escapeLength(input: string, index: number): number {
   if (cursor >= input.length) return -1;
   const final = input.charCodeAt(cursor);
   if (cursor > index + 1 && (final < 0x30 || final > 0x7e)) return cursor - index;
+  if (final >= 0xd800 && final <= 0xdbff) {
+    if (cursor + 1 >= input.length) return -1;
+    const low = input.charCodeAt(cursor + 1);
+    if (low >= 0xdc00 && low <= 0xdfff) return cursor - index + 2;
+  }
   return cursor - index + 1;
 }
 
