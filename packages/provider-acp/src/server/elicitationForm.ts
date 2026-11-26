@@ -208,6 +208,9 @@ export function parseElicitationForm(
         ? {}
         : { allowCustomAnswer: false }),
       ...(field.kind === "multiChoice" ? { multiSelect: true } : {}),
+      ...((field.kind === "text" || field.kind === "number") && !required.has(id)
+        ? { required: false }
+        : {}),
       ...(field.kind === "multiChoice" && field.minItems > 0 && required.has(id)
         ? { required: true }
         : {}),
