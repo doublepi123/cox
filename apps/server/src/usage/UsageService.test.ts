@@ -1235,6 +1235,79 @@ describe("UsageService", () => {
       }).pipe(Effect.scoped),
   );
 
+  it.live("reads compressed DeepSeek Harness sessions including subagent children", () =>
+    Effect.gen(function* () {
+      const { home, settings } = yield* setup;
+      const project = NodePath.join(home, ".dsh", "sessions", "--home-user-project--");
+      const time = Date.parse("2026-08-01T10:00:00Z");
+      const session = (
+        id: string,
+        usages: ReadonlyArray<{
+          readonly id: string;
+          readonly inputTokens: number;
+          readonly outputTokens: number;
+          readonly cacheReadTokens: number;
+        }>,
+      ) =>
+        NodeZlib.zstdCompressSync(
+          [
+            { type: "session", version: 4, id, createdAt: time, cwd: "/home/user/project" },
+            { type: "turn/start", seq: 0, time, data: { turn: 1 } },
+            ...usages.map((usage, index) => ({
+              type: "assistant/message",
+              seq: index + 1,
+              time: time + index,
+              data: {
+                turn: 1,
+                step: index + 1,
+                message: {
+                  role: "assistant",
+                  id: usage.id,
+                  source: { kind: "model", provider: "cox", model: "deepseek-flash" },
+                },
+                usage: {
+                  inputTokens: usage.inputTokens,
+                  outputTokens: usage.outputTokens,
+                  cacheReadTokens: usage.cacheReadTokens,
+                  cacheWriteTokens: 0,
+                },
+              },
+            })),
+          ]
+            .map((line) => encodeUnknownJsonString(line))
+            .join("\n") + "\n",
+        );
+      yield* Effect.promise(async () => {
+        for (const id of ["parent", "child"]) {
+          await NodeFSP.mkdir(NodePath.join(project, id), { recursive: true });
+        }
+        await NodeFSP.writeFile(
+          NodePath.join(project, "parent", "session.v4.jsonl.zstd"),
+          session("parent", [
+            { id: "m1", inputTokens: 6457, outputTokens: 73, cacheReadTokens: 0 },
+            { id: "m2", inputTokens: 220, outputTokens: 85, cacheReadTokens: 6328 },
+          ]),
+        );
+        await NodeFSP.writeFile(
+          NodePath.join(project, "child", "session.v4.jsonl.zstd"),
+          session("child", [{ id: "m1", inputTokens: 900, outputTokens: 12, cacheReadTokens: 0 }]),
+        );
+      });
+      const summary = yield* Effect.gen(function* () {
+        const service = yield* UsageService.make;
+        return yield* service.readSummary(WINDOW);
+      }).pipe(Effect.scoped, Effect.provide(layerService({ prefix: "usage-dsh", home, settings })));
+      const dsh = summary.buckets.filter((bucket) => bucket.provider === "dsh");
+      assert.strictEqual(dsh.length, 1);
+      assert.strictEqual(dsh[0]?.model, "deepseek-flash");
+      assert.strictEqual(totalOutputTokens({ buckets: dsh }), 170);
+      assert.strictEqual(dsh[0]?.totals.cachedInputTokens, 6328);
+      assert.strictEqual(totalTokens(dsh[0]!.totals), 6457 + 73 + 220 + 85 + 6328 + 900 + 12);
+      const source = summary.sources.find((entry) => entry.fingerprint.provider === "dsh");
+      assert.strictEqual(source?.distinctSessions, 2);
+    }).pipe(Effect.scoped),
+  );
+
   it.live("reads Pi history from a model-service instance's session directory", () =>
     Effect.gen(function* () {
       const { home, settings } = yield* setup;

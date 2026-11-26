@@ -68,6 +68,10 @@ function fnv1a(buffer: Buffer): number {
   return hash >>> 0;
 }
 
+export function isCompressedTranscript(path: string): boolean {
+  return path.endsWith(".jsonl.zst") || path.endsWith(".jsonl.zstd");
+}
+
 /** Skips Grok logs without usage; preserves readdir order for first-seen deduplication. */
 export async function listTranscriptFiles(
   root: string,
@@ -91,7 +95,7 @@ export async function listTranscriptFiles(
       else if (
         fileName !== undefined
           ? entry.name === fileName
-          : entry.name.endsWith(".jsonl") || entry.name.endsWith(".jsonl.zst")
+          : entry.name.endsWith(".jsonl") || isCompressedTranscript(entry.name)
       ) {
         candidates.push(child);
       }
@@ -186,7 +190,7 @@ export async function readTranscriptRecords<State>(
   options?: { readonly streamingThresholdBytes?: number },
 ): Promise<TranscriptParseResult | null> {
   const streamingThresholdBytes = options?.streamingThresholdBytes ?? STREAMING_THRESHOLD_BYTES;
-  const compressed = filePath.endsWith(".jsonl.zst");
+  const compressed = isCompressedTranscript(filePath);
   let handle: NodeFSP.FileHandle;
   try {
     handle = await NodeFSP.open(filePath, "r");

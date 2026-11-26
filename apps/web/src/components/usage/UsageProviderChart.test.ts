@@ -45,6 +45,7 @@ describe("buildPeriodColumns", () => {
       { provider: "pi", value: 5 },
       { provider: "omp", value: 3 },
       { provider: "muse", value: 7 },
+      { provider: "dsh", value: 0 },
     ]);
   });
 });

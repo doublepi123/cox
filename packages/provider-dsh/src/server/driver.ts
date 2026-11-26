@@ -39,6 +39,7 @@ import { DshAdapterV2Driver, type DshAdapterV2DriverEnv } from "./adapter.ts";
 import { makeDshInstallation } from "./installation.ts";
 import { buildInitialDshProviderSnapshot, checkDshProviderStatus } from "./status.ts";
 import { makeDshTextGeneration } from "./textGeneration.ts";
+import { dshUsageReader } from "./usage.ts";
 
 const decodeDshSettings = Schema.decodeSync(DshSettings);
 const MAINTENANCE = {
@@ -61,7 +62,7 @@ export type DshDriverEnv =
   | ProviderLatestVersions.ProviderLatestVersions
   | Path.Path;
 
-export const DshDriver: ProviderDriver<DshSettings, DshDriverEnv> = {
+export const DshDriver: ProviderDriver<DshSettings, DshDriverEnv, Path.Path> = {
   driverKind: DSH_DRIVER_KIND,
   metadata: {
     displayName: "DeepSeek Harness",
@@ -69,6 +70,7 @@ export const DshDriver: ProviderDriver<DshSettings, DshDriverEnv> = {
   },
   configSchema: DshSettings,
   defaultConfig: (): DshSettings => decodeDshSettings({}),
+  usage: dshUsageReader,
   create: Effect.fn("DshDriver.create")(function* ({
     instanceId,
     displayName,

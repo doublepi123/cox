@@ -29,6 +29,8 @@ import {
   withDshModelServicePatch,
 } from "./acpSupport.ts";
 import { extractDshElicitationForm } from "./elicitation.ts";
+import { dshUsageDirectories } from "./usage.ts";
+import * as HostProcess from "@t3tools/shared/HostProcess";
 import {
   dshRuntimeManifest,
   isSupportedDshVersion,
@@ -600,5 +602,19 @@ it.layer(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))("DeepSeek Harness
       assert.strictEqual(draft.status, "error");
       assert.deepStrictEqual(calls, []);
     }).pipe(Effect.scoped),
+  );
+});
+
+it.layer(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))("DeepSeek Harness usage", (it) => {
+  it.effect("reads sessions from the harness home the instance launches with", () =>
+    Effect.gen(function* () {
+      const directories = (environment: NodeJS.ProcessEnv) => dshUsageDirectories({ environment });
+      assert.deepStrictEqual(yield* directories({ HOME: "/home/user" }), [
+        { dir: "/home/user/.dsh/sessions" },
+      ]);
+      assert.deepStrictEqual(yield* directories({ HOME: "/home/user", DSH_HOME: "~/work-dsh" }), [
+        { dir: "/home/user/work-dsh/sessions" },
+      ]);
+    }).pipe(Effect.provideService(HostProcess.Platform, "linux")),
   );
 });
