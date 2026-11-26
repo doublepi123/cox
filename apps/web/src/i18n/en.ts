@@ -56,6 +56,8 @@ export const en = {
     "{count} malformed or inconsistent usage records were skipped; usage may be incomplete.",
   "0 bytes": "0 bytes",
   "{count} matches": "{count} matches",
+  "Saved on this device. Select All projects to change it.":
+    "Saved on this device. Select All projects to change it.",
   "Terminal input": "Terminal input",
   "Terminal scrollback": "Terminal scrollback",
   ", or ask an agent to.": ", or ask an agent to.",

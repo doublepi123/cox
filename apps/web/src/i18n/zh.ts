@@ -33,6 +33,8 @@ export const zh = {
     "已跳过 {count} 条格式错误或不一致的用量记录，用量可能不完整。",
   "0 bytes": "0 字节",
   "{count} matches": "{count} 处匹配",
+  "Saved on this device. Select All projects to change it.":
+    "此设置保存在本设备上。请选择所有项目进行修改。",
   "Terminal input": "终端输入",
   "Terminal scrollback": "终端滚动历史",
   ", or ask an agent to.": "，也可以让智能体编写。",

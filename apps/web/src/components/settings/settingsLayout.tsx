@@ -313,6 +313,7 @@ export function SettingsRow({
   onResetOverride,
   control,
   serverScoped = false,
+  devicePreference = false,
   settingKeys = EMPTY_SETTING_KEYS,
   mixed: mixedOverride,
   children,
@@ -326,6 +327,7 @@ export function SettingsRow({
   onResetOverride?: () => void;
   control?: ReactNode;
   serverScoped?: boolean;
+  devicePreference?: boolean;
   settingKeys?: readonly (keyof ServerSettings)[];
   mixed?: boolean;
   children?: ReactNode;
@@ -422,7 +424,9 @@ export function SettingsRow({
         )
       : environmentWide && control
         ? inertControl(t("Environment-wide setting. Select an environment to change it."))
-        : control;
+        : isProjectScope && devicePreference && control
+          ? inertControl(t("Saved on this device. Select All projects to change it."))
+          : control;
   const customized =
     context !== null &&
     settingKeys.some((key) =>

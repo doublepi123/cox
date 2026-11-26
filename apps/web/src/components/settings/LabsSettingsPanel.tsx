@@ -186,6 +186,7 @@ function BoringSidebarRow() {
   return (
     <SettingsRow
       {...searchableSetting("boring-sidebar")}
+      devicePreference
       description={t(
         "Group sidebar threads into project folders. Pinned threads stay on top, and Snoozed and Settled stay below the folders.",
       )}
@@ -210,6 +211,7 @@ function BoringSidebarMultilineRow() {
   return (
     <SettingsRow
       {...searchableSetting("boring-sidebar-multiline")}
+      devicePreference
       description={t(
         "In the boring sidebar, show folder threads on two lines: the title, then the branch, pull request, and agent.",
       )}
