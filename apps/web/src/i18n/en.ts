@@ -4667,6 +4667,8 @@ export const en = {
   "Client update actions": "Client update actions",
   "Cox update actions": "Cox update actions",
   "Your next message starts a fresh session": "Your next message starts a fresh session",
+  "Your next message restarts the agent. This conversation is kept.":
+    "Your next message restarts the agent. This conversation is kept.",
   "The agent won't see earlier messages in this thread.":
     "The agent won't see earlier messages in this thread.",
   "Keep the current session": "Keep the current session",

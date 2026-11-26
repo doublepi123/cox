@@ -4510,6 +4510,8 @@ export const zh = {
   "Client update actions": "客户端更新操作",
   "Cox update actions": "Cox 更新操作",
   "Your next message starts a fresh session": "下一条消息将开启全新会话",
+  "Your next message restarts the agent. This conversation is kept.":
+    "发送下一条消息时将重启智能体，并保留此对话。",
   "The agent won't see earlier messages in this thread.": "Agent 不会收到此对话中此前的消息。",
   "Keep the current session": "保留当前会话",
   "Start a fresh session; earlier messages stay visible": "开启全新会话；此前消息仍保留显示",
