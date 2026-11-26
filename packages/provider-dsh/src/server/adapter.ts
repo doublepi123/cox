@@ -131,6 +131,7 @@ export function makeDshAcpAdapterFlavor(
         : Effect.succeed(text),
     extractElicitationForm: extractDshElicitationForm,
     extractSubagentUpdate: extractDshSubagentUpdate,
+    supportsCompaction: true,
     subagentsIdleOnTurnCompletion: true,
     steerActiveTurn: ({ runtime, sessionId, text }) =>
       runtime
