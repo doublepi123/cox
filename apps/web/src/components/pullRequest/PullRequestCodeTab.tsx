@@ -94,7 +94,7 @@ import { useCodeViewFileReveal } from "../diffs/useCodeViewFileReveal";
 import { useHideTestFiles } from "../diffs/useHideTestFiles";
 import { diffFileTreeEntries, orderDiffFilesLikeTree } from "../diffs/diffFileTree.logic";
 import { StyledDiffCodeView } from "../diffs/StyledDiffCodeView";
-import { Button } from "../ui/button";
+import { Button, InlineButton } from "../ui/button";
 import { MorphIcon } from "~/components/MorphIcon";
 import { Checkbox } from "../ui/checkbox";
 import { Collapsible, CollapsiblePanel, CollapsibleTrigger } from "../ui/collapsible";
@@ -1132,6 +1132,12 @@ function PullRequestCodeTab({
 
   const selectedCommit = orderedCommits.find((entry) => entry.oid === commit);
   const scopeLabel = selectedCommit ? selectedCommit.messageHeadline : "All commits";
+  const hiddenTestFilesLabel =
+    hiddenTestFileCount > 0
+      ? hiddenTestFileCount === 1
+        ? t("1 test file hidden")
+        : t("{count} test files hidden", { count: hiddenTestFileCount })
+      : null;
   const changeIgnoreWhitespace = (next: boolean) => {
     setIgnoreWhitespace(next);
     setDraft(null);
@@ -1147,7 +1153,14 @@ function PullRequestCodeTab({
                 render={<Button size="xs" variant="secondary" />}
                 aria-label={`Diff scope: ${scopeLabel}`}
               >
-                <span className="truncate">{scopeLabel}</span>
+                <span className={cn("truncate", selectedCommit && "hidden @xl:inline")}>
+                  {scopeLabel}
+                </span>
+                {selectedCommit ? (
+                  <span className="truncate font-mono @xl:hidden">
+                    {selectedCommit.oid.slice(0, 7)}
+                  </span>
+                ) : null}
                 <ChevronDownIcon className="size-3.5 shrink-0 opacity-70" />
               </DropdownMenuTrigger>
             </span>
@@ -1189,15 +1202,27 @@ function PullRequestCodeTab({
           </DropdownMenu>
         ) : null}
         <PullRequestMetaLine>
-          <span className="shrink-0 tabular-nums">
-            {files.length} {files.length === 1 ? "file" : "files"}
-            {nextCursor === null ? "" : "+"}
+          <span className="flex shrink-0 items-center gap-1.5">
+            <span className="tabular-nums">
+              {files.length} {files.length === 1 ? "file" : "files"}
+              {nextCursor === null ? "" : "+"}
+            </span>
+            {hiddenTestFilesLabel !== null && (files.length > 0 || nextCursor !== null) ? (
+              <span className="hidden items-center gap-1.5 @2xl:flex">
+                <span aria-hidden className="text-muted-foreground/50">
+                  ·
+                </span>
+                <Button
+                  type="button"
+                  size="xs"
+                  variant="link"
+                  onClick={() => setHideTestFiles(false)}
+                >
+                  {hiddenTestFilesLabel}
+                </Button>
+              </span>
+            ) : null}
           </span>
-          {hiddenTestFileCount > 0 ? (
-            <Button type="button" size="xs" variant="link" onClick={() => setHideTestFiles(false)}>
-              {hiddenTestFileCount} test {hiddenTestFileCount === 1 ? "file" : "files"} hidden
-            </Button>
-          ) : null}
           {filesViewed.enabled && files.length > 0 ? (
             <span className="flex min-w-0 items-center gap-1 tabular-nums">
               <span className="shrink-0">
@@ -1428,7 +1453,7 @@ function PullRequestCodeTab({
               <FlaskConicalOffIcon className="size-3.5" />
             </TooltipTrigger>
             <TooltipPopup side="top">
-              {hideTestFiles ? "Show test files" : t("Hide test files")}
+              {hideTestFiles ? t("Show test files") : t("Hide test files")}
             </TooltipPopup>
           </Tooltip>
         ) : null}
@@ -1510,6 +1535,16 @@ function PullRequestCodeTab({
   }
 
   if (items.length === 0 && nextCursor === null) {
+    if (hiddenTestFilesLabel !== null && files.length === 0) {
+      return withToolbar(
+        <div className="flex flex-wrap items-center gap-2 px-4 py-5 text-sm text-muted-foreground">
+          <p>{hiddenTestFilesLabel}</p>
+          <InlineButton onClick={() => setHideTestFiles(false)}>
+            {t("Show test files")}
+          </InlineButton>
+        </div>,
+      );
+    }
     return withToolbar(
       <p className="px-4 py-5 text-sm text-muted-foreground">
         {commit === null ? `This ${term} has no file changes.` : "This commit has no file changes."}
