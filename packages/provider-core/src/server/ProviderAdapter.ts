@@ -543,7 +543,12 @@ export interface ProviderAdapterV2TurnInput {
   readonly message: ProviderAdapterV2TurnMessage;
   readonly modelSelection: ModelSelection;
   readonly runtimePolicy: ProviderAdapterV2RuntimePolicy;
-  readonly appContext?: ReadonlyArray<{ readonly key: string; readonly text: string }>;
+  readonly appContext?: ReadonlyArray<{
+    readonly key: string;
+    readonly text: string;
+    /** ISO time the note was last set, so a resent note reads as earlier state, not news. */
+    readonly updatedAt?: string;
+  }>;
 }
 
 export interface ProviderAdapterV2SteerInput {

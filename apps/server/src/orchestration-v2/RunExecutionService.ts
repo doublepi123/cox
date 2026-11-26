@@ -1829,6 +1829,7 @@ export const layer: Layer.Layer<
           // the context in.
           key: `mcp_app_${entry.itemId.replace(/[^\w.-]/g, "_")}`,
           text: entry.text,
+          updatedAt: entry.updatedAt,
         }));
         const turnInput = {
           appThread: input.appThread,
