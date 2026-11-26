@@ -210,9 +210,10 @@ function ProjectDetail({
     await updateProjectGroup(allMembers, input, failureTitle);
     setIsOrganizing(false);
   };
-  const renameGroup = async (nextTitle: string, wasEdited: boolean) => {
-    const title = nextTitle.trim();
+  const renameGroup = async (input: HTMLInputElement, wasEdited: boolean) => {
+    const title = input.value.trim();
     if (!title) {
+      input.value = group.displayName;
       toastManager.add({ type: "warning", title: t("Project title cannot be empty") });
       return;
     }
@@ -447,7 +448,7 @@ function ProjectDetail({
                   onBlur={(event) => {
                     const wasEdited = projectNameEditedRef.current;
                     projectNameEditedRef.current = false;
-                    void renameGroup(event.currentTarget.value, wasEdited);
+                    void renameGroup(event.currentTarget, wasEdited);
                   }}
                   onKeyDown={(event) => {
                     if (event.nativeEvent.isComposing || event.keyCode === 229) return;
