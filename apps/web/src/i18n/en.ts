@@ -3317,6 +3317,10 @@ export const en = {
   "Zoom out": "Zoom out",
   "Zoom in": "Zoom in",
   "No preview for this file": "No preview for this file",
+  "Save it to open in an app that supports this format.":
+    "Save it to open in an app that supports this format.",
+  "Save it to open in an app that supports {extension} files.":
+    "Save it to open in an app that supports {extension} files.",
   Command: "Command",
   Refresh: "Refresh",
   None: "None",

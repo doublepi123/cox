@@ -3110,6 +3110,9 @@ export const zh = {
   "Zoom out": "缩小",
   "Zoom in": "放大",
   "No preview for this file": "此文件无法预览",
+  "Save it to open in an app that supports this format.": "保存后可在支持此格式的应用中打开。",
+  "Save it to open in an app that supports {extension} files.":
+    "保存后可在支持 {extension} 文件的应用中打开。",
   Command: "命令",
   Refresh: "刷新",
   None: "无",
