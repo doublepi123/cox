@@ -46,7 +46,7 @@ Dot-files and subfolders are ignored. Keep shared helpers in a subfolder and res
 
 ```sh
 cox workflow start <name> --input '<json>' --key <key>
-cox workflow list [--status paused] [--tag <tag>]
+cox workflow list [--status paused] [--tag <tag>] [--subject <url or id>]
 cox workflow show <run>
 cox workflow resume <run>
 cox workflow cancel <run> [--reason '<why>']
@@ -68,20 +68,20 @@ For the `cox_workflow` MCP tool, full access in default interaction mode is requ
 A workflow that asks more than one kind of question can name the kinds, so you can answer one kind at a time. List them in the workflow's options with the label to show, and give each `ask` its `kind`:
 
 ```ts
-const { workflow, ask, tags, Issue } = T3;
+const { workflow, ask, tags, PullRequest } = Cox;
 
 workflow(
   "triage",
   {
     version: 1,
-    payload: Issue,
+    payload: PullRequest,
     asks: { feature: "Feature wanted?", intended: "Bug or intended?" },
   },
-  Effect.fn(function* (issue) {
+  Effect.fn(function* (pullRequest) {
     yield* tags(["backlog"]);
     yield* ask("wanted", {
       kind: "feature",
-      title: `Build ${issue.title}?`,
+      title: `Build ${pullRequest.title}?`,
       choices: ["Yes", "No"],
     });
   }),
@@ -109,6 +109,18 @@ yield *
 ```
 
 The app asks for the reason before it sends a choice that requires one, and `cox workflow signal` refuses that choice without a `reason`. Links open in your browser and are part of `cox workflow questions --json`. The answer also records when it was given and who sent it (`answeredAt`, `answeredBy`): the device's name as **Connections** lists it, the tool that sent it, or for `cox workflow signal` run by an agent, that agent's thread. What a signal's own value says for these is ignored; a signal sent before its question opens answers it as whoever sent it, at the time it was received. The run shows both on the question's step, and says **You** only in the session that gave the answer; every other session, even another one on the same device, sees that device's name.
+
+## What a run is about
+
+A run can name the one thing it is about with `subject(...)`: a pull request a trigger or listing gave it, `{ threadId }`, or a web address. Calling it again replaces the subject, and `start(workflow, payload, { key, subject })` gives a new run one from the start. A project cannot be a subject, and a pull request built by hand needs its `projectId` and `host`.
+
+```ts
+const { workflow, subject, PullRequest } = Cox;
+
+workflow("triage", { version: 1, payload: PullRequest }, (pullRequest) => subject(pullRequest));
+```
+
+The run lists, **Needs you** included, show the subject under the run and open it beside the run. A pull request's own view lists the runs about it. `cox workflow list --subject <url>` finds runs by their subject's web address, or by a thread id, and a step finds them with `runs({ subject })`. The subject is only a label with a link: nothing watches it.
 
 ## Limit how much runs at once
 

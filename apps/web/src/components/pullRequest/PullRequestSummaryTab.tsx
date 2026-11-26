@@ -1,3 +1,4 @@
+import { WorkflowRunsAbout } from "../workflows/WorkflowRunsAbout";
 import { useAtomValue } from "@effect/atom-react";
 import { useTranslation } from "../../i18n";
 import {
@@ -919,6 +920,20 @@ export function PullRequestSummaryTab({
             </MetaRow>
           ) : null}
         </div>
+        <WorkflowRunsAbout
+          environmentId={environmentId}
+          item={{
+            subject: detail.url,
+            pullRequest: {
+              projectId: reference.projectId,
+              repository: reference.repository,
+              number: reference.number,
+              host:
+                reference.host ??
+                (URL.canParse(detail.url) ? new URL(detail.url).hostname : undefined),
+            },
+          }}
+        />
       </section>
 
       <Section key={`description:${detail.url}`} title={t("Description")} keepMounted>

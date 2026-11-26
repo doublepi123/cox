@@ -30,6 +30,7 @@ import {
   sleep,
   step,
   stop,
+  subject,
   tags,
   text,
   title,
@@ -43,11 +44,13 @@ import WorkflowSkippedRunsMigration from "../persistence/Migrations/091_Workflow
 import * as ServerSettings from "../serverSettings.ts";
 import WorkflowRunTagsMigration from "../persistence/Migrations/093_WorkflowRunTags.ts";
 import WorkflowMailSenderMigration from "../persistence/Migrations/094_WorkflowMailSender.ts";
+import WorkflowRunSubjectMigration from "../persistence/Migrations/096_WorkflowRunSubject.ts";
 import WorkflowPoolsMigration from "../persistence/Migrations/095_WorkflowPools.ts";
 import * as WorkflowEngine from "./WorkflowEngine.ts";
 import {
   PullRequest,
   pullRequestReferenceOf,
+  type SubjectInput,
   unavailable,
   WorkflowForge,
   WorkflowForgeError,
@@ -916,6 +919,45 @@ const sorted = [
   ),
 ];
 
+/** Says what it is about, once or more, then waits; or starts one about a thread and finds it. */
+const about = workflow(
+  "about",
+  {
+    version: 1,
+    payload: Schema.Struct({ subjects: Schema.Array(Schema.Json) }),
+  },
+  Effect.fn(function* (payload) {
+    for (const value of payload.subjects) yield* subject(value as SubjectInput);
+    yield* wait("go", { returns: Schema.String });
+  }),
+);
+const aboutFinder = workflow(
+  "aboutFinder",
+  {
+    version: 1,
+    payload: Schema.Struct({ threadId: Schema.String, url: Schema.String }),
+    returns: Schema.Array(Schema.String),
+  },
+  (payload) =>
+    step(
+      "find",
+      { returns: Schema.Array(Schema.String) },
+      Effect.gen(function* () {
+        yield* start(
+          about,
+          { subjects: [] },
+          { key: "started", subject: { threadId: payload.threadId } },
+        );
+        const found = [
+          ...(yield* runs({ workflow: about, subject: { threadId: payload.threadId } })),
+          // An issue's web address finds the run about that issue, as the CLI's does.
+          ...(yield* runs({ workflow: about, subject: payload.url })),
+        ];
+        return found.map((run) => `${run.key} ${run.subject?.kind}`);
+      }),
+    ),
+);
+
 const PROJECT = "/home/me/app";
 const triage = workflow(
   "triage",
@@ -1051,6 +1093,7 @@ const harness = Effect.fnUntraced(function* (store?: typeof WorkflowStore.layer)
       Effect.andThen(WorkflowRunTagsMigration),
       Effect.andThen(WorkflowMailSenderMigration),
       Effect.andThen(WorkflowPoolsMigration),
+      Effect.andThen(WorkflowRunSubjectMigration),
     ),
     database,
   );
@@ -1076,6 +1119,8 @@ const harness = Effect.fnUntraced(function* (store?: typeof WorkflowStore.layer)
     ...control,
     ...sorted,
     ...pooled,
+    about,
+    aboutFinder,
   ];
   const engineOf = (registered: typeof all) =>
     WorkflowEngine.layer(registered, store).pipe(
@@ -3249,6 +3294,163 @@ it.effect.each(["finds the question open", "finds it after keeping itself"] as c
         }),
       );
     }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
+);
+
+it.effect("a run says what it is about, and is found by it", () =>
+  Effect.gen(function* () {
+    const { boot } = yield* harness();
+    yield* boot(
+      Effect.gen(function* () {
+        const workflows = yield* Workflows.Workflows;
+        const pullRequest = {
+          projectId: "p1",
+          host: "github.com",
+          repository: "acme/app",
+          number: 412,
+          title: "Crash on save",
+          url: "https://github.com/acme/app/pull/412",
+        };
+        const [onPullRequest, moved, plain] = yield* Effect.all([
+          workflows.start("about", { subjects: [pullRequest] }, { idempotencyKey: "a" }),
+          // A later subject replaces the earlier one.
+          workflows.start(
+            "about",
+            { subjects: [pullRequest, { threadId: "thread-1" }] },
+            { idempotencyKey: "b" },
+          ),
+          workflows.start("about", { subjects: [] }, { idempotencyKey: "c" }),
+        ]);
+        for (const run of [onPullRequest, moved, plain]) {
+          yield* workflows.waitFor(run.runId, status("waiting"));
+        }
+        const snapshot = Option.getOrThrow(yield* Stream.runHead(workflows.watch));
+        const subjectOf = (runId: string) =>
+          snapshot.runs.find((listed) => listed.runId === runId)?.subject;
+        assert.deepStrictEqual(subjectOf(onPullRequest.runId), {
+          kind: "pullRequest",
+          key: JSON.stringify(["github.com", "acme/app", 412]),
+          address: {
+            projectId: "p1",
+            host: "github.com",
+            repository: "acme/app",
+            number: 412,
+          },
+          title: "Crash on save",
+          url: "https://github.com/acme/app/pull/412",
+        });
+        assert.deepStrictEqual(subjectOf(moved.runId)?.kind, "thread");
+        assert.equal(subjectOf(plain.runId), undefined);
+        // It is among what the run touched, so it opens beside the run as those do.
+        assert.deepStrictEqual(
+          (yield* workflows.get(onPullRequest.runId)).references.map((reference) => reference.kind),
+          ["pullRequest"],
+        );
+        assert.deepStrictEqual(
+          (yield* workflows.list({ subject: pullRequest.url })).map((run) => run.runId),
+          [onPullRequest.runId],
+        );
+        assert.deepStrictEqual(
+          (yield* workflows.list({ subject: "thread-1" })).map((run) => run.runId),
+          [moved.runId],
+        );
+
+        const finder = yield* workflows.start(
+          "aboutFinder",
+          { threadId: "thread-1", url: pullRequest.url },
+          { idempotencyKey: "f" },
+        );
+        const found = yield* workflows.waitFor(finder.runId, status("completed", "paused"));
+        assert.deepStrictEqual(found.result, ["started thread", "b thread", "a pullRequest"]);
+        assert.throws(() => subject("not an address"), /is not a web address/);
+        assert.throws(() => subject({ project: "/x", url: "https://x" } as never), /subject takes/);
+        // Nothing can open a bare project, so it is no subject.
+        assert.throws(() => subject({ projectId: "p1" } as never), /subject takes/);
+        // An item's own view knows its project and host, and could not match one kept without.
+        const { projectId: _projectId, ...unowned } = pullRequest;
+        const { host: _host, ...unhosted } = pullRequest;
+        assert.throws(() => subject(unowned as never), /projectId, host, repository and number/);
+        assert.throws(() => subject(unhosted as never), /projectId, host, repository and number/);
+        assert.throws(
+          () => subject({ projectId: "p1", repository: "acme/app", number: 7 } as never),
+          /projectId, host, repository and number/,
+        );
+      }),
+    );
+  }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
+);
+
+it.effect("an item finds its runs past the newest 500 runs of every subject", () =>
+  Effect.gen(function* () {
+    const exposed = exposedStore();
+    const { boot, clock } = yield* harness(exposed.layer);
+    yield* boot(
+      Effect.gen(function* () {
+        const workflows = yield* Workflows.Workflows;
+        const store = yield* exposed.store;
+        const url = "https://github.com/acme/app/pull/412";
+        const pullRequest = {
+          projectId: "p1",
+          host: "github.com",
+          repository: "acme/app",
+          number: 412,
+          url,
+        };
+        // Time stands still, so every run starts in the same instant as the target: only the
+        // order they were started in says which 500 are the newest.
+        yield* clock.close;
+        const target = yield* workflows.start(
+          "about",
+          { subjects: [pullRequest] },
+          { idempotencyKey: "target" },
+        );
+        yield* workflows.waitFor(target.runId, status("waiting"));
+        for (let n = 0; n < 500; n++) {
+          const runId = `other-${n}`;
+          yield* store.runStarted({
+            runId,
+            workflow: "about",
+            version: 1,
+            engineTag: "about@1",
+            idempotencyKey: runId,
+            input: { subjects: [] },
+          });
+          yield* store.runEnded(runId, "completed", null, null);
+        }
+        yield* clock.open;
+        const snapshot = Option.getOrThrow(yield* Stream.runHead(workflows.watch));
+        assert.equal(snapshot.runs.length, 500);
+        assert.isFalse(snapshot.runs.some((run) => run.runId === target.runId));
+        const about = yield* workflows.about({ subject: url });
+        assert.deepStrictEqual(
+          about.runs.map((run) => run.runId),
+          [target.runId],
+        );
+        assert.deepStrictEqual(about.questions, []);
+
+        // Named without its address, the pull request is found by what it is, as its own view knows it.
+        const { url: _url, ...unaddressed } = { ...pullRequest, number: 413 };
+        const quiet = yield* workflows.start(
+          "about",
+          { subjects: [unaddressed] },
+          { idempotencyKey: "unaddressed" },
+        );
+        yield* workflows.waitFor(quiet.runId, status("waiting"));
+        const byItem = yield* workflows.about({
+          subject: "https://github.com/acme/app/pull/413/",
+          pullRequest: {
+            projectId: ProjectId.make("p1"),
+            host: "github.com",
+            repository: "acme/app",
+            number: 413,
+          },
+        });
+        assert.deepStrictEqual(
+          byItem.runs.map((run) => run.runId),
+          [quiet.runId],
+        );
+      }),
+    );
+  }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
 );
 
 it.effect("a workflow can take an agent's failure as an answer and go on", () =>

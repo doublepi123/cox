@@ -1,4 +1,5 @@
-import { EnvironmentId, type WorkflowRunReference } from "@t3tools/contracts";
+import { workflowReferenceThreadId } from "@t3tools/client-runtime/workflows";
+import { EnvironmentId, type WorkflowRunSubject } from "@t3tools/contracts";
 import { Link, useNavigate, useSearch } from "@tanstack/react-router";
 import { useTranslation } from "../../i18n";
 import { FileCode2Icon } from "lucide-react";
@@ -128,8 +129,13 @@ export function WorkflowsPage() {
   const paneOpen = pane.pane !== undefined;
   const shownTab = activeWorkflowPaneTab(pane);
   // Opening something pins the run it is from, so the address keeps naming the run it belongs to.
+  // A tab of another run's starts a pane of that run's own.
   const togglePane = (runId: string, tab: Parameters<typeof toggleWorkflowPaneTab>[1]) =>
-    select({ ...env, run: runId, ...toggleWorkflowPaneTab(pane, tab) });
+    select({
+      ...env,
+      run: runId,
+      ...toggleWorkflowPaneTab(runId === search.run ? pane : {}, tab),
+    });
 
   return (
     <SidebarInset>
@@ -287,9 +293,16 @@ export function WorkflowsPage() {
                   ...(thread.environmentId === null ? {} : { env: thread.environmentId }),
                 })
               }
-              onOpenReference={(runId, reference: WorkflowRunReference) =>
-                togglePane(runId, { kind: reference.kind, key: reference.key })
-              }
+              onOpenReference={(runId, reference: WorkflowRunSubject) => {
+                // A thread opens as an agent's does, as its transcript.
+                const threadId = workflowReferenceThreadId(reference);
+                togglePane(
+                  runId,
+                  threadId === null
+                    ? { kind: reference.kind, key: reference.key }
+                    : { thread: threadId },
+                );
+              }}
             />
           )}
         </div>

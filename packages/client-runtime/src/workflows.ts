@@ -6,6 +6,7 @@ import {
   type WorkflowRun,
   type WorkflowRunReference,
   type WorkflowRunsSnapshot,
+  type WorkflowRunSubject,
   type WorkflowStep,
   type WorkflowSummary,
 } from "@t3tools/contracts";
@@ -900,22 +901,27 @@ export function workflowSaidStart(said: string, limit: number): string | null {
 const decodePullRequestAddress = Schema.decodeUnknownOption(WorkflowPullRequestAddress);
 
 /** A reference's pull request, when it is one and its address reads as one. */
-export function workflowReferencePullRequest(
-  reference: WorkflowRunReference,
-): PullRequestRef | null {
+export function workflowReferencePullRequest(reference: WorkflowRunSubject): PullRequestRef | null {
   return reference.kind === WorkflowReferenceKind.pullRequest
     ? Option.getOrNull(decodePullRequestAddress(reference.address))
     : null;
 }
 
-/**
- * What a reference is called in a chip: `#412` for an issue or pull request on a git host, a
- * tracker's own key such as `ENG-12`, and the title for a kind this client does not know.
- */
-export function workflowReferenceLabel(reference: WorkflowRunReference): string {
+/** A reference's thread when it names one in the run's environment. */
+export function workflowReferenceThreadId(reference: WorkflowRunSubject): string | null {
+  const threadId = field(reference.address, "threadId");
+  return reference.kind === WorkflowReferenceKind.thread && typeof threadId === "string"
+    ? threadId
+    : null;
+}
+
+/** The label on the reference chip. */
+export function workflowReferenceLabel(reference: WorkflowRunSubject): string {
   const pullRequest = workflowReferencePullRequest(reference);
   if (pullRequest !== null) return `#${pullRequest.number}`;
-  return reference.title === "" ? reference.kind : reference.title;
+  if (reference.title !== "") return reference.title;
+  if (reference.url !== null && URL.canParse(reference.url)) return new URL(reference.url).host;
+  return reference.kind;
 }
 
 /** The references a step touched, in the order the run first touched them. */

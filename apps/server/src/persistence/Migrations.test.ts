@@ -99,6 +99,7 @@ describe("runMigrations", () => {
         [93, "WorkflowRunTags"],
         [94, "WorkflowMailSender"],
         [95, "WorkflowPools"],
+        [96, "WorkflowRunSubject"],
       ]);
 
       const tables = yield* sql<{ readonly name: string }>`

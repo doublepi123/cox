@@ -30,6 +30,7 @@ import {
   workflowRunRefreshKey,
   workflowReferenceLabel,
   workflowReferencePullRequest,
+  workflowReferenceThreadId,
   workflowRunState,
   workflowSaidStart,
   workflowStepReferences,
@@ -675,6 +676,20 @@ describe("workflow references", () => {
       workflowReferencePullRequest(reference({ kind: "pullRequest", address: { number: "418" } })),
     ).toBeNull();
     expect(workflowReferencePullRequest(machine)).toBeNull();
+  });
+
+  it("opens a thread subject as its thread, and names a web address by its host", () => {
+    expect(
+      workflowReferenceThreadId(
+        reference({ kind: "thread", key: "t1", address: { threadId: "t1" } }),
+      ),
+    ).toBe("t1");
+    expect(workflowReferenceThreadId(pullRequest)).toBeNull();
+    expect(
+      workflowReferenceLabel(
+        reference({ kind: "url", key: "u", url: "https://status.example.com/incidents/9" }),
+      ),
+    ).toBe("status.example.com");
   });
 
   it("gives a step the things it touched", () => {

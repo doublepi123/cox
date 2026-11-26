@@ -6,7 +6,10 @@ import {
   type PullRequestListState,
   type PullRequestMergeMethod,
   type PullRequestRef,
+  PositiveInt,
   ProjectId,
+  TrimmedNonEmptyString,
+  WorkflowReferenceKind,
 } from "@t3tools/contracts";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
@@ -23,6 +26,7 @@ import {
 } from "../sourceControl/threadPullRequests.ts";
 import { noteReference, pullRequestReference } from "./runReferences.ts";
 import { isProjectPath } from "./WorkflowAgents.ts";
+import type { ReferenceInput } from "./WorkflowStore.ts";
 
 export class WorkflowForgeError extends Schema.TaggedError<WorkflowForgeError>()(
   "WorkflowForgeError",
@@ -157,6 +161,78 @@ export const linkedPullRequestReferences = (
           : { url: link.url, title: link.snapshot.title, state: link.snapshot.state },
       ),
     );
+
+/**
+ * What `subject` and `runs({ subject })` take: a pull request as a trigger or a
+ * listing gave it, `{ threadId }`, or a web address.
+ */
+export type SubjectInput =
+  | string
+  | (Pick<PullRequest, "projectId" | "host" | "repository" | "number"> & {
+      readonly title?: string;
+      readonly url?: string;
+    })
+  | { readonly threadId: string };
+
+const SUBJECT_EXAMPLE = "a pull request a trigger or listing gave, { threadId }, or a web address";
+
+const decodeSubjectPullRequest = Schema.decodeUnknownOption(
+  Schema.Struct({
+    projectId: ProjectId,
+    host: TrimmedNonEmptyString,
+    repository: TrimmedNonEmptyString,
+    number: PositiveInt,
+  }),
+);
+
+const nonEmpty = (value: unknown): value is string =>
+  typeof value === "string" && value.trim() !== "";
+
+/**
+ * A subject as the reference it is kept and found by. Throws for anything else: a workflow file
+ * is not type-checked, and a subject that names nothing would be a run no one can find.
+ */
+export const subjectReference = (what: string, subject: SubjectInput) => {
+  if (typeof subject === "string") {
+    if (!URL.canParse(subject) || !/^https?:$/.test(new URL(subject).protocol)) {
+      throw new Error(`${what} takes ${SUBJECT_EXAMPLE}; "${subject}" is not a web address.`);
+    }
+    return {
+      kind: WorkflowReferenceKind.url,
+      key: subject,
+      address: { url: subject },
+      title: "",
+      url: subject,
+    } satisfies ReferenceInput;
+  }
+  if (typeof subject !== "object" || subject === null || Array.isArray(subject)) {
+    throw new Error(`${what} takes ${SUBJECT_EXAMPLE}.`);
+  }
+  const seen = {
+    ...("title" in subject && nonEmpty(subject.title) ? { title: subject.title } : {}),
+    ...("url" in subject && nonEmpty(subject.url) ? { url: subject.url } : {}),
+  };
+  // Decoded, not trusted: an item's own view finds its runs by project and host, so a subject
+  // kept without either would be a run that view never lists.
+  if ("repository" in subject && "number" in subject) {
+    const pullRequest = Option.getOrUndefined(decodeSubjectPullRequest(subject));
+    if (pullRequest === undefined) {
+      throw new Error(
+        `${what} takes ${SUBJECT_EXAMPLE}; a pull request needs its projectId, host, repository and number.`,
+      );
+    }
+    return pullRequestReferenceOf(pullRequest, seen);
+  }
+  if ("threadId" in subject && nonEmpty(subject.threadId)) {
+    return {
+      kind: WorkflowReferenceKind.thread,
+      key: subject.threadId,
+      address: { threadId: subject.threadId },
+      title: "",
+    } satisfies ReferenceInput;
+  }
+  throw new Error(`${what} takes ${SUBJECT_EXAMPLE}.`);
+};
 
 export class WorkflowForge extends Context.Service<
   WorkflowForge,
