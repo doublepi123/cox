@@ -278,6 +278,7 @@ export const TerminalWriteInput = Schema.Struct({
   data: Schema.String.check(Schema.isNonEmpty()).check(
     Schema.isMaxLength(TERMINAL_WRITE_MAX_LENGTH),
   ),
+  expectedPid: Schema.optionalKey(Schema.Int.check(Schema.isGreaterThan(0))),
 });
 export type TerminalWriteInput = Schema.Codec.Encoded<typeof TerminalWriteInput>;
 
@@ -324,6 +325,7 @@ export const TerminalSessionSnapshot = Schema.Struct({
   worktreePath: Schema.NullOr(TrimmedNonEmptyStringSchema),
   status: TerminalSessionStatus,
   pid: Schema.NullOr(Schema.Int.check(Schema.isGreaterThan(0))),
+  supportsConditionalWrites: Schema.optional(Schema.Boolean),
   history: Schema.String,
   // Parser state of an unfinished prefix omitted after the replayable history.
   historySequenceState: Schema.optional(
@@ -598,6 +600,11 @@ export class TerminalResizeError extends Schema.TaggedError<TerminalResizeError>
   }
 }
 
+export class TerminalProcessChangedError extends Schema.TaggedError<TerminalProcessChangedError>()(
+  "TerminalProcessChangedError",
+  {},
+) {}
+
 export const TerminalError = Schema.Union([
   TerminalCwdError,
   TerminalHistoryError,
@@ -605,6 +612,7 @@ export const TerminalError = Schema.Union([
   TerminalProviderInstanceNotFoundError,
   TerminalProviderEnvironmentError,
   TerminalNotRunningError,
+  TerminalProcessChangedError,
   TerminalWriteError,
   TerminalResizeError,
 ]);

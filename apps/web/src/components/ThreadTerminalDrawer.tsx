@@ -27,6 +27,7 @@ import {
   AuthPreviewOperateScope,
   AuthOrchestrationOperateScope,
   AuthTerminalOperateScope,
+  TerminalProcessChangedError,
   type ContextMenuItem,
   type ProviderInstanceId,
   type ResolvedKeybindingsConfig,
@@ -466,6 +467,8 @@ export function shouldClearTerminalSelectionAction(options: {
  * A writable session's output generation. A new one is a fresh PTY (or a
  * reconnect) that has not seen the surface's grid yet.
  */
+const isTerminalProcessChanged = Schema.is(TerminalProcessChangedError);
+
 function writableSessionGeneration(
   session: TerminalSessionState,
   canOperate: boolean,
@@ -1030,14 +1033,19 @@ function TerminalSessionViewport({
         }
       };
 
-      const readInputSession = () => appAtomRegistry.get(terminalSessionAtom);
       const canWriteInput = () => readEnvironmentScope(environmentId, AuthTerminalOperateScope);
-      const writeInputChunk = (data: string) =>
+      const writeInputChunk = (data: string, expectedPid?: number) =>
         retainedTerminalWrite.current({
           environmentId,
-          input: { threadId, terminalId, data },
+          input: {
+            threadId,
+            terminalId,
+            data,
+            ...(expectedPid === undefined ? {} : { expectedPid }),
+          },
         });
       const sendTerminalInput = (data: string, fallbackError: string) => {
+        // The server rejects input until the shell runs, and each rejection would print an error.
         // Input belongs to the shell and surface it was typed into; a restart the client has seen drops what is left.
         const session = readTerminalSession();
         const generation = writableSessionGeneration(session, hasTerminalWriteAccess());
@@ -1045,7 +1053,6 @@ function TerminalSessionViewport({
         if (generation === null) return;
         const writeInput = terminalInputWriter(
           JSON.stringify([environmentId, threadId, terminalId]),
-          () => appAtomRegistry.mount(terminalSessionAtom),
         );
         let reported = false;
         const report = (message: string) => {
@@ -1055,35 +1062,62 @@ function TerminalSessionViewport({
         };
         return writeInput(
           data,
-          async (chunk) => {
-            const currentSession = readInputSession();
+          async (chunk, split) => {
+            if (terminalRef.current !== terminal) return "not-dispatched";
+            const currentSession = appAtomRegistry.get(terminalSessionAtom);
             if (
-              terminalRef.current !== terminal ||
               currentSession.lifecycleVersion !== lifecycleVersion ||
               writableSessionGeneration(currentSession, canWriteInput()) !== generation
             ) {
               return "not-dispatched";
             }
-            const result = await writeInputChunk(chunk);
+            const expectedPid =
+              split && session.supportsConditionalWrites ? session.pid : undefined;
+            if (expectedPid === null) return "not-dispatched";
+            const result = await writeInputChunk(chunk, expectedPid);
             if (result._tag === "Success") return true;
+            const error = squashAtomCommandFailure(result);
+            if (isTerminalProcessChanged(error)) return "not-dispatched";
             if (terminalRef.current === terminal && !isAtomCommandInterrupted(result)) {
-              const error = squashAtomCommandFailure(result);
               report(error instanceof Error ? error.message : fallbackError);
             }
             return false;
           },
-          // Close the bracket only for the process that saw it open; wait while its pid is unknown.
+          // The attachment's PID stays with the paste even after the viewport detaches.
           async () => {
-            const pid = session.summary?.pid ?? null;
-            const current = readInputSession();
-            const currentPid = current.summary?.pid ?? null;
-            if (currentPid === null) return false;
-            if (pid !== null && currentPid !== pid) return true;
-            if (writableSessionGeneration(current, canWriteInput()) === null) return false;
-            const result = await writeInputChunk("\x1b[201~");
+            if (session.pid === null) return true;
+            if (!canWriteInput()) return false;
+            if (!session.supportsConditionalWrites) {
+              const attached =
+                terminalRef.current === terminal ? appAtomRegistry.get(terminalSessionAtom) : null;
+              if (attached && attached.version > 0) {
+                if (attached.status === "closed" || attached.status === "exited") return true;
+                if (attached.pid !== null && attached.pid !== session.pid) return true;
+              }
+              const metadata = appAtomRegistry.get(
+                terminalEnvironment.metadata({ environmentId, input: null }),
+              );
+              if (!AsyncResult.isSuccess(metadata)) return false;
+              const current = metadata.value.find(
+                (item) => item.threadId === threadId && item.terminalId === terminalId,
+              );
+              if (current?.pid == null) return false;
+              if (attached) {
+                // An unguarded write needs both streams to agree the original PTY is running.
+                if (attached.status !== "running" || attached.pid !== current.pid) return false;
+              } else if (current.pid !== session.pid || current.status === "exited") {
+                return true;
+              }
+              if (current.status !== "running" || current.pid !== session.pid) return false;
+            }
+            const result = await writeInputChunk(
+              "\x1b[201~",
+              session.supportsConditionalWrites ? session.pid : undefined,
+            );
             if (result._tag === "Success") return true;
+            const error = squashAtomCommandFailure(result);
+            if (isTerminalProcessChanged(error)) return true;
             if (!isAtomCommandInterrupted(result)) {
-              const error = squashAtomCommandFailure(result);
               report(error instanceof Error ? error.message : "Failed to close interrupted paste");
             }
             return false;

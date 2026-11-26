@@ -3,6 +3,7 @@ import {
   AuthFilesystemReadScope,
   AuthOrchestrationOperateScope,
   EnvironmentId,
+  TerminalProcessChangedError,
   type ResolvedKeybindingsConfig,
   ThreadId,
   type ScopedThreadRef,
@@ -27,6 +28,10 @@ const fixture = vi.hoisted(() => ({
   reportedSize: null as { cols: number; rows: number } | null,
   resizeCommand: {},
   writes: [] as string[],
+  runWrite: (_input: { readonly data?: string; readonly expectedPid?: number }) =>
+    Promise.resolve<{ readonly _tag: "Success" } | AsyncResult.Failure<unknown, unknown>>({
+      _tag: "Success",
+    }),
   runResize: (_input: unknown): Promise<AsyncResult.AsyncResult<unknown, unknown>> =>
     Promise.resolve(AsyncResult.success(undefined)),
   setSession: (
@@ -91,6 +96,8 @@ vi.mock("../state/terminalSessions", async () => {
     appAtomRegistry.set(sessions(thread.environmentId)(thread.threadId), {
       ...EMPTY_TERMINAL_SESSION_STATE,
       status,
+      pid: status === "running" ? 123 : null,
+      supportsConditionalWrites: true,
       version,
       ...(generation === undefined
         ? {}
@@ -115,9 +122,13 @@ vi.mock("../state/session", () => ({
 }));
 vi.mock("../state/use-atom-command", () => ({
   useAtomCommand:
-    (command: object) => async (args: { input: { threadId: string; data?: string } }) => {
+    (command: object) =>
+    async (args: { input: { threadId: string; data?: string; expectedPid?: number } }) => {
       if (command === fixture.resizeCommand) return fixture.runResize(args);
-      if (args.input.data !== undefined) fixture.writes.push(args.input.data);
+      if (args.input.data !== undefined) {
+        fixture.writes.push(args.input.data);
+        return fixture.runWrite(args.input);
+      }
       return { _tag: "Success" };
     },
 }));
@@ -214,6 +225,7 @@ function setup() {
   fixture.surfaceOptions = [];
   fixture.reportedSize = null;
   fixture.writes = [];
+  fixture.runWrite = async () => ({ _tag: "Success" });
   fixture.runResize = () => Promise.resolve(AsyncResult.success(undefined));
   fixture.deniedScopes.clear();
   fixture.metadataRequests = [];
@@ -536,4 +548,31 @@ it("sends a large paste to the attached shell in order", async () => {
   await vi.waitFor(() => expect(fixture.writes.join("")).toBe(data));
   expect(fixture.writes.length).toBeGreaterThan(1);
   expect(fixture.writes.every((chunk) => chunk.length <= 65_536)).toBe(true);
+});
+
+it("stops a split paste on its original process once that process is replaced", async () => {
+  const { other: threadRef } = setup();
+  const runWrite = vi.fn(async (input: { data?: string; expectedPid?: number }) =>
+    runWrite.mock.calls.length >= 2 && input.expectedPid !== undefined
+      ? AsyncResult.failure(Cause.fail(new TerminalProcessChangedError()))
+      : { _tag: "Success" as const },
+  );
+  fixture.runWrite = runWrite;
+  await using _screen = await render(<Drawer threadRef={threadRef} onCloseTerminal={() => {}} />);
+  await act(async () => {
+    fixture.pendingSurfaces.shift()?.();
+    fixture.setSession(threadRef, "running", 1, 2);
+  });
+  const paste = "\x1b[200~" + "p".repeat(140_000) + "\x1b[201~";
+  await act(() => {
+    fixture.surfaceOptions.at(-1)!.onData(paste);
+    fixture.surfaceOptions.at(-1)!.onData("after");
+  });
+  await vi.waitFor(() => expect(fixture.writes.at(-1)).toBe("after"));
+  expect(runWrite.mock.calls.map(([input]) => [input.data, input.expectedPid])).toEqual([
+    [paste.slice(0, 65_536), 123],
+    [paste.slice(65_536, 131_072), 123],
+    ["\x1b[201~", 123],
+    ["after", undefined],
+  ]);
 });
