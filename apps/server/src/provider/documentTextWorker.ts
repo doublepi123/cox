@@ -47,7 +47,10 @@ interface XmlNode {
   hasTextChoice?: boolean;
 }
 
-function xml(source: string, odfSpaces = false, htmlEntities = false, word = false): XmlNode {
+function xml(source: string, extension: string): XmlNode {
+  const odfSpaces = [".odt", ".ods", ".odp"].includes(extension);
+  const htmlEntities = extension === ".epub";
+  const word = extension === ".docx";
   const root: XmlNode = { name: "root", attrs: {}, children: [] };
   const stack = [root];
   let nodes = 0;
@@ -83,6 +86,11 @@ function xml(source: string, odfSpaces = false, htmlEntities = false, word = fal
           .some(
             (prop) => prop.name === "vanish" && ["true", "1", "on"].includes(prop.attrs.val ?? "1"),
           )) ||
+      (extension === ".pptx" &&
+        node.name === "timing" &&
+        stack.every((ancestor) =>
+          ["root", "sld", "AlternateContent", "Choice", "Fallback"].includes(ancestor.name),
+        )) ||
       (odfSpaces &&
         node.name === "page-thumbnail" &&
         stack.some((ancestor) => ancestor.name === "notes"))
@@ -609,12 +617,7 @@ async function* document(path: string, extension: string): AsyncGenerator<TextPa
       try {
         const data = files.get(part(name));
         if (!data) throw new Error("Missing document part");
-        return xml(
-          data,
-          [".odt", ".ods", ".odp"].includes(extension),
-          extension === ".epub",
-          extension === ".docx",
-        );
+        return xml(data, extension);
       } catch (error) {
         if (error instanceof Truncation) throw error;
         skip(name);
