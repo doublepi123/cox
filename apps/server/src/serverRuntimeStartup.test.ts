@@ -1,3 +1,4 @@
+import * as BackgroundPolicy from "./background/BackgroundPolicy.ts";
 import { assert, it } from "@effect/vitest";
 import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import {
@@ -123,6 +124,7 @@ it.effect.each([
               return published;
             }),
         }),
+        Layer.mock(BackgroundPolicy.BackgroundPolicy)({ shouldRunHostWork: Effect.succeed(false) }),
         Layer.mock(ServerSettings.ServerSettingsService)({
           start: Effect.void,
           getSettings: Effect.succeed({
