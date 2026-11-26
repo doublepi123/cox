@@ -91,7 +91,13 @@ export function resolveAutoFeatureBranchName(
   return resolved;
 }
 
-export function deriveLocalBranchNameFromRemoteRef(branchName: string): string {
+export function deriveLocalBranchNameFromRemoteRef(
+  branchName: string,
+  remoteName?: string,
+): string {
+  if (remoteName && branchName.startsWith(`${remoteName}/`)) {
+    return branchName.slice(remoteName.length + 1);
+  }
   const firstSeparatorIndex = branchName.indexOf("/");
   if (firstSeparatorIndex <= 0 || firstSeparatorIndex === branchName.length - 1) {
     return branchName;

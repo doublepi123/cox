@@ -123,6 +123,12 @@ describe("resolveLockedWorkspaceLabel", () => {
 });
 
 describe("deriveLocalBranchNameFromRemoteRef", () => {
+  it("strips the whole remote name when it is known", () => {
+    expect(deriveLocalBranchNameFromRemoteRef("team/origin/feature", "team/origin")).toBe(
+      "feature",
+    );
+  });
+
   it("supports remote names that contain slashes", () => {
     expect(deriveLocalBranchNameFromRemoteRef("my-org/upstream/feature/demo")).toBe(
       "upstream/feature/demo",
