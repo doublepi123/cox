@@ -187,18 +187,14 @@ export function WorkflowStateWord({ node }: { readonly node: WorkflowRunNode }) 
   );
 }
 
-const nthTry = (count: number, resolve: WorkflowMessageResolver) => {
-  switch (count) {
-    case 1:
-      return resolve("1st try");
-    case 2:
-      return resolve("2nd try");
-    case 3:
-      return resolve("3rd try");
-    default:
-      return resolve("Try {count}", { count });
-  }
+const englishOrdinal = new Intl.PluralRules("en", { type: "ordinal" });
+const retryLabels: Partial<Record<Intl.LDMLPluralRule, string>> = {
+  one: "{count}st try",
+  two: "{count}nd try",
+  few: "{count}rd try",
 };
+const nthTry = (count: number, resolve: WorkflowMessageResolver) =>
+  resolve(retryLabels[englishOrdinal.select(count)] ?? "{count}th try", { count });
 
 const queuedText = (beat: WorkflowBeat, resolve: WorkflowMessageResolver) =>
   beat.ahead === undefined || beat.ahead === 0

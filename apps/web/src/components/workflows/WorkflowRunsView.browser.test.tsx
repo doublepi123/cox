@@ -601,6 +601,19 @@ describe("WorkflowRunsView", () => {
       .toMatchTextContent(/withdrawn · 1m.*Withdrawn by cox CLI: settled elsewhere/);
   });
 
+  it("uses ordinals for retry counts beyond the third try", async () => {
+    setup(
+      { runs: [run({ runId: "retry", title: "Retry", status: "running" })], questions: [] },
+      { retry: [step({ name: "upload", kind: "step", status: "running", attempts: 21 })] },
+    );
+    await using screen = await render(page("retry"));
+    const flow = screen.getByRole("navigation", { name: "Steps so far" });
+    await flow.getByRole("button", { name: /upload/ }).click();
+    await expect
+      .element(screen.getByRole("region", { name: "upload" }))
+      .toMatchTextContent("21st try");
+  });
+
   it("opens an invoked run from its parent's story", async () => {
     setup(
       {

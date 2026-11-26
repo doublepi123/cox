@@ -17,6 +17,10 @@ export const en = {
   "Queued for {pool}": "Queued for {pool}",
   "queued, next in line": "queued, next in line",
   "queued, {count} ahead": "queued, {count} ahead",
+  "{count}st try": "{count}st try",
+  "{count}nd try": "{count}nd try",
+  "{count}rd try": "{count}rd try",
+  "{count}th try": "{count}th try",
   ", or ask an agent to.": ", or ask an agent to.",
   "Line {line}:": "Line {line}:",
   "Leave without saving? Your changes to this file are lost.":
@@ -61,7 +65,6 @@ export const en = {
   "1st try": "1st try",
   "2nd try": "2nd try",
   "3rd try": "3rd try",
-  "Try {count}": "Try {count}",
   "Could not resume the run": "Could not resume the run",
   "Cancel {title}? Its agents stop and the run cannot be resumed.":
     "Cancel {title}? Its agents stop and the run cannot be resumed.",

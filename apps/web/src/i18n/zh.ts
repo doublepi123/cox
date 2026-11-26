@@ -43,7 +43,10 @@ export const zh = {
   "1st try": "第 1 次尝试",
   "2nd try": "第 2 次尝试",
   "3rd try": "第 3 次尝试",
-  "Try {count}": "第 {count} 次尝试",
+  "{count}st try": "第 {count} 次尝试",
+  "{count}nd try": "第 {count} 次尝试",
+  "{count}rd try": "第 {count} 次尝试",
+  "{count}th try": "第 {count} 次尝试",
   "Could not resume the run": "无法恢复运行",
   "Cancel {title}? Its agents stop and the run cannot be resumed.":
     "取消 {title}？相关智能体将停止，此运行将无法恢复。",
