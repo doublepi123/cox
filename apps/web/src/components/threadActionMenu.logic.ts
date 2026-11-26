@@ -96,6 +96,7 @@ export function buildDraftActionMenuItems(
 
 export interface ThreadActionMenuState {
   readonly canOperate: boolean;
+  readonly canTriage?: boolean;
   readonly canFind?: boolean;
   readonly branch: string | null;
   readonly projectFilter: {
@@ -139,6 +140,12 @@ export function threadActionRequiresOperate(action: ThreadActionMenuId): boolean
     "copy-thread",
     "copy-thread-id",
   ].includes(action);
+}
+
+export function isThreadTriageAction(action: string): boolean {
+  return (
+    ["settle", "unsettle", "snooze", "unsnooze"].includes(action) || action.startsWith("snooze:")
+  );
 }
 
 export function buildThreadActionMenuItems(
@@ -294,7 +301,8 @@ export function buildThreadActionMenuItems(
     state.canOperate
       ? items
       : items.map((item) =>
-          threadActionRequiresOperate(item.id)
+          threadActionRequiresOperate(item.id) &&
+          !(state.canTriage && isThreadTriageAction(item.id))
             ? {
                 ...item,
                 disabled: true,

@@ -1,3 +1,6 @@
+export function cancelledOnDevice(value: unknown): boolean {
+  return typeof value === "object" && value !== null && "cancelledOnDevice" in value;
+}
 // Shared across hook instances so sidebar, header and menu actions invalidate each other.
 const currentActions = new Map<string, symbol>();
 const listeners = new Set<() => void>();

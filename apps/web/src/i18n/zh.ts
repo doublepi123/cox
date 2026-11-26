@@ -2676,6 +2676,7 @@ export const zh = {
   "Could not load saved model preferences. Try again.": "无法加载已保存的模型偏好，请重试。",
   "Favorites not saved": "收藏未保存",
   "Setting not saved": "设置未保存",
+  "Waiting to sync with its environment": "正在等待与环境同步",
   "Add hub": "添加中心",
   "Add an HTTP quota source": "添加 HTTP 配额来源",
   "Read quotas from an endpoint on {environmentLabel}.": "从 {environmentLabel} 上的端点读取配额。",

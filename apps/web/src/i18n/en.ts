@@ -4561,6 +4561,7 @@ export const en = {
   "No graph nodes": "No graph nodes",
   "Depends on {dependencies}": "Depends on {dependencies}",
   Pending: "Pending",
+  "Waiting to sync with its environment": "Waiting to sync with its environment",
   Blocked: "Blocked",
   Scheduled: "Scheduled",
   Skipped: "Skipped",

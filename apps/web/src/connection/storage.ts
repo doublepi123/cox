@@ -1,3 +1,5 @@
+import { ThreadTriageOutboxStore } from "@t3tools/client-runtime/platform";
+import { browserThreadTriageOutboxStore } from "./threadTriageOutboxStore";
 import {
   ORCHESTRATION_CACHE_SCHEMA_VERSION,
   StoredOrchestrationShellSnapshot,
@@ -718,6 +720,7 @@ export const layer = Layer.effectContext(
         ),
     };
     return Context.make(Persistence.EnvironmentCacheStore, cacheStore).pipe(
+      Context.add(ThreadTriageOutboxStore, browserThreadTriageOutboxStore),
       Context.add(EnvironmentQueryStore, queryStore),
     );
   }),
