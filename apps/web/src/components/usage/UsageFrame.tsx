@@ -1,10 +1,17 @@
-import { useEffect, type ReactNode } from "react";
+import type { Dialog as DialogPrimitive } from "@base-ui/react/dialog";
+import { useEffect, type ReactNode, type RefObject } from "react";
 import { useTranslation } from "../../i18n";
 import { AppRouteModal, AppRouteModalClose } from "../AppRouteModal";
 import { Button } from "../ui/button";
 import { XIcon } from "lucide-react";
 
-export function UsageFrame({ children }: { children: ReactNode }) {
+export function UsageFrame({
+  children,
+  actionsRef,
+}: {
+  children: ReactNode;
+  actionsRef?: RefObject<DialogPrimitive.Root.Actions | null> | undefined;
+}) {
   const standalone = window.coxDesktop?.windowKind === "usage";
   useEffect(() => {
     if (!standalone) return;
@@ -28,7 +35,9 @@ export function UsageFrame({ children }: { children: ReactNode }) {
       {children}
     </main>
   ) : (
-    <AppRouteModal label={t("Usage")}>{children}</AppRouteModal>
+    <AppRouteModal label={t("Usage")} actionsRef={actionsRef}>
+      {children}
+    </AppRouteModal>
   );
 }
 

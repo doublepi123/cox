@@ -1196,6 +1196,7 @@ export const zh = {
   "File Picker: Toggle": "文件选择器：切换",
   "Project Search: Toggle": "项目搜索：切换",
   "Usage: Open": "用量：打开",
+  "Usage: Toggle": "用量：切换",
   "Theme: Select": "主题：选择",
   "Appearance: Cycle": "外观：循环切换",
   "Theme Editor: Toggle": "主题编辑器：切换",

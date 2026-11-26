@@ -1341,6 +1341,7 @@ export const en = {
   "File Picker: Toggle": "File Picker: Toggle",
   "Project Search: Toggle": "Project Search: Toggle",
   "Usage: Open": "Usage: Open",
+  "Usage: Toggle": "Usage: Toggle",
   "Theme: Select": "Theme: Select",
   "Appearance: Cycle": "Appearance: Cycle",
   "Theme Editor: Toggle": "Theme Editor: Toggle",

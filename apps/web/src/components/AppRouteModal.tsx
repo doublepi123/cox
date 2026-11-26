@@ -9,6 +9,7 @@ import {
   type ComponentProps,
   type CSSProperties,
   type ReactNode,
+  type RefObject,
 } from "react";
 import { useNativeTitlebarHeight } from "../lib/windowControlsOverlay";
 
@@ -22,7 +23,15 @@ import { Tooltip, TooltipPopup, TooltipTrigger } from "./ui/tooltip";
  * backdrop returns to the page that opened it. Keyboard guards that skip dialogs exempt
  * `[data-app-modal]`, because these pages own their shortcuts.
  */
-export function AppRouteModal({ label, children }: { label: string; children: ReactNode }) {
+export function AppRouteModal({
+  label,
+  children,
+  actionsRef,
+}: {
+  label: string;
+  children: ReactNode;
+  actionsRef?: RefObject<DialogPrimitive.Root.Actions | null> | undefined;
+}) {
   const closeAppModal = useCloseAppModal();
   const [open, setOpen] = useState(true);
   // Text selection that ends on the backdrop is not a dismissal.
@@ -51,6 +60,7 @@ export function AppRouteModal({ label, children }: { label: string; children: Re
   return (
     <DialogPrimitive.Root
       open={open}
+      actionsRef={actionsRef}
       // Portaled layers outside this tree (toasts and confirm dialogs) are not backdrop presses.
       disablePointerDismissal
       onOpenChange={(nextOpen, eventDetails) => {

@@ -1,3 +1,4 @@
+import type { Dialog as DialogPrimitive } from "@base-ui/react/dialog";
 import { useFormattingLocale, useTranslation } from "../../i18n";
 import { ChatGptUsageButton } from "../settings/ChatGptUsageButton";
 import { usesChatGptSharing } from "@t3tools/shared/usageLimits";
@@ -202,6 +203,7 @@ export function UsagePage() {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [limitsNow, setLimitsNow] = useState(() => Date.now());
   const refreshingRef = useRef(false);
+  const modalActionsRef = useRef<DialogPrimitive.Root.Actions | null>(null);
   const [priceDialog, setPriceDialog] = useState<{ readonly model?: string } | null>(null);
   const [selectedEnvironmentIds, setSelectedEnvironmentIds] =
     useState<ReadonlySet<EnvironmentId> | null>(null);
@@ -280,6 +282,14 @@ export function UsagePage() {
       return;
 
     const command = resolveUsageShortcut(event, keybindings);
+    if (command === "usage.open") {
+      event.preventDefault();
+      event.stopPropagation();
+      if (globalThis.window.coxDesktop?.windowKind === "usage")
+        globalThis.window.coxDesktop.closeUsage?.();
+      else modalActionsRef.current?.close();
+      return;
+    }
     const metricOption = METRIC_OPTIONS.find((option) => option.command === command);
     const periodOption = WINDOW_OPTIONS.find((option) => option.command === command);
     if (!metricOption && !periodOption) return;
@@ -494,7 +504,7 @@ export function UsagePage() {
   );
 
   return (
-    <UsageFrame>
+    <UsageFrame actionsRef={modalActionsRef}>
       <div className="flex min-h-0 min-w-0 flex-1 flex-col">
         <header
           data-workspace-titlebar={
