@@ -303,11 +303,18 @@ function* table(node: XmlNode): Generator<TextPart, void> {
     for (let index = 0; index < repeat; index++) {
       if (++rowCount > 10_000) throw new Truncation("Row limit");
       let column = 0;
+      let gap = 0;
       for (const cell of cells) {
         const count = repeatCount(cell.attrs["number-columns-repeated"]);
+        const tcPr =
+          cell.name === "tc" ? children(cell).find((child) => child.name === "tcPr") : undefined;
+        const val = tcPr && children(tcPr).find((child) => child.name === "gridSpan")?.attrs.val;
+        const span = val ? Math.max(1, Number.parseInt(val, 10) || 1) : 1;
         for (let i = 0; i < count; i++) {
-          if (column >= 512) throw new Truncation("Column limit");
-          if (column++) yield "\t";
+          column += span;
+          if (column > 512) throw new Truncation("Column limit");
+          if (gap) yield "\t".repeat(gap);
+          gap = span;
           if (cell.name === "covered-table-cell") continue;
           yield CELL_START;
           yield* paragraphs(cell);
