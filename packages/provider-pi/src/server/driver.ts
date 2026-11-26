@@ -135,6 +135,7 @@ export const PiDriver: ProviderDriver<PiSettings, PiDriverEnv, Path.Path> = {
       resolveProviderMaintenanceCapabilitiesEffect(UPDATE, {
         binaryPath: effectiveConfig.binaryPath,
         env: processEnv,
+        npmCacheDir: pathService.join(host.paths.providerStatusCacheDir, "npm"),
       }).pipe(
         Effect.map((capabilities) =>
           capabilities.update?.executable === installation.executablePath

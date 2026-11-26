@@ -282,6 +282,7 @@ export const OpenCodeDriver: ProviderDriver<
             : resolveProviderMaintenanceCapabilitiesEffect(openCodeUpdateFor(generation.value), {
                 binaryPath: effectiveConfig.binaryPath,
                 env: processEnv,
+                npmCacheDir: pathService.join(host.paths.providerStatusCacheDir, "npm"),
               }).pipe(
                 Effect.map((capabilities) =>
                   capabilities.update?.executable === installation.executablePath

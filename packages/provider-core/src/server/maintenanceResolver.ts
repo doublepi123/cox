@@ -1080,6 +1080,7 @@ const decodeNpmGlobalList = Schema.decodeUnknownOption(
 
 const withConfiguredNpmVersionLookup = Effect.fn("withConfiguredNpmVersionLookup")(function* (
   capabilities: ProviderMaintenanceCapabilities,
+  npmCacheDir: string | undefined,
 ) {
   const packageName = capabilities.packageName;
   if (!packageName || capabilities.latestVersion !== undefined) {
@@ -1094,13 +1095,17 @@ const withConfiguredNpmVersionLookup = Effect.fn("withConfiguredNpmVersionLookup
     ? update.args.indexOf("--prefix")
     : -1;
   const prefix = prefixIndex >= 0 ? update?.args[prefixIndex + 1] : undefined;
+  const path = yield* Path.Path;
+  const fileSystem = yield* FileSystem.FileSystem;
+  const cacheDir = npmCacheDir && path.join(npmCacheDir, encodeURIComponent(packageName));
+  const npmEnvironment = cacheDir ? { ...env, npm_config_cache: cacheDir } : env;
   const lookup = (
     prefix
-      ? resolveNpmGlobalLatestVersion(npmPath, packageName, prefix, env)
+      ? resolveNpmGlobalLatestVersion(npmPath, packageName, prefix, npmEnvironment)
       : runProbe(
           npmPath,
           ["view", "--global", "--json", `${packageName}@latest`, "version"],
-          env,
+          npmEnvironment,
           [0],
           NPM_REGISTRY_PROBE_TIMEOUT,
         ).pipe(
@@ -1110,6 +1115,13 @@ const withConfiguredNpmVersionLookup = Effect.fn("withConfiguredNpmVersionLookup
           }),
         )
   ).pipe(
+    Effect.onInterrupt(() =>
+      cacheDir
+        ? fileSystem
+            .remove(path.join(cacheDir, "_cacache", "tmp"), { recursive: true, force: true })
+            .pipe(Effect.ignore)
+        : Effect.void,
+    ),
     Effect.tap((version) =>
       version === null
         ? Effect.logWarning("Configured npm version lookup failed", { packageName })
@@ -1134,39 +1146,46 @@ const withConfiguredNpmVersionLookup = Effect.fn("withConfiguredNpmVersionLookup
 
 export const resolveProviderMaintenanceCapabilitiesEffect = Effect.fn(
   "resolveProviderMaintenanceCapabilitiesEffect",
-)(function* (
-  resolver: ProviderMaintenanceCapabilitiesResolver,
-  options?: {
-    readonly binaryPath?: string | null;
-    readonly env?: NodeJS.ProcessEnv;
+)(
+  function* (
+    resolver: ProviderMaintenanceCapabilitiesResolver,
+    options?: {
+      readonly binaryPath?: string | null;
+      readonly env?: NodeJS.ProcessEnv;
+      readonly npmCacheDir?: string;
+    },
+  ) {
+    const binaryPath = nonEmptyString(options?.binaryPath);
+    if (!binaryPath) {
+      return yield* resolver.resolve(null);
+    }
+
+    const env = options?.env ?? (yield* readCommandLookupEnv);
+    const resolvedCommandPath = yield* resolveCommandPath(binaryPath, { env });
+    if (!resolvedCommandPath) {
+      return yield* resolver.resolve(null);
+    }
+
+    const fileSystem = yield* FileSystem.FileSystem;
+    const realCommandPath = yield* fileSystem
+      .realPath(resolvedCommandPath)
+      .pipe(Effect.orElseSucceed(() => null));
+    if (!realCommandPath) {
+      return yield* resolver.resolve(null);
+    }
+    return yield* resolver.resolve({
+      binaryPath,
+      resolvedCommandPath,
+      realCommandPath,
+      env,
+      platform: yield* HostProcess.Platform,
+    });
   },
-) {
-  const binaryPath = nonEmptyString(options?.binaryPath);
-  if (!binaryPath) {
-    return yield* resolver.resolve(null);
-  }
-
-  const env = options?.env ?? (yield* readCommandLookupEnv);
-  const resolvedCommandPath = yield* resolveCommandPath(binaryPath, { env });
-  if (!resolvedCommandPath) {
-    return yield* resolver.resolve(null);
-  }
-
-  const fileSystem = yield* FileSystem.FileSystem;
-  const realCommandPath = yield* fileSystem
-    .realPath(resolvedCommandPath)
-    .pipe(Effect.orElseSucceed(() => null));
-  if (!realCommandPath) {
-    return yield* resolver.resolve(null);
-  }
-  return yield* resolver.resolve({
-    binaryPath,
-    resolvedCommandPath,
-    realCommandPath,
-    env,
-    platform: yield* HostProcess.Platform,
-  });
-}, Effect.flatMap(withConfiguredNpmVersionLookup));
+  (effect, _resolver, options) =>
+    Effect.flatMap(effect, (capabilities) =>
+      withConfiguredNpmVersionLookup(capabilities, options?.npmCacheDir),
+    ),
+);
 
 export const makeCachedProviderMaintenanceResolution = Effect.fn(
   "makeCachedProviderMaintenanceResolution",
