@@ -2,6 +2,23 @@
 
 ## Unreleased
 
+## 0.2.44 — 2026-11-26
+
+- DeepSeek Harness binds to Cox model services: pick a service and default model when adding or
+  editing the provider, switch between the service's models inside a thread, and send images to
+  models that accept them.
+- DeepSeek Harness usage appears on the Usage page, and its project and user skills appear in
+  the `# Changelog
+
+menu.
+
+- Steering a running DeepSeek Harness turn adds the message to that turn instead of restarting
+  it.
+- The DeepSeek Harness provider settings list the project's existing dsh sessions and import
+  them as threads that continue the original session.
+- DeepSeek Harness subagents appear as subagent cards with their task and status.
+- `/compact` compacts DeepSeek Harness threads; before this it failed to start.
+
 ## 0.2.43 — 2026-11-26
 
 - Failed Cox MCP tools called from OMO `eval` cells report `hasError: true`, so code that checks
