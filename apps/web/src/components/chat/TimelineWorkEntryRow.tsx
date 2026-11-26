@@ -1,3 +1,4 @@
+import { sliceThoughtPreviewSource } from "./TimelineWorkEntryRow.logic";
 import { useTranslation } from "../../i18n";
 import { TimelinePendingApprovalRow } from "./TimelinePendingApprovalRow";
 import { WorkLogDetails, WorkLogRow } from "./WorkLog";
@@ -513,7 +514,7 @@ function WorkEntryLogRow(props: WorkEntryRowProps) {
               {isReasoning && !expanded ? (
                 <ChatMarkdown
                   inline
-                  text={workEntry.detail ?? previewText}
+                  text={sliceThoughtPreviewSource(workEntry.detail ?? previewText)}
                   cwd={ctx.markdownCwd}
                   parseRawHtml={false}
                   extensions={

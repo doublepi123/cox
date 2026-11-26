@@ -1,3 +1,4 @@
+import { sliceThoughtPreviewSource } from "./TimelineWorkEntryRow.logic";
 import { useTranslation } from "../../i18n";
 import { TimelinePendingApprovalRow } from "./TimelinePendingApprovalRow";
 import { WorkLogButton, WorkLogList, WorkLogRow } from "./WorkLog";
@@ -549,7 +550,10 @@ export function LiveWorkEntryTimelineRow({
   if (pendingApproval) return <TimelinePendingApprovalRow approval={pendingApproval} />;
 
   const failed = workEntryDisplayIndicatesToolFailure(row.entry);
-  const thoughtLine = row.thought && !row.expanded ? liveThoughtLine(row.thought.detail ?? "") : "";
+  const thoughtLine =
+    row.thought && !row.expanded
+      ? liveThoughtLine(sliceThoughtPreviewSource(row.thought.detail ?? ""))
+      : "";
   const thoughtIsStatus = thoughtLine !== "" && row.entry === row.thought;
 
   return (
@@ -604,7 +608,7 @@ export function LiveWorkEntryTimelineRow({
           ) : row.entry.itemType === "reasoning" ? (
             <ChatMarkdown
               inline
-              text={row.entry.detail ?? label}
+              text={sliceThoughtPreviewSource(row.entry.detail ?? label)}
               cwd={ctx.markdownCwd}
               parseRawHtml={false}
               extensions={row.active ? THINKING_PREVIEW_MARKDOWN : THOUGHT_PREVIEW_MARKDOWN}

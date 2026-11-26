@@ -1,3 +1,10 @@
+import { splitsSurrogatePair } from "@t3tools/shared/assistantCitations";
+export const THOUGHT_PREVIEW_SOURCE_MAX_LENGTH = 8192;
+
+export function sliceThoughtPreviewSource(text: string) {
+  const limit = THOUGHT_PREVIEW_SOURCE_MAX_LENGTH;
+  return text.slice(0, splitsSurrogatePair(text, limit) ? limit - 1 : limit);
+}
 import type { MarkdownExtensions } from "~/markdown/wordsHast";
 import {
   resolveWorkEntryToolPresentation,

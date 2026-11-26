@@ -1,3 +1,4 @@
+import { THOUGHT_PREVIEW_SOURCE_MAX_LENGTH } from "./TimelineWorkEntryRow.logic";
 import { TimelineRowCtx } from "./timelineRowContext";
 import { ViewedImagesTimelineRow } from "./TimelineWorkEntryRow";
 import { flushSync } from "react-dom";
@@ -1441,6 +1442,27 @@ describe("MessagesTimeline thread find", () => {
 });
 
 describe("compact reasoning math", () => {
+  it("does not split a surrogate pair at the reasoning preview source limit", async () => {
+    setup();
+    const prefix = `[l](${"u".repeat(8_100)}) `;
+    const filler = "c".repeat(THOUGHT_PREVIEW_SOURCE_MAX_LENGTH - 1 - prefix.length);
+    await using screen = await renderTimeline(
+      [
+        work("thought-1", {
+          label: "Thinking",
+          tone: "thinking",
+          itemType: "reasoning",
+          toolLifecycleStatus: "inProgress",
+          detail: `${prefix}${filler}😀 tail`,
+        }),
+      ],
+      { isWorking: true },
+    );
+    await vi.waitFor(() => {
+      expect(screen.text()).toContain(`l ${filler}`);
+    });
+    expect(screen.text()).not.toContain("\uFFFD");
+  });
   it("keeps formulas while flattening compact reasoning previews", () => {
     const tree = wordsHast("## Reasoning\n\nUse **norm** $|x|$ and \\[x^2\\]", {
       math: true,
