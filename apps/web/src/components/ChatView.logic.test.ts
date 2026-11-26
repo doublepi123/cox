@@ -14,6 +14,7 @@ import {
   planComposerTurn,
   deriveTimelineWorking,
   restorePlanFollowUpComposer,
+  deriveComposerSendTitle,
   snapshotComposerSend,
   withMessageContext,
   deriveAvailableRevertTurnCounts,
@@ -1106,6 +1107,8 @@ describe("mergeDirectPreviewAnnotation", () => {
   });
 });
 
+import { setLanguagePreference } from "../i18n";
+
 describe("snapshotComposerSend", () => {
   const expired = {
     id: "ctx-expired",
@@ -1118,6 +1121,30 @@ describe("snapshotComposerSend", () => {
     createdAt: now,
   };
   const live = { ...expired, id: "ctx-live", text: "pnpm test", lineStart: 9, lineEnd: 9 };
+
+  it("uses the active language in a new thread title that includes a terminal excerpt", () => {
+    const prompt = ensureInlineContextReferences("", [terminalContextReference(live)]).trim();
+    const snapshot = snapshotComposerSend({
+      prompt,
+      images: [],
+      files: [],
+      terminalContexts: [live],
+      sendableTerminalContexts: [live],
+      previewAnnotations: [],
+      reviewComments: [],
+      threadContexts: [],
+      environmentContexts: [],
+    });
+    try {
+      setLanguagePreference("zh");
+      expect(deriveComposerSendTitle(snapshot)).toBe("Terminal 1 第 9 行");
+      setLanguagePreference("en");
+      expect(deriveComposerSendTitle(snapshot)).toBe("Terminal 1 line 9");
+      expect(snapshot.messageText).toBe(prompt);
+    } finally {
+      setLanguagePreference("system");
+    }
+  });
 
   it("drops expired terminal contexts from the contexts and from the prompt", () => {
     const snapshot = snapshotComposerSend({

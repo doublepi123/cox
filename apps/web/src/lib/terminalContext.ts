@@ -1,3 +1,4 @@
+import { translateCurrent } from "../i18n";
 import type { ThreadId } from "@t3tools/contracts";
 import {
   formatComposerContextReference,
@@ -65,6 +66,31 @@ export function formatTerminalContextLabel(selection: {
   lineEnd: number;
 }): string {
   return `${selection.terminalLabel} ${formatTerminalContextRange(selection)}`;
+}
+
+export function terminalContextDisplayLabel(
+  {
+    terminalLabel,
+    lineStart,
+    lineEnd,
+  }: Pick<TerminalContextSelection, "terminalLabel" | "lineStart" | "lineEnd">,
+  t = translateCurrent,
+): string {
+  return lineStart === lineEnd
+    ? t("{terminalLabel} line {lineStart}", { terminalLabel, lineStart })
+    : t("{terminalLabel} lines {lineStart}-{lineEnd}", { terminalLabel, lineStart, lineEnd });
+}
+
+export function terminalContextDisplayLabels(
+  contexts: ReadonlyArray<TerminalContextReferenceSource>,
+  t = translateCurrent,
+): ReadonlyMap<string, string> {
+  return new Map(
+    contexts.map((context) => [
+      toKindScopedComposerContextId("terminal", context.id),
+      terminalContextDisplayLabel(context, t),
+    ]),
+  );
 }
 
 export function migrateLegacyTerminalContextPlaceholders(

@@ -1,5 +1,6 @@
 import { SharedTooltipTrigger } from "../ui/shared-tooltip";
 import { composerFileLinksToPlainText } from "@t3tools/shared/composerInlineTokens";
+import { terminalContextDisplayLabels } from "~/lib/terminalContext";
 import { useTranslation } from "../../i18n";
 import { discardComposerDraft } from "../../lib/discardComposerDraft";
 import { replaceComposerContextReferences } from "@t3tools/shared/composerContextReferences";
@@ -73,9 +74,15 @@ const SidebarDraftRow = memo(function SidebarDraftRow(props: {
   const { t } = useTranslation();
   const { draftId, onContextMenu, onDiscard, onNavigate } = props;
   const composer = props.composer ?? EMPTY_COMPOSER_PARTS;
+  const terminalLabels = terminalContextDisplayLabels(composer.terminalContexts, t);
   const promptPreview =
     composerFileLinksToPlainText(
-      replaceComposerContextReferences(composer.prompt, (occurrence) => occurrence.label),
+      replaceComposerContextReferences(
+        composer.prompt,
+        (occurrence) =>
+          (occurrence.kind === "terminal" ? terminalLabels.get(occurrence.contextId) : undefined) ??
+          occurrence.label,
+      ),
     )
       .trim()
       .split("\n", 1)[0] ?? "";

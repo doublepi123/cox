@@ -1,4 +1,5 @@
 import { useTranslation } from "../../i18n";
+import { terminalContextDisplayLabel } from "~/lib/terminalContext";
 import { TerminalIcon } from "lucide-react";
 
 import type { ContextPresentationCapability } from "../contextPresentationRegistry";
@@ -16,10 +17,7 @@ interface TerminalContextInlineChipProps {
 export function TerminalContextInlineChip(props: TerminalContextInlineChipProps) {
   const { terminalLabel, lineStart, lineEnd, text, detailsMode, expired = false } = props;
   const { t } = useTranslation();
-  const label =
-    lineStart === lineEnd
-      ? t("{terminalLabel} line {lineStart}", { terminalLabel, lineStart })
-      : t("{terminalLabel} lines {lineStart}-{lineEnd}", { terminalLabel, lineStart, lineEnd });
+  const label = terminalContextDisplayLabel(props, t);
 
   if (!expired && text.length > 0 && detailsMode === "popover") {
     return (

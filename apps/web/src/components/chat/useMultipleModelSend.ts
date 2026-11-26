@@ -6,7 +6,6 @@ import {
 } from "@t3tools/contracts";
 import { scopeThreadRef } from "@t3tools/client-runtime/environment";
 import { sanitizeNewRefName } from "@t3tools/shared/git";
-import { deriveThreadTitleSeed } from "@t3tools/client-runtime/operations";
 import { settlePromise, squashAtomCommandFailure } from "@t3tools/client-runtime/state/runtime";
 import type { EnvironmentProject } from "@t3tools/client-runtime/state/shell";
 import { useNavigate } from "@tanstack/react-router";
@@ -29,6 +28,7 @@ import { stackedThreadToast, toastManager } from "../ui/toast";
 import {
   boundAttachmentIds,
   type ComposerSendSnapshot,
+  deriveComposerSendTitle,
   type makeThreadErrorSetter,
   withMessageContext,
 } from "../ChatView.logic";
@@ -134,10 +134,7 @@ export function useMultipleModelSend(input: MultipleModelSendInput) {
       const context = buildOutgoingMessageContext(
         boundAttachmentIds(attachments, attachmentsSnapshot),
       );
-      const title = deriveThreadTitleSeed({
-        text: messageText,
-        attachments: attachmentsSnapshot,
-      });
+      const title = deriveComposerSendTitle(sendSnapshot);
       promptRef.current = "";
       clearComposerDraftContent(composerDraftTarget);
       composerRef.current?.resetCursorState();

@@ -1,3 +1,5 @@
+import { deriveThreadTitleSeed } from "@t3tools/client-runtime/operations";
+import { replaceComposerContextReferences } from "@t3tools/shared/composerContextReferences";
 import { type OrchestrationV2ProviderTurn, type RunAttemptId } from "@t3tools/contracts";
 import {
   deriveLatestThreadRun,
@@ -79,10 +81,11 @@ import { environmentThreadShells, environmentThreadDetails } from "../state/thre
 import { waitForAtomValue } from "../state/waitForAtomValue";
 import {
   filterTerminalContextsWithText,
-  formatTerminalContextLabel,
+  terminalContextDisplayLabels,
   type TerminalContextDraft,
 } from "../lib/terminalContext";
 import {
+  formatInlineContextReference,
   removeInlineContextReference,
   stripInlineContextReferences,
 } from "~/lib/composerContextReferences";
@@ -1498,16 +1501,25 @@ export function optimisticMessageAttachments(
   );
 }
 
-/** Fallback title sources for a message with no text of its own. */
-export function sendTitleFallbackLabels(snapshot: ComposerSendSnapshot) {
-  const terminalContext = snapshot.terminalContexts[0];
+export function deriveComposerSendTitle(snapshot: ComposerSendSnapshot) {
+  const terminalLabels = terminalContextDisplayLabels(snapshot.terminalContexts);
+  const text = replaceComposerContextReferences(snapshot.messageText, (reference) => {
+    const label = terminalLabels.get(reference.contextId);
+    return reference.kind === "terminal" && label !== undefined
+      ? formatInlineContextReference({ ...reference, label })
+      : reference.source;
+  });
   const reviewComment = snapshot.reviewComments[0];
   const previewAnnotation = snapshot.previewAnnotations[0];
-  return [
-    terminalContext ? formatTerminalContextLabel(terminalContext) : undefined,
-    reviewComment ? `Review: ${reviewCommentContextLabel(reviewComment)}` : undefined,
-    previewAnnotation ? previewAnnotationContextLabel(previewAnnotation) : undefined,
-  ];
+  return deriveThreadTitleSeed({
+    text,
+    attachments: snapshot.attachments,
+    fallbackLabels: [
+      terminalLabels.values().next().value,
+      reviewComment ? `Review: ${reviewCommentContextLabel(reviewComment)}` : undefined,
+      previewAnnotation ? previewAnnotationContextLabel(previewAnnotation) : undefined,
+    ],
+  });
 }
 
 /**
