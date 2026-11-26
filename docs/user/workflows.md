@@ -1,18 +1,18 @@
 # Workflows
 
-A workflow is a TypeScript script that chains agents, plain code, schedules, webhooks, pull request events, and questions to you into one durable run that survives server restarts. Each step's result is saved when it succeeds, so restarts pick up where the run left off and failures do not lose earlier work. Workflows are an early feature: start runs from the `cox` CLI or a trigger, and follow them in the app.
+Workflows are durable TypeScript scripts that chain agents, code steps, schedules, webhooks, pull request events, and questions. Cox saves successful step results, so a run can resume after a server restart.
 
-For one prompt on a timer or webhook, use a scheduled task. Use a workflow when work has stages — such as triage, a fix, your approval, and a release.
+Use a scheduled task for a single prompt on a timer or webhook. Use a workflow for work with several stages, such as triage, a fix, your approval, and a release.
 
-## Turn on workflows
+## Enable workflows
 
-Workflows are a Labs feature, off by default. Turn on **Settings → Labs → Workflows** for the server that runs them. On a server without a desktop, set `"workflowsEnabled": true` in `userdata/settings.json` in its Cox home (`~/.cox` by default). While off, nothing in the workflows folder runs and `cox workflow` says how to turn it on; runs are kept and continue once it is on again.
+Turn on **Settings → Labs → Workflows** on the server that will run them. On a headless server, set `"workflowsEnabled": true` in `~/.cox/userdata/settings.json` or the equivalent path in your Cox home. Disabling workflows pauses existing runs until you enable them again.
 
 ## Create a workflow
 
 Workflow files live in `~/.cox/workflows/` (or wherever `COX_WORKFLOWS` points — a folder or a single file). The server watches the folder and reloads changes without a restart.
 
-- **Ask an agent (recommended):** copy the [`cox-workflows` skill](https://github.com/pingdotgg/t3code/blob/main/skills/cox-workflows/SKILL.md) into your agent's skills folder (such as `~/.claude/skills/` or `~/.agents/skills/`) and describe what you want.
+- **Ask an agent (recommended):** copy the [`cox-workflows` skill](https://github.com/doublepi123/cox/blob/main/skills/cox-workflows/SKILL.md) into your agent's skills folder (such as `~/.claude/skills/` or `~/.agents/skills/`) and describe what you want.
 - **Edit directly:** edit files in `~/.cox/workflows/`, or use **Definitions** on the Workflows page (saving and deleting in the app require terminal access). Before anything has run, open the page with **Open workflows** in the command palette.
 
 A small workflow, saved as `~/.cox/workflows/release.ts`:
@@ -42,7 +42,7 @@ Saving checks that the file loads, does not duplicate a workflow name and versio
 
 Dot-files and subfolders are ignored. Keep shared helpers in a subfolder and restart the server after editing an imported file.
 
-## Start and steer
+## CLI commands
 
 ```sh
 cox workflow start <name> --input '<json>' --key <key>
@@ -68,7 +68,7 @@ For the `cox_workflow` MCP tool, full access in default interaction mode is requ
 - **Webhooks:** `cox workflow hooks` prints each hook's path; prepend your server's address. The path contains the hook's secret, so share it only with the sender. A sender's retry that repeats its delivery header (such as GitHub's `X-GitHub-Delivery`) starts no second run. Bodies over 1 MiB are refused, and each hook can start up to 60 new runs per minute. Further deliveries receive HTTP 429 with `Retry-After: 60`.
 - **Pull requests:** workflows can start when a pull request opens and read, comment on, or update it using the project’s Git host credentials. Cox checks roughly once a minute and starts runs for pull requests opened after the workflow first loaded.
 
-## Follow runs in the app
+## Follow runs, agent threads, and failures
 
 Open the Workflows page with **Open workflows** in the command palette of the web or desktop app; the entry shows once a connected server has workflows on. Filter by **Needs you**, **Running**, or **All** (skipped runs stay hidden unless toggled on), open child runs from their parent, and answer questions, resume paused runs, or cancel active runs (requires permission to operate threads). The pull requests a run touched show as chips under its title and on the steps that touched them; a chip opens the item beside the run, in a tab next to any agent transcripts you opened.
 

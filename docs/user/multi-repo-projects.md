@@ -1,42 +1,13 @@
 # Projects with several repositories
 
-A project can cover more than one repository, so one thread can read and change all of them. This
-fits three common setups:
+A Cox project can span multiple Git repositories so one thread can read and edit all of them. The project folder can be a plain folder containing repositories such as `shop/api` and `shop/web`, a repository with siblings elsewhere, or a repository with Git submodules.
 
-- A plain folder that holds several repositories, such as `shop/api` and `shop/web`.
-- A repository that works alongside others it depends on, anywhere on the machine.
-- A repository with submodules.
+## Discovery and configuration
 
-The project folder does not have to be a Git repository itself.
+Cox discovers repositories one level below the project folder and one level deeper inside folders that are not repositories, such as `src/` or `packages/`. Cox picks up cloned and deleted repositories automatically and skips worktrees of other repositories. See the covered repositories in **Settings → Projects → Repositories**.
 
-## Which repositories a project covers
-
-There is no list to keep. A project covers every repository inside its folder: Cox looks one
-level down, and one level further inside folders that are not repositories themselves, such as
-`src` or `packages`. It reads the disk each time, so a repository you clone there is part of the
-project straight away, and one you delete is gone from it. Worktrees of another repository are left
-out.
-
-**Settings → Projects → Repositories** shows what the project covers on each machine.
-
-### Folders outside the project
-
-A repository somewhere else on the machine has to be added, because adding it lets agents work in a
-place they could not reach before.
-
-- On web and desktop, use **Add folder** under **Repositories**.
-- If the project folder has a `.code-workspace` file, the folders it lists outside the project are
-  offered there with an **Add** button.
-- From a script, `cox project add <path> --track <folder>` adds one.
-
-**Remove** takes an added folder out of the project. It never deletes files. Added folders are
-paths on one machine, so the same project on another machine has its own. A project can cover up to
-128 folders.
-
-### Leave a repository out
-
-To keep a repository inside the project folder out of the project, name it in the `t3.json` in the
-project folder, relative to that folder:
+- **Add external folders** with **Add folder** in **Repositories** or run `cox project add <path> --track <folder>`. External folders listed in the project's `.code-workspace` file also appear with an **Add** button. Each machine can track up to 128 folders per project. Removing one leaves its files on disk.
+- **Ignore repositories** by adding relative paths to `t3.json` in the project folder. Ignored repositories are omitted from individual reviews and worktree creation.
 
 ```json
 {
@@ -44,57 +15,23 @@ project folder, relative to that folder:
 }
 ```
 
-It is then not reviewed on its own and gets no worktree. Because the file is checked in, the choice
-applies on every machine.
+- **Submodules** initialize when Cox creates the parent worktree. If initialization fails, run `git submodule update --init` in the thread folder. A modified submodule appears separately for diffs and Git actions, and the parent repository shows its updated pin.
 
-### Submodules
+## Review, commit, and open pull requests
 
-Submodules are checked out when a worktree is created. If that fails, a submodule stays
-uninitialized and the thread does not list it until you run `git submodule update --init` in the
-thread's folder. A thread that changes one shows it as its own repository, with its own diff and
-Git actions, while the repository that holds it shows the changed pin. A submodule never
-gets a worktree of its own, because its parent repository decides where it is checked out.
-
-## Review changes
-
-Each turn lists the files it changed, grouped by repository, and its diff covers all of them.
-
-On web and desktop, the Diff pane's **Uncommitted**, **Changes**, and **Commits** sources read one
-repository at a time. Pick it from the repository picker next to the source picker. The picker
-lists every repository the thread reaches, including ones no turn has touched, so edits you made by
-hand show up too.
-
-## Commit, push, and open pull requests
-
-Git actions run in one repository at a time.
-
-- **Web and desktop:** the thread details panel lists the repositories the thread changed, most
-  recent first, each with its branch and uncommitted changes. Expand one to commit, push, or open a
-  pull request there. **Other repositories...** adds any other repository of the project.
-
-A pull request opened in a repository is linked to the thread under that repository, not under the
-project's.
+- **Turn diffs** group changed files by repository. The Diff pane's **Uncommitted**, **Changes**, and **Commits** sources read one repository at a time. The repository picker also lists repositories that only contain edits you made by hand.
+- **Git actions** run one repository at a time. Expand a repository in the thread details panel to commit, push, or open a pull request. Use **Other repositories...** to include an untouched repository. Cox links the pull request under the repository that opened it.
 
 ## Worktree threads
 
-**New worktree** works for these projects too. The thread gets its own folder laid out like the
-project, and each repository you choose gets a worktree there, all on the thread's branch.
+**New worktree** creates a thread folder matching the project layout, with each selected repository on the thread's branch.
 
-Choose the repositories with the repositories control next to the workspace picker before you send.
-Every repository is included when the project covers eight or fewer; with more, none is
-included until you choose. A repository with no commit yet is left out, since it has nothing to
-branch from. On web and desktop, your last choice is remembered for the project in
-that browser. To bring another repository into a running thread, pick it under **Other
-repositories** in the thread details panel.
+- Choose repositories next to the workspace picker before sending. Projects with up to eight repositories select all by default. With more than eight, choose the repositories yourself. Repositories with no commits are excluded. Your browser remembers your last choice.
+- Add repositories to a running thread from **Other repositories...** in the thread details panel.
+- Each repository starts from the thread's base branch if it has a branch of that name, or from its own default branch otherwise. For a plain project folder, enter the base branch at the bottom of the repositories control.
+- Files outside repositories in a plain project folder link to their originals. Edits are shared across threads.
 
-Each repository starts from the thread's base branch where it has a branch of that name, and from
-its own default branch otherwise. A plain folder has no branch picker, so on web and desktop you
-name the base branch at the bottom of the repositories control.
-
-In a plain folder, the files outside your repositories are shared links to the originals, not
-copies. Editing one changes it for every thread.
-
-### Lay the folder out yourself
+### Custom worktree layout
 
 If the default layout does not suit your project, for example because build output must be per
 thread, workspace metadata has to be generated, or submodules need preparing, the project can
@@ -109,8 +46,7 @@ create the folder with its own command. Add this to the `t3.json` in the project
 }
 ```
 
-`create` runs in the project folder and must leave the thread's copy of the project folder in
-place. It receives these environment variables:
+`create` runs in the project folder and must leave the thread's copy at `COX_WORKTREE_PROJECT_PATH`. Cox runs one layout command at a time per project and allows ten minutes per command.
 
 | Variable                    | Value                                                      |
 | --------------------------- | ---------------------------------------------------------- |
@@ -137,9 +73,6 @@ What the commands can rely on, and what they must do:
   earlier cleanup. Storage cleanup never deletes files that exist only in the thread's folder, so
   `remove` should delete what `create` generated.
 - **A failed `create` is rolled back.** Checkouts it already made are removed.
-- **One command runs at a time per project**, so a command can update a shared file in the project
-  folder without its own locking.
-- **Each command has ten minutes.**
 - **The commands run only for requests that may run commands on the host.** A client with neither
   `orchestration:operate` nor `terminal:operate` cannot create a task folder for a project that
   declares a layout. It can remove an existing task folder without running the project’s `remove` command.
