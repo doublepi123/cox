@@ -349,9 +349,18 @@ export class GitVcsDriver extends Context.Service<
   {
     readonly execute: (input: ExecuteGitInput) => Effect.Effect<ExecuteGitResult, GitCommandError>;
     readonly status: (input: VcsStatusInput) => Effect.Effect<VcsStatusResult, GitCommandError>;
-    /** Refs, HEAD and shallow boundaries. Null on read failure. */
-    readonly readLocalStatusRefSnapshot: (cwd: string) => Effect.Effect<string | null>;
-    /** Includes worktree paths. Accepts an existing local status ref snapshot to avoid re-reading refs. */
+    /** Refs used by an explicit refresh and its branch-picker digest. */
+    readonly readStatusRefreshRefs: (cwd: string) => Effect.Effect<string | null>;
+    readonly readStatusPoll: (
+      cwd: string,
+      branch: string | null,
+      refreshUpstream: boolean,
+    ) => Effect.Effect<{
+      readonly inputStamp: string;
+      readonly inputStampAfterLookup: Effect.Effect<string | null>;
+      readonly details: GitRemoteStatusDetails;
+    } | null>;
+    /** Branch-picker digest input, including worktree paths. */
     readonly readRefSnapshot: (cwd: string, refs?: string) => Effect.Effect<string | null>;
     readonly statusDetails: (cwd: string) => Effect.Effect<GitStatusDetails, GitCommandError>;
     readonly statusDetailsLocal: (

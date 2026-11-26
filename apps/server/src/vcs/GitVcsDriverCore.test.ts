@@ -4990,6 +4990,16 @@ it.layer(layerTest)("GitVcsDriver core integration", (it) => {
         yield* git(updater, ["push", "origin", initialBranch]);
 
         const driver = yield* GitVcsDriver.GitVcsDriver;
+        yield* git(cwd, [
+          "symbolic-ref",
+          "refs/remotes/origin/HEAD",
+          `refs/remotes/origin/${initialBranch}`,
+        ]);
+        const linked = yield* makeTmpDir();
+        yield* git(cwd, ["worktree", "add", "-b", "feature", linked]);
+        const observed = yield* driver.readStatusPoll(linked, "feature", false);
+        if (observed === null) return assert.fail("Expected poll inputs for the linked worktree");
+        assert.equal(yield* observed.inputStampAfterLookup, observed.inputStamp);
         const cachedStatus = yield* driver.statusDetailsRemote(cwd, {
           refreshUpstream: false,
         });
@@ -4997,6 +5007,10 @@ it.layer(layerTest)("GitVcsDriver core integration", (it) => {
 
         assert.equal(cachedStatus.behindCount, 0);
         assert.equal(refreshedStatus.behindCount, 1);
+        const fresh = yield* driver.readStatusPoll(linked, "feature", false);
+        if (fresh === null) return assert.fail("Expected poll inputs after the fetch");
+        assert.notEqual(fresh.inputStamp, observed.inputStamp);
+        assert.equal(yield* observed.inputStampAfterLookup, fresh.inputStamp);
       }),
     );
 
