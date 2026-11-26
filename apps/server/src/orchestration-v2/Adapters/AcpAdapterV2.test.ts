@@ -4489,8 +4489,37 @@ describe("AcpAdapterV2", () => {
       const search = items.find((item) => item.type === "file_search");
       assert.deepEqual(
         search?.type === "file_search" ? { title: search.title, pattern: search.pattern } : null,
-        { title: "Searched TODO in web", pattern: "apps/web" },
+        { title: "Searched TODO in web", pattern: "TODO" },
       );
+      const fileSearch = (nativeId: string) => {
+        const item = items.find(
+          (candidate) =>
+            candidate.type === "file_search" &&
+            candidate.nativeItemRef?.nativeId?.endsWith(nativeId) === true,
+        );
+        return item?.type === "file_search"
+          ? { pattern: item.pattern, results: item.results }
+          : null;
+      };
+      assert.deepEqual(fileSearch("grep-explicit-location"), {
+        pattern: "Title",
+        results: [{ fileName: "README.md", preview: "# Title" }],
+      });
+      assert.deepEqual(fileSearch("grep-query-with-output"), {
+        pattern: "TODO",
+        results: [{ fileName: "TODO", preview: "src/a.ts: TODO" }],
+      });
+      assert.deepEqual(fileSearch("structured-search-grep-output"), {
+        pattern: "needle",
+        results: [
+          { fileName: "src/a.ts", line: 3, preview: "const needle = 1;" },
+          { fileName: "src/b.ts", line: 9, preview: "needle();" },
+        ],
+      });
+      assert.deepEqual(fileSearch("grep-query-without-output"), {
+        pattern: "FIXME",
+        results: undefined,
+      });
       const webItem = (nativeId: string, status: string) => {
         const item = items.findLast(
           (candidate) =>
@@ -4573,7 +4602,7 @@ describe("AcpAdapterV2", () => {
         {
           nativeId: "grep-explicit-location",
           type: "file_search",
-          pattern: "README.md",
+          pattern: "Title",
           patterns: undefined,
           results: [{ fileName: "README.md", preview: "# Title" }],
         },

@@ -365,6 +365,10 @@ function searchTargetName(value: string | undefined): string | undefined {
   return value.split(/[\\/]/u).findLast((part) => part.length > 0 && part !== ".");
 }
 
+export function searchToolQuery(data: Record<string, unknown> | undefined): string | undefined {
+  return firstInputString(searchInputRecord(data), SEARCH_QUERY_KEYS);
+}
+
 export function formatSearchToolLabel(
   data: Record<string, unknown> | undefined,
 ): string | undefined {

@@ -69,7 +69,12 @@ import * as EffectAcpErrors from "effect-acp/errors";
 import type * as EffectAcpProtocol from "effect-acp/protocol";
 import type * as EffectAcpSchema from "effect-acp/compat";
 
-import { formatReadToolLabel, formatSearchToolLabel } from "@t3tools/shared/toolActivity";
+import { parseGrepOutput } from "@t3tools/shared/grepOutput";
+import {
+  formatReadToolLabel,
+  formatSearchToolLabel,
+  searchToolQuery,
+} from "@t3tools/shared/toolActivity";
 import { isWorkspaceImagePreviewPath } from "@t3tools/shared/mediaPreview";
 import * as ProviderHost from "@t3tools/provider-core/server/ProviderHost";
 import { makeAcpMcpOverAcpBridge, type AcpMcpOverAcpBridge } from "./mcpOverAcpBridge.ts";
@@ -4452,6 +4457,11 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
                   break;
                 }
                 const preview = textFromUnknown(rawOutput);
+                const grepResults =
+                  path === undefined || preview === undefined
+                    ? undefined
+                    : parseGrepOutput(preview, path);
+                const pattern = searchToolQuery({ input: rawInputRecord }) ?? path;
                 turnItem = {
                   ...base,
                   title:
@@ -4461,16 +4471,13 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
                       ...(path === undefined ? {} : { pattern: path }),
                     }) ?? title,
                   type: "file_search",
-                  ...(path === undefined ? {} : { pattern: path }),
+                  ...(pattern === undefined ? {} : { pattern }),
                   ...(path === undefined || (pathInfo?.fromQuery === true && preview === undefined)
                     ? {}
                     : {
-                        results: [
-                          {
-                            fileName: path,
-                            ...(preview === undefined ? {} : { preview }),
-                          },
-                        ],
+                        results: grepResults
+                          ? [...grepResults]
+                          : [{ fileName: path, ...(preview === undefined ? {} : { preview }) }],
                       }),
                 };
                 break;
