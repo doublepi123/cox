@@ -1346,8 +1346,8 @@ export const zh = {
     "超过 200,000 token 的空闲会话何时压缩：返回时、提示词缓存到期前，或从不。覆盖“提供商 > 高级”中的默认设置。",
   "Google account": "Google 账户",
   "Gemini API key": "Gemini API 密钥",
-  "Google accounts use your subscription; API keys and Agent Platform bill usage.":
-    "Google 账户使用订阅额度；API 密钥与 Agent Platform 按用量计费。",
+  "Google account and Gemini Enterprise use your existing plan. Gemini API key and Agent Platform charge per use to your key or Google Cloud project.":
+    "Google 账户和 Gemini Enterprise 使用你现有的套餐。Gemini API 密钥和 Agent Platform 按用量向你的密钥或 Google Cloud 项目计费。",
   "Gemini or Vertex AI express key. Stored separately on the host.":
     "Gemini 或 Vertex AI Express 密钥，单独保存在主机上。",
   Optional: "可选",

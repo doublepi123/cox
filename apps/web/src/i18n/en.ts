@@ -1496,8 +1496,8 @@ export const en = {
     "When to compact an idle thread over 200,000 tokens: after you return, just before its prompt cache expires, or never. Overrides the default in Providers > Advanced.",
   "Google account": "Google account",
   "Gemini API key": "Gemini API key",
-  "Google accounts use your subscription; API keys and Agent Platform bill usage.":
-    "Google accounts use your subscription; API keys and Agent Platform bill usage.",
+  "Google account and Gemini Enterprise use your existing plan. Gemini API key and Agent Platform charge per use to your key or Google Cloud project.":
+    "Google account and Gemini Enterprise use your existing plan. Gemini API key and Agent Platform charge per use to your key or Google Cloud project.",
   "Gemini or Vertex AI express key. Stored separately on the host.":
     "Gemini or Vertex AI express key. Stored separately on the host.",
   Optional: "Optional",

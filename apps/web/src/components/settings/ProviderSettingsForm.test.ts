@@ -25,6 +25,41 @@ const decodeOmoSettings = Schema.decodeSync(OmoSettings);
 const decodeOmoSettingsExit = Schema.decodeExit(OmoSettings);
 
 describe("ProviderSettingsForm helpers", () => {
+  it("shows Antigravity credential fields only for the sign-in methods that read them, or while set", () => {
+    const antigravity = providerClients.get(ProviderDriverKind.make("antigravity"));
+    expect(antigravity).toBeDefined();
+    const keysFor = (value?: unknown) =>
+      deriveProviderSettingsFields(antigravity!, value).map((field) => field.key);
+
+    expect(keysFor({})).toEqual(["authMethod", "binaryPath"]);
+    expect(
+      keysFor({
+        authMethod: "oauth-personal",
+        apiKey: { provider: "vault", reference: "antigravity" },
+        gcpLocation: "us-central1",
+      }),
+    ).toEqual(["authMethod", "apiKey", "gcpLocation", "binaryPath"]);
+    expect(keysFor({ authMethod: "oauth-business" })).toEqual([
+      "authMethod",
+      "gcpProject",
+      "gcpLocation",
+      "binaryPath",
+    ]);
+    expect(keysFor({ authMethod: "gemini-api-key" })).toEqual([
+      "authMethod",
+      "apiKey",
+      "binaryPath",
+    ]);
+    expect(keysFor({ authMethod: "agent-platform" })).toEqual([
+      "authMethod",
+      "apiKey",
+      "gcpProject",
+      "gcpLocation",
+      "binaryPath",
+    ]);
+    expect(keysFor()).toEqual(["authMethod", "apiKey", "gcpProject", "gcpLocation", "binaryPath"]);
+  });
+
   it("registers independent OMO settings with hidden native roles and managed state", () => {
     const omo = providerClients.get(ProviderDriverKind.make("omo"));
     expect(omo?.label).toBe("OMO Native");
