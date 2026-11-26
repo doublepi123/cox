@@ -621,6 +621,16 @@ describe("question answer paths", () => {
         },
         {
           ext: "odt",
+          bounded: true,
+          parts: {
+            "content.xml":
+              '<office:document-content><office:automatic-styles><number:currency-style style:name="N1"><number:currency-symbol>USD</number:currency-symbol><number:number number:decimal-places="2" number:min-integer-digits="1"/></number:currency-style></office:automatic-styles><office:body><office:text><text:p>Invoice was paid in euros.</text:p></office:text></office:body></office:document-content>',
+          },
+          expected: ["Invoice was paid in euros."],
+          absent: ["USD"],
+        },
+        {
+          ext: "odt",
           parts: {
             "content.xml": [
               '<office:document-content xmlns:office="urn:oasis:names:tc:opendocument:xmlns:office:1.0" xmlns:text="urn:oasis:names:tc:opendocument:xmlns:text:1.0" xmlns:dc="http://purl.org/dc/elements/1.1/" office:version="1.3">',

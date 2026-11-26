@@ -648,8 +648,11 @@ async function* document(path: string, extension: string): AsyncGenerator<TextPa
       yield* paragraphs(read(mainPart("word/document.xml")));
     } else if ([".odt", ".ods", ".odp"].includes(extension)) {
       const content = read("content.xml");
-      if (extension === ".odt") yield* paragraphs(content);
-      else {
+      if (extension === ".odt") {
+        const root = children(content)[0];
+        const body = root && children(root).find((child) => child.name === "body");
+        yield* paragraphs(body ?? content);
+      } else {
         let index = 0;
         for (const part of all(content, extension === ".ods" ? "table" : "page")) {
           yield extension === ".ods"
