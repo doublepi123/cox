@@ -1,3 +1,4 @@
+import { collectComposerContextReferences } from "./composerContextReferences.ts";
 import { composerFileLinkPath } from "./composerTrigger.ts";
 import { fileBasename } from "./path.ts";
 import { markdownMathRanges } from "./markdownMath.ts";
@@ -105,13 +106,13 @@ export function composerMathRanges(
   text: string,
   mentions: ReadonlyArray<ComposerInlineToken> = collectMentionTokens(text),
 ) {
+  const links = [
+    ...mentions.filter((mention) => mention.type === "mention" && mention.source.startsWith("[")),
+    ...collectComposerContextReferences(text),
+  ];
   let masked = text;
-  for (const mention of mentions) {
-    if (mention.type !== "mention" || !mention.source.startsWith("[")) continue;
-    masked =
-      masked.slice(0, mention.start) +
-      "x".repeat(mention.end - mention.start) +
-      masked.slice(mention.end);
+  for (const { start, end } of links) {
+    masked = masked.slice(0, start) + "x".repeat(end - start) + masked.slice(end);
   }
   return markdownMathRanges(masked).map(({ start, end }) => ({
     start,
