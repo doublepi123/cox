@@ -6395,7 +6395,9 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
       command.createdBy === "agent" &&
       (dispatchMode.type === "steer_active" || dispatchMode.type === "restart_active")
     ) {
-      const queued = queuedRunsInDeliveryOrder(projection);
+      const queued = queuedRunsInDeliveryOrder(projection).filter(
+        (run) => run.explicitQueue !== true,
+      );
       if (queued.length > 0) {
         const messages = yield* projectionStore
           .getMessagesById(
@@ -6887,6 +6889,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
         rootNodeId,
         activeAttemptId: attemptId,
         status: "queued",
+        ...(command.explicitQueue === true ? { explicitQueue: true as const } : {}),
         ...(worktreeMissingRun !== undefined ||
         (heldRunsToRelease.length === 0 && queueIsHeld && !wakeSkipsHold)
           ? { queueHeld: true }

@@ -960,6 +960,7 @@ const make = Effect.gen(function* () {
       ...(input.freshContext ? { freshContext: true } : {}),
       ...(input.outputSchema === undefined ? {} : { outputSchema: input.outputSchema }),
       dispatchMode,
+      ...(mode === "queue" ? { explicitQueue: true as const } : {}),
       createdBy: input.createdBy,
       creationSource: input.creationSource,
     });
