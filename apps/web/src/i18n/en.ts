@@ -1323,6 +1323,8 @@ export const en = {
   "Terminal: Split Vertical": "Terminal: Split Vertical",
   "Terminal: New": "Terminal: New",
   "Terminal: Close": "Terminal: Close",
+  "Terminal: Next": "Terminal: Next",
+  "Terminal: Previous": "Terminal: Previous",
   "Right Panel: Toggle": "Right Panel: Toggle",
   "Right Panel: New": "Right Panel: New",
   "Thread Panel: Toggle": "Thread Panel: Toggle",

@@ -1178,6 +1178,8 @@ export const zh = {
   "Terminal: Split Vertical": "终端：垂直拆分",
   "Terminal: New": "终端：新建",
   "Terminal: Close": "终端：关闭",
+  "Terminal: Next": "终端：下一个",
+  "Terminal: Previous": "终端：上一个",
   "Right Panel: Toggle": "右侧面板：切换",
   "Right Panel: New": "右侧面板：新建",
   "Thread Panel: Toggle": "会话面板：切换",

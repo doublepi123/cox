@@ -1,3 +1,4 @@
+import { cycleThreadTerminal } from "../../lib/cycleThreadTerminal";
 import type {
   EnvironmentProject,
   EnvironmentThreadShell,
@@ -416,6 +417,14 @@ export function useChatTerminalActions(input: ChatTerminalActionsInput) {
       )
         return false;
       toggleTerminalVisibility();
+    },
+    "terminal.previous": ({ terminalFocusOwner }) => {
+      if (!activeThreadRef || !terminalFocusOwner) return false;
+      return cycleThreadTerminal(activeThreadRef, terminalFocusOwner, "previous");
+    },
+    "terminal.next": ({ terminalFocusOwner }) => {
+      if (!activeThreadRef || !terminalFocusOwner) return false;
+      return cycleThreadTerminal(activeThreadRef, terminalFocusOwner, "next");
     },
     "terminal.split": ({ terminalFocusOwner }) => {
       if (!hasTerminalWriteAccess()) return false;
