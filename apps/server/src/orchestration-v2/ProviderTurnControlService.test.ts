@@ -220,6 +220,7 @@ it.effect(
           listOlderSettledThreads: () => Effect.die("unused listOlderSettledThreads"),
           readShellSnapshot: () => Effect.die("unused readShellSnapshot"),
           getThreadShell: () => Effect.die("unused getThreadShell"),
+          getForkSourceRunIds: () => Effect.die("unused getForkSourceRunIds"),
           getThreadLinkMetadata: () => Effect.die("unused getThreadLinkMetadata"),
           findGuestShareThreadId: () => Effect.die("unused findGuestShareThreadId"),
           getThread: () => Ref.get(projection).pipe(Effect.map((state) => state.thread)),
