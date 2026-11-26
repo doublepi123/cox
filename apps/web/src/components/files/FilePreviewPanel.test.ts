@@ -410,6 +410,10 @@ describe("document preview contents", () => {
         },
       ],
     });
+    for (const name of ["", "Питон"]) {
+      const blank = { nbformat: 4, metadata: { language_info: { name } }, cells: [] };
+      expect(openNotebook(bytes(JSON.stringify(blank)))).toMatchObject({ language: "text" });
+    }
     const failed = openNotebook(
       bytes(
         JSON.stringify({
