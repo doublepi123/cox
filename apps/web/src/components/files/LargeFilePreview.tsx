@@ -1,13 +1,12 @@
 import type { ScopedThreadRef } from "@t3tools/contracts";
 import { DEFAULT_TOKENIZE_MAX_LENGTH } from "@pierre/diffs";
-import type { FileOptions } from "@pierre/diffs/react";
 import { lazy, Suspense, useImperativeHandle, type RefObject } from "react";
 
 import { ChunkedMarkdown } from "./ChunkedMarkdown";
 import { FileSurfaceLoading } from "./fileSurfaceChrome";
 import { useFullFileMarkdown, useFullFileText } from "./fullFileText";
 import { FULL_TEXT_MAX_BYTES } from "./largeTextProtocol";
-import SourceFilePreview from "./ReadOnlySourcePreview";
+import SourceFilePreview, { type ReadOnlySourcePostRender } from "./ReadOnlySourcePreview";
 
 const LargeTextViewer = lazy(() => import("./LargeTextViewer"));
 
@@ -28,7 +27,7 @@ export default function LargeFilePreview(props: {
   readonly workspaceMutationId: string | null;
   readonly copyContents: RefObject<(() => Promise<string>) | null>;
   readonly onRetry: () => void;
-  readonly onPostRender?: FileOptions<unknown, undefined>["onPostRender"];
+  readonly onPostRender?: ReadOnlySourcePostRender;
   readonly revealLine: number | null;
   readonly revealRequestId: number;
   readonly wordWrap: boolean;

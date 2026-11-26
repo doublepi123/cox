@@ -1,5 +1,5 @@
 import type { CodeViewItem, File as FileInstance, FileDiff, PostRenderPhase } from "@pierre/diffs";
-import type { FileOptions } from "@pierre/diffs/react";
+import type { CodeViewHandle } from "@pierre/diffs/react";
 import { type ClipboardEvent, useEffect, useRef, useState } from "react";
 
 import { StyledDiffCodeView } from "~/components/diffs/StyledDiffCodeView";
@@ -18,11 +18,20 @@ const READ_ONLY_SOURCE_UNSAFE_CSS = `${FILE_LINK_REVEAL_UNSAFE_CSS}
 }
 `;
 
+export type ReadOnlySourcePostRender = (
+  node: HTMLElement,
+  instance: FileInstance<unknown, undefined>,
+  phase: PostRenderPhase,
+  scrollToLine: (line: number) => boolean,
+) => void;
+
+const SOURCE_ITEM_ID = "source";
+
 export default function ReadOnlySourcePreview(props: {
   readonly name: string;
   readonly text: string;
   readonly cacheKey?: string;
-  readonly onPostRender?: FileOptions<unknown, undefined>["onPostRender"];
+  readonly onPostRender?: ReadOnlySourcePostRender;
   /** A preview's own wrap toggle; omitted follows the word wrap setting. */
   readonly wordWrap?: boolean;
   /** Files with more lines than this render without highlighting; omitted keeps Pierre's limit. */
@@ -33,6 +42,7 @@ export default function ReadOnlySourcePreview(props: {
   const wordWrap = props.wordWrap ?? defaultWordWrap;
   const { text, onPostRender } = props;
   const wrapper = useRef<HTMLDivElement>(null);
+  const viewer = useRef<CodeViewHandle<unknown, undefined>>(null);
   const [selection] = useState(() => new SourceSelection());
   // CodeView only re-renders a reused item when its version changes; bump it as streaming or
   // refreshed files update text without remounting and losing scroll position.
@@ -85,11 +95,22 @@ export default function ReadOnlySourcePreview(props: {
     phase: PostRenderPhase,
   ) => {
     if (phase !== "unmount" && node.shadowRoot) selection.render(node.shadowRoot, text);
-    if (onPostRender && "file" in instance) return onPostRender(node, instance, phase);
+    if (onPostRender && "file" in instance) {
+      onPostRender(node, instance, phase, (line) => {
+        if (!viewer.current) return false;
+        viewer.current.scrollTo({
+          type: "line",
+          id: SOURCE_ITEM_ID,
+          lineNumber: line,
+          align: "center",
+        });
+        return true;
+      });
+    }
   };
   const items: CodeViewItem<unknown>[] = [
     {
-      id: "source",
+      id: SOURCE_ITEM_ID,
       type: "file",
       version: sourceRevision.version,
       file: {
@@ -119,6 +140,7 @@ export default function ReadOnlySourcePreview(props: {
         key={`${props.name}:${resolvedTheme}`}
         className="file-preview-virtualizer min-h-0 flex-1 overflow-auto"
         items={items}
+        viewerRef={viewer}
         unsafeCSSExtra={READ_ONLY_SOURCE_UNSAFE_CSS}
         options={{
           disableFileHeader: true,

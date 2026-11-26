@@ -180,6 +180,7 @@ type FilePostRender = <LAnnotation>(
   fileContainer: HTMLElement,
   instance: FileInstance<LAnnotation, undefined>,
   phase: PostRenderPhase,
+  scrollCodeViewToLine?: (line: number) => boolean,
 ) => void;
 
 function WorkspaceImagePreview(props: {
@@ -576,7 +577,7 @@ function useFileLineReveal(
 ): (scroller: "virtualizer" | "codeView") => FilePostRender {
   const [revealStatesByPath] = useState(() => new Map<string, FileRevealState>());
 
-  return (scroller) => (fileContainer, instance, phase) => {
+  return (scroller) => (fileContainer, instance, phase, scrollCodeViewToLine) => {
     if (relativePath === null) return;
 
     const existingState = revealStatesByPath.get(relativePath);
@@ -750,7 +751,9 @@ function useFileLineReveal(
         ) {
           scrollContainer.scrollTop = targetTop;
         }
-        if (scroller === "codeView") state.revealedScrollTop = scrollContainer.scrollTop;
+        if (scroller === "codeView" && targetTop !== null) {
+          state.revealedScrollTop = scrollContainer.scrollTop;
+        }
         guardFrameId = requestAnimationFrame(holdTarget);
       };
       guardFrameId = requestAnimationFrame(holdTarget);
@@ -776,18 +779,12 @@ function useFileLineReveal(
         }
         updateFileLinkReveal(fileContainer, line);
 
-        state.handledRequestId = revealRequestId;
         if (scroller === "codeView") {
-          // That window's geometry cannot place the line, so the viewer scrolls to it.
-          // It centers its estimate of the line, and rows it mounts on arrival can still move it.
-          instance.scrollToLine(line, "center", (result) => {
-            if (result !== "settled") return;
-            state.revealedScrollTop = scrollContainer.scrollTop;
-            guardScrollTarget(line);
-          });
-          return;
+          if (!scrollCodeViewToLine?.(line)) return;
+        } else {
+          scrollContainer.scrollTop = targetTop;
         }
-        scrollContainer.scrollTop = targetTop;
+        state.handledRequestId = revealRequestId;
         guardScrollTarget(line);
       });
     };
