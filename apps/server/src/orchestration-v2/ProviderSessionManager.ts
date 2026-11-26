@@ -353,6 +353,7 @@ function sessionScopedArtifactThreadId(
         ? event.node.threadId
         : undefined;
     case "turn_item.updated":
+      if (event.sessionScoped === true) return event.turnItem.threadId;
       if (
         event.driver === "omo" &&
         event.turnItem.type === "subagent" &&

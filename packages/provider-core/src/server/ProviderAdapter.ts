@@ -171,6 +171,7 @@ export const ProviderAdapterV2Event = Schema.Union([
   Schema.Struct({
     type: Schema.Literal("turn_item.updated"),
     driver: ProviderDriverKind,
+    sessionScoped: Schema.optional(Schema.Boolean),
     turnItem: OrchestrationV2TurnItem,
   }),
   Schema.Struct({
