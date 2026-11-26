@@ -28,6 +28,10 @@ export function withoutRemoteUrlCredentials(url: string): string {
   return url.replace(/^(https?:\/\/)[^/?#]*@/i, "$1").replace(/\?[^#]*/, "");
 }
 
+export function isScpLikeCloneUrl(url: string): boolean {
+  return SCP_LIKE_URL.test(url);
+}
+
 export function cloneUrlProtocol(url: string): CloneProtocol | null {
   return parseCloneUrl(url)?.protocol ?? null;
 }
@@ -49,7 +53,7 @@ export function cloneUrlForProtocol(url: string, protocol: CloneProtocol): strin
       if (/\p{Cc}/u.test(path)) return null;
       return `git@${parsed.host}:${path}`;
     }
-    const path = SCP_LIKE_URL.test(url.trim())
+    const path = isScpLikeCloneUrl(url.trim())
       ? parsed.path.split("/").map(encodeURIComponent).join("/")
       : parsed.path;
     return `https://${parsed.host}/${path}`;
@@ -66,7 +70,7 @@ export function cloneUrlRepositoryPath(url: string): string | null {
   if (isWindowsDrivePath(url.trim())) return null;
   const parsed = parseCloneUrl(url);
   if (!parsed) return null;
-  let repositoryPath = parsed.path.split(/[?#]/)[0]!;
+  let repositoryPath = parsed.path.split(isScpLikeCloneUrl(url.trim()) ? "?" : /[?#]/, 1)[0]!;
   if (SSH_URL.test(url.trim()) || HTTPS_URL.test(url.trim())) {
     try {
       repositoryPath = decodeURIComponent(repositoryPath);

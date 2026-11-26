@@ -68,6 +68,15 @@ describe("cloneUrlForProtocol", () => {
 });
 
 describe("cloneUrlRepositoryPath", () => {
+  it("keeps literal hashes in SCP paths and drops URL fragments", () => {
+    expect(cloneUrlRepositoryPath("git@forge.example:team#1/spec#2026.git")).toBe(
+      "forge.example/team#1/spec#2026",
+    );
+    expect(cloneUrlRepositoryPath("https://forge.example/team/spec.git#readme")).toBe(
+      "forge.example/team/spec",
+    );
+  });
+
   it("decodes URI clone paths without rewriting SCP paths", () => {
     for (const prefix of ["https://host.example/", "ssh://git@host.example/"]) {
       expect(cloneUrlRepositoryPath(`${prefix}Research%20Tools/r%C3%A9sum%C3%A9.git`)).toBe(
