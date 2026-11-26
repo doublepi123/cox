@@ -387,6 +387,7 @@ export function AppSidebarLayout({ children }: { children: ReactNode }) {
           role="navigation"
           aria-label={t("Threads")}
           resizable={{
+            collapseOnResize: true,
             maxWidth: sidebarMaximumWidth,
             minWidth: sidebarMinimumWidth,
             shouldAcceptWidth: ({ currentWidth, nextWidth, wrapper }) =>

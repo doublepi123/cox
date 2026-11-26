@@ -1,3 +1,4 @@
+import type { CSSProperties } from "react";
 import { resolveThreadErrorBanner } from "./ChatView.logic";
 import { ChildThreadApprovals } from "./chat/ChildThreadApprovals";
 import { useTranslation } from "../i18n";
@@ -3279,6 +3280,11 @@ export default function ChatView(props: ChatViewProps) {
         )}
         data-chat-column-maximized-away={rightPanelMaximized ? "true" : "false"}
         data-chat-column
+        style={
+          {
+            "--chat-header-height": embedded ? "0px" : "var(--workspace-topbar-height)",
+          } as CSSProperties
+        }
         inert={rightPanelMaximized}
       >
         {embedded ? null : (

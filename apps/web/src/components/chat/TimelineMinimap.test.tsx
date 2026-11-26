@@ -8,7 +8,7 @@ describe("TimelineMinimap pointer visibility", () => {
     renderToStaticMarkup(
       <TimelineMinimap
         hasPersistentGutter={hasPersistentGutter}
-        hitStripWidth={48}
+        hitStrip={{ left: 32, width: 48 }}
         currentIndex={0}
         items={[
           { id: "first", rowIndex: 0, userText: "First", assistantText: null },
