@@ -786,6 +786,9 @@ export const make = Effect.gen(function* () {
                               ? { contextWindow: model.capabilities.contextWindow }
                               : {}),
                             ...(model.maxOutputTokens ? { maxTokens: model.maxOutputTokens } : {}),
+                            ...(model.capabilities?.supportsImages
+                              ? { input: ["text", "image"] }
+                              : {}),
                             ...(efforts.length
                               ? {
                                   reasoningEfforts: Object.fromEntries(

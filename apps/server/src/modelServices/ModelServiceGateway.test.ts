@@ -1213,6 +1213,7 @@ it.layer(layer)("model service gateway", (it) => {
         protocol: "anthropic-messages",
         modelCapabilities: {
           contextWindow: 64000,
+          supportsImages: true,
           optionDescriptors: [
             {
               id: "reasoningEffort",
@@ -1248,6 +1249,7 @@ it.layer(layer)("model service gateway", (it) => {
             name: "Exact",
             contextWindow: 64000,
             maxTokens: 4000,
+            input: ["text", "image"],
             reasoningEfforts: { off: null, high: "high" },
           },
         ],
