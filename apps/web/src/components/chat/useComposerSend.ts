@@ -132,7 +132,11 @@ import type {
 import type { UnifiedSettings } from "@t3tools/contracts";
 import type { Dispatch } from "react";
 import { composerTargetKey, type ComposerThreadTarget } from "../../composerDraftStore";
-import { countPreparingComposerImages, holdComposerSend } from "./preparingComposerImages";
+import {
+  countPreparingComposerImages,
+  holdComposerSend,
+  watchComposerSendEdits,
+} from "./preparingComposerImages";
 import type { ProviderInstanceEntry } from "../../providerInstances";
 import type { SessionPhase } from "../../types";
 import type { DraftSessionState } from "../../composerDraftStore";
@@ -1626,10 +1630,21 @@ export function useComposerSend(input: ComposerSendInput) {
           : null;
       if (workspaceDefault === null) return onSend(...args);
       args[0]?.preventDefault();
+      const finishWatching = watchComposerSendEdits(composerDraftTarget);
       sendInFlightRef.current = true;
-      await workspaceDefault.finally(() => {
+      const result = await settlePromise(() => workspaceDefault).finally(() => {
         sendInFlightRef.current = false;
       });
+      const draftStatus = finishWatching();
+      if (result._tag === "Failure") return;
+      if (currentRouteThreadKeyRef.current !== routeThreadKey) return;
+      if (draftStatus === "edited" && activeThread) {
+        setThreadError(
+          activeThread.id,
+          t("Draft changed while preparing this message. Review it and send again."),
+        );
+      }
+      if (draftStatus !== "ready") return;
       return sendLatest(...args);
     },
   };

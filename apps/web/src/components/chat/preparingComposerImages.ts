@@ -1,7 +1,9 @@
 import { scopedThreadKey } from "@t3tools/client-runtime/environment";
 import type { ScopedThreadRef } from "@t3tools/contracts";
 import { create } from "zustand";
+import * as Equal from "effect/Equal";
 import {
+  composerDraftHasUserContent,
   composerTargetKey,
   type ComposerThreadTarget,
   type ComposerThreadDraftState,
@@ -37,6 +39,7 @@ const useHeldSendStore = create<{ readonly targetKeys: Readonly<Record<string, t
   targetKeys: {},
 }));
 let preparedImagesJoiningDraft = false;
+const sendEditCancellations = new Map<string, Set<() => void>>();
 
 /** Whether a send from the target's draft is waiting on its images to finish preparing. */
 export function useComposerSendHeld(targetKey: string): boolean {
@@ -45,6 +48,7 @@ export function useComposerSendHeld(targetKey: string): boolean {
 
 export function cancelHeldComposerSend(targetKey: string): void {
   heldSends.get(targetKey)?.({ status: "cancelled" });
+  for (const cancel of sendEditCancellations.get(targetKey) ?? []) cancel();
 }
 
 /** Inserts finished images into the draft without counting as an edit to a held send. */
@@ -55,6 +59,63 @@ export function joinPreparedImagesToDraft<T>(insert: () => T): T {
   } finally {
     preparedImagesJoiningDraft = false;
   }
+}
+
+function composerSendSettingsChanged(
+  before: ComposerThreadDraftState | null,
+  after: ComposerThreadDraftState | null,
+): boolean {
+  const modelsChanged =
+    before && after
+      ? !Equal.equals(before.modelSelectionByProvider, after.modelSelectionByProvider)
+      : Object.keys((before ?? after)?.modelSelectionByProvider ?? {}).length > 0;
+  return (
+    modelsChanged ||
+    (before?.activeProvider ?? null) !== (after?.activeProvider ?? null) ||
+    (before?.runtimeMode ?? null) !== (after?.runtimeMode ?? null) ||
+    (before?.interactionMode ?? null) !== (after?.interactionMode ?? null)
+  );
+}
+
+/** Watches for edits and attachment invalidation while a send waits for routing. */
+export function watchComposerSendEdits(
+  draftTarget: ComposerThreadTarget,
+): () => "ready" | "edited" | "attachments-cancelled" {
+  const targetKey = composerTargetKey(draftTarget);
+  const submittedImages = new Set(getPreparingComposerImages(targetKey));
+  let cancelled = false;
+  const cancel = () => {
+    cancelled = true;
+  };
+  const listeners = sendEditCancellations.get(targetKey) ?? new Set<() => void>();
+  listeners.add(cancel);
+  sendEditCancellations.set(targetKey, listeners);
+  let draft = useComposerDraftStore.getState().getComposerDraft(draftTarget);
+  let changed = false;
+  const stopWatchingDraft = useComposerDraftStore.subscribe((state) => {
+    const next = state.getComposerDraft(draftTarget);
+    if (!preparedImagesJoiningDraft) {
+      changed ||=
+        composerSendSettingsChanged(draft, next) ||
+        (draft && next
+          ? draftContentChanged(draft, next)
+          : composerDraftHasUserContent(draft ?? next));
+    }
+    draft = next;
+  });
+  const stopWatchingImages = usePreparingComposerImageStore.subscribe(() => {
+    if (getPreparingComposerImages(targetKey).some((image) => !submittedImages.has(image))) {
+      changed = true;
+    }
+  });
+  return () => {
+    stopWatchingDraft();
+    stopWatchingImages();
+    listeners.delete(cancel);
+    if (listeners.size === 0) sendEditCancellations.delete(targetKey);
+    if (cancelled) return "attachments-cancelled";
+    return changed ? "edited" : "ready";
+  };
 }
 
 /**
@@ -92,11 +153,7 @@ export function holdComposerSend(
       const next = state.getComposerDraft(draftTarget);
       if (
         !preparedImagesJoiningDraft &&
-        (draftContentChanged(draft, next) ||
-          draft?.modelSelectionByProvider !== next?.modelSelectionByProvider ||
-          draft?.activeProvider !== next?.activeProvider ||
-          draft?.runtimeMode !== next?.runtimeMode ||
-          draft?.interactionMode !== next?.interactionMode)
+        (draftContentChanged(draft, next) || composerSendSettingsChanged(draft, next))
       ) {
         settle({ status: "cancelled" });
       }
@@ -176,7 +233,7 @@ export function addPreparingComposerImages(
   targetKey: string,
   images: ReadonlyArray<PreparingComposerImage>,
 ): void {
-  if (images.length > 0) cancelHeldComposerSend(targetKey);
+  if (images.length > 0) heldSends.get(targetKey)?.({ status: "cancelled" });
   usePreparingComposerImageStore.setState((state) => ({
     byTargetKey: {
       ...state.byTargetKey,
