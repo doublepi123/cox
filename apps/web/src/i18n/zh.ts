@@ -33,6 +33,12 @@ export const zh = {
     "已跳过 {count} 条格式错误或不一致的用量记录，用量可能不完整。",
   "0 bytes": "0 字节",
   "{count} matches": "{count} 处匹配",
+  "… {hidden} character in the middle is not shown. The text ends with:":
+    "… 中间有 {hidden} 个字符未显示。文本结尾如下：",
+  "… {hidden} characters in the middle are not shown. The text ends with:":
+    "… 中间有 {hidden} 个字符未显示。文本结尾如下：",
+  "Scroll each part to read all of it.": "滚动各部分以阅读完整内容。",
+  "Scroll to read all of it.": "滚动以阅读完整内容。",
   "Show {count} more image attachment": "再显示 {count} 个图片附件",
   "Show {count} more image attachments": "再显示 {count} 个图片附件",
   "+{count} more in Pull requests": "拉取请求中还有 {count} 项",

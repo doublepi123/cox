@@ -56,6 +56,12 @@ export const en = {
     "{count} malformed or inconsistent usage records were skipped; usage may be incomplete.",
   "0 bytes": "0 bytes",
   "{count} matches": "{count} matches",
+  "… {hidden} character in the middle is not shown. The text ends with:":
+    "… {hidden} character in the middle is not shown. The text ends with:",
+  "… {hidden} characters in the middle are not shown. The text ends with:":
+    "… {hidden} characters in the middle are not shown. The text ends with:",
+  "Scroll each part to read all of it.": "Scroll each part to read all of it.",
+  "Scroll to read all of it.": "Scroll to read all of it.",
   "Show {count} more image attachment": "Show {count} more image attachment",
   "Show {count} more image attachments": "Show {count} more image attachments",
   "+{count} more in Pull requests": "+{count} more in Pull requests",
