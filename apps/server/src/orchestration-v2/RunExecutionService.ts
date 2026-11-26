@@ -1032,10 +1032,10 @@ export const layer: Layer.Layer<
           ).pipe(
             Effect.catchCauseIf(
               (cause) => !Cause.hasInterruptsOnly(cause),
-              (_cause) =>
+              (cause) =>
                 Effect.logWarning(
                   "orchestration V2 checkpoint baseline capture failed; starting provider without a baseline",
-                  { runId: input.run.id },
+                  { runId: input.run.id, cause },
                 ),
             ),
           );
