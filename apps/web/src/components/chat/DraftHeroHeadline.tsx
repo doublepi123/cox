@@ -1,6 +1,6 @@
 import { useTranslation } from "../../i18n";
 import type { DraftId } from "~/composerDraftStore";
-import { composerDraftHasUserContent, useComposerDraftStore } from "~/composerDraftStore";
+import { useComposerDraftStore } from "~/composerDraftStore";
 import { resolveEnvironmentMachineKind, type ScopedProjectRef } from "@t3tools/contracts";
 import { scopedProjectKey, scopeProjectRef } from "@t3tools/client-runtime/environment";
 import { isScratchProject } from "@t3tools/client-runtime/state/projects";
@@ -17,7 +17,7 @@ import { useProjectPin } from "~/hooks/useProjectGroupUpdate";
 import { useScratchProject } from "~/hooks/useScratchProject";
 import { isTriagePrompt } from "~/hooks/useStartTriage";
 import { useClientSettings } from "~/hooks/useSettings";
-import { hasExplicitComposerModelSelection } from "~/lib/chatThreadActions";
+import { moveDraftToProject } from "~/lib/moveDraftToProject";
 import {
   deriveLogicalProjectKeyFromSettings,
   pickableProjectGroups,
@@ -29,11 +29,7 @@ import {
   projectGroupsSpanEnvironments,
 } from "~/sidebarProjectGrouping";
 import { useProjects, useThreadShells } from "~/state/entities";
-import {
-  useEnvironments,
-  usePrimaryEnvironmentId,
-  useEnvironmentProviders,
-} from "~/state/environments";
+import { useEnvironments, usePrimaryEnvironmentId } from "~/state/environments";
 import { ProjectEnvironmentBadge } from "../ProjectEnvironmentBadge";
 import { ProjectFavicon } from "../ProjectFavicon";
 import { isProjectPinShortcut, ProjectPinButton } from "../ProjectPinButton";
@@ -53,9 +49,6 @@ import { InlineButton } from "../ui/button";
 import { DraftProjectName } from "./DraftProjectName";
 import { DraftHeroProjectHeading } from "./DraftHeroProjectHeading";
 import { TriageDraftHero } from "./TriageDraftHero";
-import { resolveProjectSettings } from "@t3tools/shared/projectSettings";
-import { resolveProjectDefaultProviderModelSelection } from "../../providerInstances";
-import { resolveNewThreadModelSelection } from "@t3tools/shared/usageLimits";
 
 const ADD_PROJECT_VALUE = "add-project";
 
@@ -79,21 +72,14 @@ export function DraftHeroHeadline({
   const projects = useProjects();
   const threads = useThreadShells();
   const { environments } = useEnvironments();
-  const providersByEnvironment = useEnvironmentProviders();
   const primaryEnvironmentId = usePrimaryEnvironmentId();
   const projectGroupingSettings = useClientSettings(selectProjectGroupingSettings);
   const projectSortOrder = useClientSettings((settings) => settings.sidebarProjectSortOrder);
-  const setLogicalProjectDraftThreadId = useComposerDraftStore(
-    (store) => store.setLogicalProjectDraftThreadId,
-  );
-  const getComposerDraft = useComposerDraftStore((store) => store.getComposerDraft);
   // A boolean, so typing in a draft does not re-render the hero.
   const isTriageDraftPrompt = useComposerDraftStore((store) =>
     draftId ? isTriagePrompt(store.getComposerDraft(draftId)?.prompt ?? "") : false,
   );
-  const applyStickyState = useComposerDraftStore((store) => store.applyStickyState);
-  const setModelSelection = useComposerDraftStore((store) => store.setModelSelection);
-  const openAddProject = () => openCommandPalette({ open: "add-project" });
+  const openAddProject = () => openCommandPalette({ open: "add-project", draftId });
   const { scratchEnvironmentId, scratchWorkspaceRootFor, openScratchProject } = useScratchProject();
   const openProjectDraft = useNewThreadHandler();
   const keybindings = useAtomValue(primaryServerKeybindingsAtom);
@@ -194,56 +180,11 @@ export function DraftHeroHeadline({
       ? `${session.environmentId}:${session.projectId}:${session.logicalProjectKey}`
       : null;
   };
-  // Retargeting an empty draft would overwrite the project's draft and strand browser tabs.
   const selectProject = (project: (typeof projects)[number], logicalProjectKey: string) => {
-    if (!draftId) {
-      return;
-    }
+    if (!draftId) return;
     pendingScratchRef.current = null;
-    const currentDraft = getComposerDraft(draftId);
-    if (!composerDraftHasUserContent(currentDraft)) {
+    if (!moveDraftToProject(draftId, project, logicalProjectKey)) {
       void openProjectDraft(scopeProjectRef(project.environmentId, project.id));
-      return;
-    }
-    setLogicalProjectDraftThreadId(
-      logicalProjectKey,
-      scopeProjectRef(project.environmentId, project.id),
-      draftId,
-    );
-    if (!hasExplicitComposerModelSelection(currentDraft)) {
-      applyStickyState(draftId);
-      const environmentConfig = environments.find(
-        (environment) => environment.environmentId === project.environmentId,
-      )?.serverConfig;
-      const environmentSettings = environmentConfig?.settings;
-      const defaultSelection = environmentSettings
-        ? resolveProjectSettings(environmentSettings, project.id, project).settings
-            .defaultModelSelection
-        : project.defaultModelSelection;
-      const fallbackResolution = resolveNewThreadModelSelection({
-        defaultSelection:
-          defaultSelection ??
-          (useComposerDraftStore.getState().stickyActiveProvider !== null || !environmentSettings
-            ? null
-            : resolveProjectDefaultProviderModelSelection(
-                providersByEnvironment.get(project.environmentId) ?? [],
-                environmentSettings,
-                project.id,
-              )),
-        fallbackSelection: environmentSettings?.fallbackModelSelection ?? null,
-        providers: providersByEnvironment.get(project.environmentId) ?? [],
-        ...(environmentSettings ? { settings: environmentSettings } : {}),
-        projectId: project.id,
-        now: Date.now(),
-      });
-      const defaultModelSelection = fallbackResolution.fallback
-        ? fallbackResolution.selection
-        : defaultSelection;
-      if (defaultModelSelection) {
-        setModelSelection(draftId, defaultModelSelection, {
-          replaceOptions: true,
-        });
-      }
     }
   };
   const startScratch = async (): Promise<boolean> => {
