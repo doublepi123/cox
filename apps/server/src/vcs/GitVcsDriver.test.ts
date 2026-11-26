@@ -2204,3 +2204,486 @@ it.effect("git metrics count fsync fallback and transient retry subprocesses sep
     Effect.provideService(Metric.MetricRegistry, new Map()),
   ),
 );
+
+interface CaptureIndexChange {
+  readonly git: Effect.Success<ReturnType<typeof makeCheckpointFixture>>["git"];
+  readonly write: (
+    relativePath: string,
+    contents: string,
+  ) => Effect.Effect<void, PlatformError.PlatformError>;
+  readonly checkpointRef: CheckpointRef;
+  readonly gitWithIndex: (
+    indexFile: string,
+    args: ReadonlyArray<string>,
+  ) => ReturnType<Effect.Success<ReturnType<typeof makeCheckpointFixture>>["git"]>;
+  readonly fs: FileSystem.FileSystem;
+  readonly path: Path.Path;
+  readonly cwd: string;
+}
+
+// A file no older than the index that recorded it is racy: Git must read it, not trust its stat.
+// 2100-01-01, in seconds.
+const racyFileTime = 4_102_444_800;
+const makeRacy = ({ fs, path, cwd }: CaptureIndexChange) =>
+  fs.utimes(path.join(cwd, "nested/large.txt"), racyFileTime, racyFileTime);
+const racyEdit = (context: CaptureIndexChange) =>
+  context
+    .write("nested/large.txt", "LINE\r\n".repeat(3 * 1024 * 1024))
+    .pipe(Effect.andThen(makeRacy(context)));
+
+// 2000-01-01, in seconds.
+const backdate = ({ fs, path, cwd }: CaptureIndexChange) =>
+  fs.utimes(path.join(cwd, "nested/large.txt"), 946_684_800, 946_684_800);
+
+const trackIgnoredFileOnBranch = ({ git, write }: CaptureIndexChange) =>
+  Effect.gen(function* () {
+    yield* git(["switch", "--quiet", "-c", "other"]);
+    yield* write(".gitignore", "tracked-but-ignored.txt\n");
+    yield* write("tracked-but-ignored.txt", "tracked by HEAD\n");
+    yield* git(["add", "--force", ".gitignore", "tracked-but-ignored.txt"]);
+    yield* git(["commit", "--quiet", "-m", "other"]);
+  });
+
+const makeNestedRepository = ({ git }: CaptureIndexChange) =>
+  git(["init", "--quiet", "nested"]).pipe(
+    Effect.andThen(
+      git([
+        "-C",
+        "nested",
+        "-c",
+        "user.name=Test",
+        "-c",
+        "user.email=test@test.com",
+        "commit",
+        "--quiet",
+        "--allow-empty",
+        "-m",
+        "nested",
+      ]),
+    ),
+  );
+
+it.effect.each([
+  { name: "nothing changed", reuses: true, change: () => Effect.void },
+  {
+    name: "an untracked file was rewritten at the same size",
+    reuses: true,
+    change: ({ write }: CaptureIndexChange) =>
+      write("nested/large.txt", "LINE\r\n".repeat(3 * 1024 * 1024)),
+  },
+  {
+    name: "a racy untracked file was rewritten at the same size and mtime",
+    reuses: true,
+    // Only whole-second mtime and size count, so nothing but Git's racy check sees the edit.
+    setup: (context: CaptureIndexChange) =>
+      context
+        .git(["config", "core.checkStat", "minimal"])
+        .pipe(
+          Effect.andThen(context.git(["config", "core.trustctime", "false"])),
+          Effect.andThen(makeRacy(context)),
+        ),
+    change: racyEdit,
+  },
+  {
+    name: "files were added, edited and deleted",
+    reuses: true,
+    change: ({ fs, path, cwd, write }: CaptureIndexChange) =>
+      Effect.all([
+        write("nested/new.txt", "new\n"),
+        write("file.txt", "edited again\n"),
+        fs.remove(path.join(cwd, "nested/small.txt")),
+      ]),
+  },
+  {
+    name: "a tracked file was deleted",
+    reuses: true,
+    change: ({ fs, path, cwd }: CaptureIndexChange) => fs.remove(path.join(cwd, "file.txt")),
+  },
+  {
+    name: "an untracked file became ignored",
+    reuses: true,
+    change: ({ write }: CaptureIndexChange) => write(".gitignore", "nested/\n"),
+  },
+  {
+    name: "an ignored file stopped being ignored",
+    reuses: true,
+    setup: ({ write }: CaptureIndexChange) =>
+      write(".gitignore", "*.log\n").pipe(Effect.andThen(write("nested/build.log", "log\n"))),
+    change: ({ write }: CaptureIndexChange) => write(".gitignore", "other\n"),
+  },
+  {
+    name: "HEAD now tracks an untracked file",
+    reuses: true,
+    change: ({ git }: CaptureIndexChange) =>
+      git(["add", "nested/large.txt"]).pipe(Effect.andThen(git(["commit", "-m", "track"]))),
+  },
+  {
+    name: "HEAD moved to a new branch whose commit tracks an ignored file",
+    reuses: true,
+    change: trackIgnoredFileOnBranch,
+  },
+  {
+    name: "HEAD was reset past the commit tracking an ignored file",
+    reuses: true,
+    setup: trackIgnoredFileOnBranch,
+    change: ({ git }: CaptureIndexChange) => git(["reset", "--soft", "HEAD~1"]),
+  },
+  {
+    name: "HEAD moved to a commit that no longer tracks a captured file",
+    reuses: true,
+    change: ({ git }: CaptureIndexChange) =>
+      git(["rm", "--quiet", "--cached", "-f", "file.txt"]).pipe(
+        Effect.andThen(git(["commit", "--quiet", "-m", "drop"])),
+      ),
+  },
+  {
+    name: "the user's index flags tracked files and adds an intent-to-add entry",
+    reuses: true,
+    change: ({ git, write }: CaptureIndexChange) =>
+      Effect.gen(function* () {
+        yield* git(["update-index", "--assume-unchanged", "file.txt"]);
+        yield* write("file.txt", "hidden from status\n");
+        yield* write("nested/intent.txt", "intent\n");
+        yield* git(["add", "--intent-to-add", "nested/intent.txt"]);
+      }),
+  },
+  {
+    name: "an untracked directory became a repository",
+    reuses: true,
+    change: makeNestedRepository,
+  },
+  {
+    name: "an untracked repository lost its .git but kept its files",
+    reuses: true,
+    setup: makeNestedRepository,
+    change: ({ fs, path, cwd }: CaptureIndexChange) =>
+      fs.remove(path.join(cwd, "nested/.git"), { recursive: true }),
+  },
+  {
+    name: "an untracked file was edited under core.ignorestat",
+    reuses: true,
+    setup: ({ git }: CaptureIndexChange) => git(["config", "core.ignorestat", "true"]),
+    change: ({ write }: CaptureIndexChange) => write("nested/small.txt", "edited\n"),
+  },
+  {
+    name: "HEAD now tracks a file that differs from it, under core.ignorestat",
+    reuses: true,
+    // The kept index takes HEAD's entry for the new path; it must not be marked assume-unchanged.
+    setup: ({ git }: CaptureIndexChange) => git(["config", "core.ignorestat", "true"]),
+    change: ({ git, write }: CaptureIndexChange) =>
+      Effect.gen(function* () {
+        yield* write("committed.txt", "committed\n");
+        yield* git(["add", "committed.txt"]);
+        yield* git(["commit", "--quiet", "-m", "commit"]);
+        yield* write("committed.txt", "edited after the commit\n");
+      }),
+  },
+  {
+    name: "core.ignorestat was turned on",
+    reuses: false,
+    change: ({ git }: CaptureIndexChange) => git(["config", "core.ignorestat", "true"]),
+  },
+  {
+    name: "the last of several core.attributesFile values changed its rules",
+    reuses: false,
+    // Git reads only the last value, as a local value overrides a global one.
+    setup: ({ git, write, path, cwd }: CaptureIndexChange) =>
+      Effect.gen(function* () {
+        for (const name of ["attributes-first", "attributes-last"]) {
+          yield* write(`.git/${name}`, "");
+          yield* git(["config", "--add", "core.attributesFile", path.join(cwd, ".git", name)]);
+        }
+      }),
+    change: ({ write }: CaptureIndexChange) => write(".git/attributes-last", "*.txt text eol=lf\n"),
+  },
+  {
+    name: "a relative core.attributesFile changed its rules, captured from a subfolder",
+    workspace: "nested",
+    reuses: false,
+    // Git reads a relative path from the working-tree root, not from the capture's folder.
+    setup: (context: CaptureIndexChange) =>
+      context.write(".git/capture-attributes", "").pipe(
+        Effect.andThen(context.git(["config", "core.attributesFile", ".git/capture-attributes"])),
+        // Older than the user's index, whose timestamp a rebuild keeps, so Git trusts its stat.
+        Effect.andThen(backdate(context)),
+      ),
+    change: ({ write }: CaptureIndexChange) =>
+      write(".git/capture-attributes", "*.txt text eol=lf\n"),
+  },
+  {
+    name: "an ignored root .gitattributes changed its rules",
+    reuses: false,
+    setup: ({ write }: CaptureIndexChange) =>
+      write(".gitignore", ".gitattributes\n").pipe(Effect.andThen(write(".gitattributes", ""))),
+    change: ({ write }: CaptureIndexChange) => write(".gitattributes", "*.txt text eol=lf\n"),
+  },
+  {
+    name: "an ignored root .gitattributes changed its rules, captured from a subfolder",
+    workspace: "nested",
+    reuses: false,
+    setup: (context: CaptureIndexChange) =>
+      context
+        .write(".gitignore", ".gitattributes\n")
+        .pipe(
+          Effect.andThen(context.write(".gitattributes", "")),
+          Effect.andThen(backdate(context)),
+        ),
+    change: ({ write }: CaptureIndexChange) => write(".gitattributes", "*.txt text eol=lf\n"),
+  },
+  {
+    name: "its conversion attributes changed",
+    reuses: false,
+    change: ({ write }: CaptureIndexChange) => write(".gitattributes", "*.txt text eol=lf\n"),
+  },
+  {
+    name: "a clean filter now applies through info/attributes",
+    reuses: false,
+    change: ({ git, write }: CaptureIndexChange) =>
+      write(".git/info/attributes", "*.txt filter=upper\n").pipe(
+        Effect.andThen(git(["config", "filter.upper.clean", "tr a-z A-Z"])),
+      ),
+  },
+  {
+    name: "its conversion config changed",
+    reuses: false,
+    change: ({ git }: CaptureIndexChange) => git(["config", "core.autocrlf", "true"]),
+  },
+  {
+    name: "its conversion config changed while the previous capture ran",
+    reuses: false,
+    during: ({ git }: CaptureIndexChange) =>
+      Effect.orDie(Effect.asVoid(git(["config", "core.autocrlf", "true"]))),
+    change: () => Effect.void,
+  },
+  {
+    name: "its blobs were pruned",
+    reuses: false,
+    change: ({ git, checkpointRef }: CaptureIndexChange) =>
+      git(["update-ref", "-d", checkpointRef]).pipe(Effect.andThen(git(["prune", "--expire=now"]))),
+  },
+  {
+    name: "git gc repacked the repository",
+    reuses: true,
+    change: ({ git }: CaptureIndexChange) => git(["gc", "--quiet", "--prune=now"]),
+  },
+  {
+    name: "the kept index is corrupt",
+    reuses: false,
+    change: ({ fs, path, cwd }: CaptureIndexChange) =>
+      Effect.gen(function* () {
+        const root = path.join(cwd, ".git", "cox-checkpoint-indexes");
+        for (const scope of yield* fs.readDirectory(root)) {
+          for (const entry of yield* fs.readDirectory(path.join(root, scope))) {
+            if (entry.startsWith("index."))
+              yield* fs.writeFileString(path.join(root, scope, entry), "DIRC garbage");
+          }
+        }
+      }),
+  },
+  {
+    name: "the kept index is missing",
+    reuses: false,
+    change: ({ fs, path, cwd }: CaptureIndexChange) =>
+      fs.remove(path.join(cwd, ".git", "cox-checkpoint-indexes"), { recursive: true }),
+  },
+  {
+    name: "the kept index uses another index version",
+    reuses: true,
+    change: ({ gitWithIndex, fs, path, cwd }: CaptureIndexChange) =>
+      Effect.gen(function* () {
+        const root = path.join(cwd, ".git", "cox-checkpoint-indexes");
+        for (const scope of yield* fs.readDirectory(root)) {
+          for (const entry of yield* fs.readDirectory(path.join(root, scope))) {
+            if (!entry.startsWith("index.")) continue;
+            const file = path.join(root, scope, entry);
+            const { mtime } = yield* fs.stat(file);
+            yield* gitWithIndex(file, ["update-index", "--index-version", "4"]);
+            const at = Option.getOrThrow(mtime);
+            yield* fs.utimes(file, at, at);
+          }
+        }
+      }),
+  },
+  ...(HostProcess.Platform.defaultValue() === "win32"
+    ? []
+    : [
+        {
+          name: "an untracked file became ignored under a name that looks like a git pathspec",
+          file: ":large.txt",
+          reuses: true,
+          change: ({ write }: CaptureIndexChange) => write(".gitignore", ":large.txt\n"),
+        },
+        {
+          name: "an untracked file's name looks like git pathspec magic",
+          file: ":(magic)",
+          reuses: true,
+          change: ({ write }: CaptureIndexChange) => write(":(magic)", "edited\n"),
+        },
+      ]),
+])(
+  "checkpoint capture through a kept index stages what a rebuilt index would: $name",
+  ({ file = "nested/large.txt", workspace = "", reuses, setup, change, during }) =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem;
+      const path = yield* Path.Path;
+      const liveProcess = yield* VcsProcess.VcsProcess;
+      let rebuilt = 0;
+      let afterPublish: Effect.Effect<void> = Effect.void;
+      const driver = yield* GitVcsDriver.makeVcsDriverShape().pipe(
+        Effect.provideService(VcsProcess.VcsProcess, {
+          run: (input) => {
+            if (
+              input.operation === VcsProcess.CHECKPOINT_CAPTURE_OPERATION &&
+              input.args.includes("read-tree")
+            )
+              rebuilt++;
+            return input.args.includes("update-ref")
+              ? liveProcess.run(input).pipe(Effect.tap(() => afterPublish))
+              : liveProcess.run(input);
+          },
+        }),
+      );
+      const cwd = yield* fs.makeTempDirectoryScoped({ prefix: "cox-capture-index-" });
+      const { git, checkpointRef } = yield* makeCheckpointFixture(driver, cwd);
+      const write = (relativePath: string, contents: string) =>
+        fs.writeFileString(path.join(cwd, relativePath), contents);
+      const gitWithIndex = (indexFile: string, args: ReadonlyArray<string>) =>
+        driver.execute({
+          operation: "checkpoint-test",
+          cwd,
+          args,
+          env: { GIT_INDEX_FILE: indexFile },
+        });
+      const context: CaptureIndexChange = {
+        git,
+        gitWithIndex,
+        write,
+        checkpointRef,
+        fs,
+        path,
+        cwd,
+      };
+      yield* fs.makeDirectory(path.join(cwd, "nested"));
+      yield* write(file, "line\r\n".repeat(3 * 1024 * 1024));
+      yield* write("nested/small.txt", "small\n");
+      if (setup !== undefined) yield* setup(context);
+      const captureCwd = path.join(cwd, workspace);
+      yield* driver.checkpoints.captureCheckpoint({ cwd: captureCwd, checkpointRef });
+      if (during !== undefined) afterPublish = during(context);
+      yield* driver.checkpoints.captureCheckpoint({ cwd: captureCwd, checkpointRef });
+      afterPublish = Effect.void;
+      rebuilt = 0;
+
+      yield* change(context);
+      yield* driver.checkpoints.captureCheckpoint({ cwd: captureCwd, checkpointRef });
+      // Another scope has no kept index, so it captures the way every capture used to.
+      const freshRef = CheckpointRef.make("refs/t3/fresh/0");
+      yield* (yield* GitVcsDriver.makeVcsDriverShape()).checkpoints.captureCheckpoint({
+        cwd: captureCwd,
+        checkpointRef: freshRef,
+      });
+
+      assert.strictEqual(
+        (yield* git(["rev-parse", `${checkpointRef}^{tree}`])).stdout,
+        (yield* git(["rev-parse", `${freshRef}^{tree}`])).stdout,
+      );
+      assert.strictEqual(rebuilt === 0, reuses);
+      yield* git(["fsck", "--connectivity-only"]);
+    }).pipe(Effect.scoped, Effect.provide(layerGitContract)),
+);
+
+it.effect.each([
+  { name: "2", line: "sparseCheckout = 2", sparse: true },
+  { name: "hexadecimal", line: "sparseCheckout = 0x2", sparse: true },
+  { name: "hexadecimal zero", line: "sparseCheckout = 0x0", sparse: false },
+  { name: "octal", line: "sparseCheckout = 010", sparse: true },
+  { name: "with a unit", line: "sparseCheckout = 1k", sparse: true },
+  { name: "zero with a unit", line: "sparseCheckout = 0g", sparse: false },
+  { name: "padded", line: 'sparseCheckout = " 1"', sparse: true },
+  { name: "off", line: "sparseCheckout = Off", sparse: false },
+  { name: "valueless", line: "sparseCheckout", sparse: true },
+  { name: "empty", line: "sparseCheckout =", sparse: false },
+  { name: "missing", line: "", sparse: false },
+])("checkpoint capture reads core.sparseCheckout as Git does: $name", ({ line, sparse }) =>
+  Effect.gen(function* () {
+    const fs = yield* FileSystem.FileSystem;
+    const path = yield* Path.Path;
+    const liveProcess = yield* VcsProcess.VcsProcess;
+    const sparseAdds: boolean[] = [];
+    const driver = yield* GitVcsDriver.makeVcsDriverShape().pipe(
+      Effect.provideService(VcsProcess.VcsProcess, {
+        run: (input) => {
+          if (
+            input.operation === VcsProcess.CHECKPOINT_CAPTURE_OPERATION &&
+            input.args.includes("add") &&
+            !input.args.includes("-h")
+          )
+            sparseAdds.push(input.args.includes("--sparse"));
+          return liveProcess.run(input);
+        },
+      }),
+    );
+    const cwd = yield* fs.makeTempDirectoryScoped({ prefix: "cox-capture-sparse-bool-" });
+    const { checkpointRef } = yield* makeCheckpointFixture(driver, cwd);
+    const configFile = path.join(cwd, ".git/config");
+    yield* fs.writeFileString(
+      configFile,
+      `${yield* fs.readFileString(configFile)}[core]\n\t${line}\n`,
+    );
+    yield* driver.checkpoints.captureCheckpoint({ cwd, checkpointRef });
+    assert.deepEqual(sparseAdds, [sparse]);
+  }).pipe(Effect.scoped, Effect.provide(layerGitContract)),
+);
+
+it.effect("a capture through a kept index skips the index rebuild and its scan", () =>
+  Effect.gen(function* () {
+    const fs = yield* FileSystem.FileSystem;
+    const path = yield* Path.Path;
+    const liveProcess = yield* VcsProcess.VcsProcess;
+    let commands: string[] = [];
+    const driver = yield* GitVcsDriver.makeVcsDriverShape().pipe(
+      Effect.provideService(VcsProcess.VcsProcess, {
+        run: (input) => {
+          if (input.operation === VcsProcess.CHECKPOINT_CAPTURE_OPERATION) {
+            // The subcommand follows the "-C <dir>" and "-c <name>=<value>" pairs.
+            let index = 0;
+            while (input.args[index] === "-c" || input.args[index] === "-C") index += 2;
+            commands.push(input.args[index]!);
+          }
+          return liveProcess.run(input);
+        },
+      }),
+    );
+    const cwd = yield* fs.makeTempDirectoryScoped({ prefix: "cox-capture-index-count-" });
+    const { checkpointRef } = yield* makeCheckpointFixture(driver, cwd);
+    yield* fs.writeFileString(path.join(cwd, "untracked.txt"), "untracked\n");
+    yield* driver.checkpoints.captureCheckpoint({ cwd, checkpointRef });
+    const rebuilt = commands;
+    commands = [];
+    yield* driver.checkpoints.captureCheckpoint({ cwd, checkpointRef });
+
+    const [start, end] = [
+      ["rev-parse", "config"],
+      ["commit-tree", "update-ref"],
+    ];
+    assert.deepStrictEqual(rebuilt, [
+      ...start,
+      "read-tree",
+      "ls-files",
+      "add",
+      "write-tree",
+      ...end,
+    ]);
+    // HEAD lacks untracked.txt, so check-ignore runs; the last diff-tree checks .gitattributes.
+    assert.deepStrictEqual(commands, [
+      ...start,
+      "diff-tree",
+      "check-ignore",
+      "cat-file",
+      "add",
+      "write-tree",
+      "diff-tree",
+      ...end,
+    ]);
+  }).pipe(Effect.scoped, Effect.provide(layerGitContract)),
+);
