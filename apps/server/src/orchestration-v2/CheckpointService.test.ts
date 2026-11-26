@@ -75,6 +75,7 @@ it.effect("cancels a slow baseline after five seconds without timing out the wor
                   Effect.onInterrupt(() => Ref.update(cancelled, (count) => count + 1)),
                 );
                 yield* Ref.update(refs, (current) => new Set([...current, checkpointRef]));
+                return null;
               }),
           }),
         ),
@@ -232,6 +233,7 @@ it.effect(
                   yield* Deferred.succeed(firstSnapshotStarted, undefined);
                   yield* Effect.sleep("10 seconds");
                   yield* Ref.update(refs, (current) => new Set([...current, checkpointRef]));
+                  return null;
                 }),
             }),
           ),
@@ -561,7 +563,9 @@ it.effect("backs off only baseline retries after repeated workspace capture time
             captureCheckpoint: () =>
               Effect.suspend(() => {
                 attempts++;
-                return healthy ? Effect.void : Effect.fail(nonTimeoutFailure ? failure : timeout);
+                return healthy
+                  ? Effect.succeed(null)
+                  : Effect.fail(nonTimeoutFailure ? failure : timeout);
               }),
           }),
         ),
@@ -665,7 +669,7 @@ it.effect("skips post-turn captures that waited out another capture's timeout in
                 yield* Effect.sleep("30 seconds");
                 const [next = "timeout", ...rest] = yield* Ref.get(script);
                 yield* Ref.set(script, rest);
-                if (next === "ready") return;
+                if (next === "ready") return null;
                 return yield* new VcsProcessTimeoutError({
                   operation: "GitVcsDriver.checkpoints.captureCheckpoint",
                   command: "git",
@@ -802,6 +806,7 @@ it.effect("keeps the pre-rewind snapshot of a folder a failed rewind could not p
               captured.push(input.cwd);
               existing.add(input.checkpointRef);
               preRewindRefs.set(input.cwd, input.checkpointRef);
+              return null;
             }),
           // The second folder's rewind fails, and then so does putting the first one back.
           restoreCheckpoint: (input) =>
