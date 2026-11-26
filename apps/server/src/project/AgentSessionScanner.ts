@@ -401,6 +401,57 @@ function codexHistoryBase(records: ReadonlyArray<DecodedTranscriptRecord>) {
 // envelope; title them after the prompt inside it.
 const WAKE_ENVELOPE = /^\s*<wake(?:\s[^>]*)?>([\s\S]*?)(?:<\/wake>|$)/;
 
+// Where the run of sticky `block` matches at the start of `text` ends.
+function leadingBlocksEnd(text: string, block: RegExp): number {
+  let end = 0;
+  while (block.test(text)) {
+    end = block.lastIndex;
+  }
+  return end;
+}
+
+// Claude Code records its own UI as user turns: slash commands, `!` shell runs and
+// their output, task notifications. Keep what the user typed, as they typed it.
+function claudeUiOutputEnd(text: string): number {
+  return leadingBlocksEnd(
+    text,
+    /<(local-command-stdout|local-command-stderr|local-command-caveat|bash-stdout|bash-stderr)>[\s\S]*?<\/\1>\s*/y,
+  );
+}
+
+// Shell payloads can print closing tags verbatim, so a complete envelope is
+// judged by its outer tags; prose after a quoted block stays visible.
+function isClaudeShellOutput(text: string): boolean {
+  if (text.startsWith("<bash-stderr>")) return text.endsWith("</bash-stderr>");
+  if (!text.startsWith("<bash-stdout>")) return false;
+  return (
+    text.endsWith("</bash-stdout>") ||
+    (text.endsWith("</bash-stderr>") && /<\/bash-stdout>\s*<bash-stderr>/.test(text))
+  );
+}
+
+const CLAUDE_COMMAND_BLOCK = /<command-(name|message|args)>[\s\S]*?<\/command-\1>\s*/y;
+
+/** What a Claude user turn shows the user typed, and the part of it that may name the thread. */
+function claudeUserText(text: string): { readonly text: string; readonly titleText: string } {
+  const outputEnd = claudeUiOutputEnd(text);
+  if (
+    outputEnd === text.length ||
+    // Only Claude writes task notifications, sometimes with trailing markup of its own.
+    text.startsWith("<task-notification>") ||
+    isClaudeShellOutput(text) ||
+    /^\[Request interrupted by user(?: for tool use)?\]$/.test(text)
+  ) {
+    return { text: "", titleText: "" };
+  }
+  const shellInput = /^<bash-input>([\s\S]*)<\/bash-input>$/.exec(text)?.[1];
+  if (shellInput !== undefined) return { text: `!${shellInput}`, titleText: "" };
+  return {
+    text,
+    titleText: text.slice(outputEnd || leadingBlocksEnd(text, CLAUDE_COMMAND_BLOCK)) || text,
+  };
+}
+
 function deriveTitle(source: AgentSessionSource, text: string): string | undefined {
   const request = (source === "codex" ? text.replace(CODEX_TITLE_PREAMBLE, "") : text).replace(
     WAKE_ENVELOPE,
@@ -547,12 +598,13 @@ function parseAgentSessionRecords(
   let conversationMessageCount = 0;
   const retainMessage = (
     message: AgentSessionThreadMessage & { readonly codexResponseUser: boolean },
+    titleText: string = message.text,
   ) => {
     if (firstUserMessage === undefined && message.role === "user") {
       firstUserMessage = message;
     }
     if (derivedTitle === undefined && message.role === "user") {
-      derivedTitle = deriveTitle(input.source, message.text);
+      derivedTitle = deriveTitle(input.source, titleText);
     }
     conversationMessageCount += 1;
     messages.push(message);
@@ -593,18 +645,23 @@ function parseAgentSessionRecords(
     if (input.source === "claudeAgent") {
       if (isHiddenClaudeRecord(record)) continue;
       if (record.type !== "user" && record.type !== "assistant") continue;
-      const text = extractText(record.message?.content);
+      const raw = extractText(record.message?.content);
+      const { text, titleText } =
+        record.type === "user" ? claudeUserText(raw) : { text: raw, titleText: raw };
       if (text.length === 0) continue;
       if (record.type === "assistant") {
         if (record.message?.model?.trim() === "<synthetic>") hasClaudeSyntheticReply = true;
         else hasClaudeModelReply = true;
       }
-      retainMessage({
-        role: record.type,
-        text,
-        createdAt: normalizeTimestamp(record.timestamp, fallbackTimestamp),
-        codexResponseUser: false,
-      });
+      retainMessage(
+        {
+          role: record.type,
+          text,
+          createdAt: normalizeTimestamp(record.timestamp, fallbackTimestamp),
+          codexResponseUser: false,
+        },
+        titleText,
+      );
       continue;
     }
 
