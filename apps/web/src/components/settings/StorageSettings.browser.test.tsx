@@ -235,3 +235,24 @@ it("settles mixed retention statuses independently across selected machines", as
   await advance(300);
   await expect.element(screen.getByTestId("logs-retention-status")).not.toBeInTheDocument();
 });
+
+it.each([1, 2])(
+  "uses the correct noun when %s cleanup results are omitted",
+  async (omittedCount) => {
+    setup();
+    state.targets = state.targets.slice(0, 1);
+    state.report = {
+      trigger: "manual",
+      startedAt: "2026-11-25T14:00:00.000Z",
+      finishedAt: "2026-11-25T14:00:01.000Z",
+      entries: [],
+      counts: { removed: 0, kept: omittedCount, failed: 0 },
+      omittedCount,
+      bytesFreed: 0,
+    };
+    await using screen = await render(panel());
+    await screen.getByRole("button", { name: /Last run/ }).click();
+    const suffix = omittedCount === 1 ? "result" : "results";
+    await expect.element(screen.getByText(`env-a: ${omittedCount} more ${suffix}.`)).toBeVisible();
+  },
+);

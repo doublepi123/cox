@@ -261,7 +261,15 @@ function CleanupResults({
       })}
       {report.omittedCount > 0 && (
         <p className="px-3 py-2.5 text-xs text-muted-foreground sm:px-4">
-          {environmentLabel}: {report.omittedCount.toLocaleString()} {t("more results.")}
+          {t(
+            report.omittedCount === 1
+              ? "{environment}: {count} more result."
+              : "{environment}: {count} more results.",
+            {
+              environment: environmentLabel,
+              count: report.omittedCount.toLocaleString(),
+            },
+          )}
         </p>
       )}
       {report.entries.length === 0 && report.omittedCount === 0 && (
