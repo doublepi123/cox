@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+## 0.2.46 — 2026-11-26
+
+- Importing models through a gateway fills parameters and prices from models.dev for models that
+  many providers relay with conflicting values, such as the DeepSeek V4 series: Cox uses the
+  vendor's own models.dev entry. Direct connections to `api.deepseek.com` use DeepSeek's entries.
+
 ## 0.2.45 — 2026-11-26
 
 - Model services route each model through the protocol configured for the service, whatever
