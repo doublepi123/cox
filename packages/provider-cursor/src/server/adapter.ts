@@ -1088,6 +1088,7 @@ export const makeCursorAdapterV2 = Effect.fn("makeCursorAdapterV2")(function* (
         } | null>(null);
         const interruptedPrompt = yield* Ref.make<{
           readonly agent: string;
+          readonly runId: string;
           readonly text: string;
           readonly runtimeInstructions: string | undefined;
         } | null>(null);
@@ -2671,6 +2672,7 @@ export const makeCursorAdapterV2 = Effect.fn("makeCursorAdapterV2")(function* (
           if (input.status === "interrupted" && input.context.prompt !== undefined) {
             yield* Ref.set(interruptedPrompt, {
               agent: input.context.run.agentId,
+              runId: input.context.run.runId,
               text: input.context.prompt,
               runtimeInstructions: input.context.compacted
                 ? undefined
@@ -3216,6 +3218,40 @@ export const makeCursorAdapterV2 = Effect.fn("makeCursorAdapterV2")(function* (
                       driver: CursorAgentSdk.CURSOR_PROVIDER,
                       providerSessionId: input.providerSessionId,
                       providerThreadId: threadInput.providerThread.id,
+                      cause,
+                    }),
+                ),
+              ),
+          ),
+          nativeTurnKept: Effect.fn("CursorAdapterV2.nativeTurnKept")(
+            function* (keptInput: {
+              readonly providerThread: OrchestrationV2ProviderThread;
+              readonly nativeTurnId: string;
+            }) {
+              // This session still holds the stopped request and replays it on the next turn itself.
+              const interrupted = yield* Ref.get(interruptedPrompt);
+              if (
+                interrupted?.runId === keptInput.nativeTurnId &&
+                interrupted.agent === nativeThreadId(keptInput.providerThread)
+              )
+                return true;
+              const agent = yield* openAgent({
+                operation: "resume",
+                agentId: nativeThreadId(keptInput.providerThread),
+                threadId: keptInput.providerThread.appThreadId ?? input.threadId,
+                modelSelection: input.modelSelection,
+                runtimePolicy: input.runtimePolicy,
+              });
+              if (agent.session.runCheckpointed === undefined) return true;
+              return yield* agent.session.runCheckpointed(keptInput.nativeTurnId);
+            },
+            (effect, keptInput) =>
+              effect.pipe(
+                Effect.mapError(
+                  (cause) =>
+                    new ProviderAdapter.ProviderAdapterReadThreadSnapshotError({
+                      driver: CursorAgentSdk.CURSOR_PROVIDER,
+                      providerThreadId: keptInput.providerThread.id,
                       cause,
                     }),
                 ),
