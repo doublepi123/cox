@@ -78,6 +78,9 @@ const flag = (
 
 // `Config.Boolean`'s literals, which effect does not export on their own.
 const T3CODE_TRUE = ["true", "yes", "on", "1", "y"];
+
+export const isDoNotTrackSet = (env: Readonly<Record<string, string | undefined>>) =>
+  T3CODE_TRUE.includes(env.DO_NOT_TRACK?.trim().toLowerCase() ?? "");
 const T3CODE_FALSE = ["false", "no", "off", "0", "n"];
 
 const RESOURCE_ATTRIBUTES = "OTEL_RESOURCE_ATTRIBUTES";
