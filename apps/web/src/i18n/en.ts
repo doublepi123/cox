@@ -1,4 +1,9 @@
 export const en = {
+  "Skipped runs kept": "Skipped runs kept",
+  "How many skipped runs each workflow keeps in its history. Older skipped runs are deleted; runs that did something are always kept.":
+    "How many skipped runs each workflow keeps in its history. Older skipped runs are deleted; runs that did something are always kept.",
+  "workflow history retention delete old skipped runs webhook":
+    "workflow history retention delete old skipped runs webhook",
   ", or ask an agent to.": ", or ask an agent to.",
   "Line {line}:": "Line {line}:",
   "Leave without saving? Your changes to this file are lost.":

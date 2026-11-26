@@ -155,6 +155,11 @@ export const zh = {
     "运行此服务器 Cox 主目录中的工作流。可从命令面板打开工作流。关闭后，运行将暂停等待，直到重新启用。",
   "beta workflow durable runs automation steps schedule webhook folder":
     "测试版 工作流 持久运行 自动化 步骤 计划 Webhook 文件夹",
+  "Skipped runs kept": "保留的已跳过运行数",
+  "How many skipped runs each workflow keeps in its history. Older skipped runs are deleted; runs that did something are always kept.":
+    "每个工作流在历史记录中保留的已跳过运行数。较早的已跳过运行会被删除，实际执行过的运行始终保留。",
+  "workflow history retention delete old skipped runs webhook":
+    "工作流 历史 保留 删除 已跳过的运行 Webhook",
   workflows: "工作流",
   "Open workflows": "打开工作流",
   "Step of the workflow run": "工作流运行的步骤",

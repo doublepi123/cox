@@ -70,6 +70,7 @@ describe("V2 preview upgrade", () => {
         [88, "ProjectionTurnItemMessageIndex"],
         [89, "AgentFeedback"],
         [90, "SupersededRunAttemptIndex"],
+        [91, "WorkflowSkippedRuns"],
       ]);
       assert.deepStrictEqual(yield* runMigrations(), []);
       assert.deepStrictEqual(yield* sql`SELECT * FROM orchestration_v2_legacy_imports`, imports);
@@ -183,6 +184,7 @@ describe("V2 preview upgrade", () => {
         [88, "ProjectionTurnItemMessageIndex"],
         [89, "AgentFeedback"],
         [90, "SupersededRunAttemptIndex"],
+        [91, "WorkflowSkippedRuns"],
       ]);
     }).pipe(Effect.provide(NodeSqliteClient.layer({ filename: ":memory:" }))),
   );

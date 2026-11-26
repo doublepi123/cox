@@ -98,6 +98,7 @@ import Migration0087 from "./Migrations/087_ProjectionRunStatusIndex.ts";
 import Migration0088 from "./Migrations/088_ProjectionTurnItemMessageIndex.ts";
 import Migration0089 from "./Migrations/089_AgentFeedback.ts";
 import Migration0090 from "./Migrations/090_SupersededRunAttemptIndex.ts";
+import Migration0091 from "./Migrations/091_WorkflowSkippedRuns.ts";
 
 const migrationEntries = [
   [1, "OrchestrationEvents", Migration0001],
@@ -191,6 +192,7 @@ const migrationEntries = [
   [88, "ProjectionTurnItemMessageIndex", Migration0088],
   [89, "AgentFeedback", Migration0089],
   [90, "SupersededRunAttemptIndex", Migration0090],
+  [91, "WorkflowSkippedRuns", Migration0091],
 ] as const;
 
 export const migrationManifest = migrationEntries.map(([id, name]) => [id, name] as const);

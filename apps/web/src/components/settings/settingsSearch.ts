@@ -568,6 +568,15 @@ export const SETTINGS_SEARCH_ITEMS = [
     searchTerms: ["stacked split side by side unified inline view"],
   },
   {
+    id: "workflow-skipped-runs",
+    title: "Skipped runs kept",
+    to: "/settings/labs",
+    // Shown only while workflows are on, so search lands on the switch that turns them on.
+    targetId: "workflows-beta",
+    scope: "environment",
+    searchTerms: ["workflow history retention delete old skipped runs webhook"],
+  },
+  {
     id: "proactive-panels",
     title: "Open pull requests and changes panels proactively",
     to: "/settings/diffs",

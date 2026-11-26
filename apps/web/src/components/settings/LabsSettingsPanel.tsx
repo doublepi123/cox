@@ -1,13 +1,27 @@
 import { useTranslation } from "../../i18n";
-import { ToolCallVisibility } from "@t3tools/contracts/settings";
+import {
+  DEFAULT_WORKFLOW_SKIPPED_RUNS_KEPT,
+  MAX_WORKFLOW_SKIPPED_RUNS_KEPT,
+  ToolCallVisibility,
+} from "@t3tools/contracts/settings";
 import * as Schema from "effect/Schema";
+import { NumberField, NumberFieldGroup, NumberFieldInput } from "../ui/number-field";
 import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "../ui/select";
 import { Switch } from "../ui/switch";
-import { SettingsPageContainer, SettingsRow, SettingsSection } from "./settingsLayout";
+import {
+  SettingResetButton,
+  SettingsPageContainer,
+  SettingsRow,
+  SettingsSection,
+} from "./settingsLayout";
 import { searchableSetting } from "./settingsSearch";
 import { LegacyFeaturesSection } from "./SettingsPanels";
 import { ComputerControlSettingsSection } from "./ComputerControlSettingsSection";
-import { useScopedSettings, useUpdateScopedSettings } from "./useScopedSettings";
+import {
+  useScopedSettings,
+  useScopedSettingsMixed,
+  useUpdateScopedSettings,
+} from "./useScopedSettings";
 
 export function LabsSettingsPanel() {
   const { t: translateUi } = useTranslation();
@@ -19,6 +33,7 @@ export function LabsSettingsPanel() {
         <BoringSidebarMultilineRow />
         <PromptSuggestionsRow />
         <WorkflowsRow />
+        <WorkflowSkippedRunsRow />
         <ToolCallVisibilityRow />
       </SettingsSection>
       <LegacyFeaturesSection />
@@ -42,6 +57,59 @@ function WorkflowsRow() {
           onCheckedChange={(checked) => updateSettings({ workflowsEnabled: Boolean(checked) })}
           aria-label={t("Workflows")}
         />
+      }
+    />
+  );
+}
+
+const NO_GROUPING: Intl.NumberFormatOptions = { useGrouping: false };
+
+export function WorkflowSkippedRunsRow() {
+  const settings = useScopedSettings();
+  const updateSettings = useUpdateScopedSettings();
+  const mixed = useScopedSettingsMixed(["workflowSkippedRunsKept"]);
+  const { t } = useTranslation();
+  if (!settings.workflowsEnabled) return null;
+  const kept = settings.workflowSkippedRunsKept;
+  return (
+    <SettingsRow
+      serverScoped
+      {...searchableSetting("workflow-skipped-runs")}
+      settingKeys={["workflowSkippedRunsKept"]}
+      description={t(
+        "How many skipped runs each workflow keeps in its history. Older skipped runs are deleted; runs that did something are always kept.",
+      )}
+      resetAction={
+        mixed || kept !== DEFAULT_WORKFLOW_SKIPPED_RUNS_KEPT ? (
+          <SettingResetButton
+            label="Skipped runs kept"
+            onClick={() =>
+              updateSettings({ workflowSkippedRunsKept: DEFAULT_WORKFLOW_SKIPPED_RUNS_KEPT })
+            }
+          />
+        ) : null
+      }
+      control={
+        <div className="w-24">
+          <NumberField
+            value={mixed ? null : kept}
+            min={0}
+            max={MAX_WORKFLOW_SKIPPED_RUNS_KEPT}
+            format={NO_GROUPING}
+            size="sm"
+            onValueCommitted={(value) => {
+              if (value === null || !Number.isInteger(value) || (!mixed && value === kept)) return;
+              updateSettings({ workflowSkippedRunsKept: value });
+            }}
+          >
+            <NumberFieldGroup>
+              <NumberFieldInput
+                aria-label={t("Skipped runs kept")}
+                placeholder={mixed ? t("Mixed") : undefined}
+              />
+            </NumberFieldGroup>
+          </NumberField>
+        </div>
       }
     />
   );
