@@ -75,6 +75,7 @@ import * as RuntimePolicy from "./RuntimePolicy.ts";
 import {
   isRestartNoteContinuation,
   pendingRestartCancelledBackgroundWork,
+  cohortWasStopped,
   pendingStoppedDelegatedTasks,
   restartCancelledBackgroundWorkNote,
   stoppedDelegatedTasksNote,
@@ -964,9 +965,7 @@ export const layer: Layer.Layer<
       // A failed read fails the start: a turn that ran without the note would count as telling it.
       const stoppedRunIds = projection.runs
         .filter(
-          (source) =>
-            source.providerThreadId === run.providerThreadId &&
-            source.delegatedCompletion?.disposition === "stopped",
+          (source) => source.providerThreadId === run.providerThreadId && cohortWasStopped(source),
         )
         .map((source) => source.id);
       const stoppedTasks =
