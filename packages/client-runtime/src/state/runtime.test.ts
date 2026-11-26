@@ -663,7 +663,11 @@ describe("environment query lifecycle", () => {
         }),
       );
 
-      const expected = { ...input, maxHistoryBytes: 512 * 1024 };
+      const expected = {
+        ...input,
+        maxHistoryBytes: 512 * 1024,
+        supportsSnapshotSequenceState: true,
+      };
       expect(yield* Queue.take(inputs)).toEqual(expected);
       yield* SubscriptionRef.set(harness.supervisorSession, Option.some({ ...firstSession }));
       expect(yield* Queue.take(inputs)).toEqual(expected);

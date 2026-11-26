@@ -1,4 +1,11 @@
-import { retainedTerminalHistory } from "@t3tools/contracts";
+import {
+  retainTerminalSnapshotHistory,
+  skipTerminalSnapshotContinuation,
+  TERMINAL_SEQUENCE_GROUND,
+  type TerminalSessionSnapshot,
+  terminalSequenceEnd,
+  terminalSequenceStateAfter,
+} from "@t3tools/contracts";
 
 export interface TerminalOutputChunk {
   readonly startOffset: number;
@@ -12,6 +19,8 @@ export interface TerminalOutputState {
   readonly retainedBytes: number;
   readonly resetVersion: number;
   readonly nextOffset: number;
+  readonly sequenceState: number;
+  readonly pendingSnapshotSequenceState?: number | undefined;
   /** Chunks before this offset are replayed to emulators but are no longer displayed text. */
   readonly textStartOffset: number;
 }
@@ -56,6 +65,7 @@ export const EMPTY_TERMINAL_OUTPUT_STATE = Object.freeze<TerminalOutputState>({
   retainedBytes: 0,
   resetVersion: 0,
   nextOffset: 0,
+  sequenceState: TERMINAL_SEQUENCE_GROUND,
   textStartOffset: 0,
 });
 
@@ -170,6 +180,27 @@ function appendOutput(
   data: string,
   maxBufferBytes: number,
 ): TerminalOutputState {
+  const pending = current.pendingSnapshotSequenceState;
+  if (pending === undefined || data.length === 0) {
+    return appendRetainedOutput(current, data, maxBufferBytes);
+  }
+  const continuation = skipTerminalSnapshotContinuation(pending, data);
+  return appendRetainedOutput(
+    {
+      ...current,
+      pendingSnapshotSequenceState:
+        continuation.state === TERMINAL_SEQUENCE_GROUND ? undefined : continuation.state,
+    },
+    continuation.data,
+    maxBufferBytes,
+  );
+}
+
+function appendRetainedOutput(
+  current: TerminalOutputState,
+  data: string,
+  maxBufferBytes: number,
+): TerminalOutputState {
   if (data.length === 0) return current;
   if (maxBufferBytes <= 0) {
     return {
@@ -178,6 +209,7 @@ function appendOutput(
       retainedBytes: 0,
       resetVersion: current.resetVersion + 1,
       nextOffset: current.nextOffset + data.length,
+      sequenceState: TERMINAL_SEQUENCE_GROUND,
       textStartOffset: current.textStartOffset,
     };
   }
@@ -189,12 +221,19 @@ function appendOutput(
 
   const chunks = [...current.chunks, ...appended.chunks];
   let retainedBytes = current.retainedBytes + appended.byteLength;
+  let sequenceState = current.sequenceState;
   let firstRetainedIndex = 0;
   while (retainedBytes > maxBufferBytes && firstRetainedIndex < chunks.length) {
     const first = chunks[firstRetainedIndex]!;
     const bytesToDrop = retainedBytes - maxBufferBytes;
     if (bytesToDrop < first.byteLength) {
       const trimmed = trimOutputChunkStart(first, bytesToDrop);
+      sequenceState = terminalSequenceStateAfter(
+        sequenceState,
+        first.data,
+        0,
+        first.data.length - trimmed.data.length,
+      );
       retainedBytes -= first.byteLength - trimmed.byteLength;
       if (trimmed.byteLength > 0) {
         chunks[firstRetainedIndex] = trimmed;
@@ -203,6 +242,7 @@ function appendOutput(
       }
       break;
     }
+    sequenceState = terminalSequenceStateAfter(sequenceState, first.data);
     retainedBytes -= first.byteLength;
     firstRetainedIndex += 1;
   }
@@ -213,6 +253,7 @@ function appendOutput(
     const excessChunks = retainedChunks.length - MAX_TERMINAL_OUTPUT_CHUNKS;
     if (excessChunks > 0) {
       for (const chunk of retainedChunks.slice(0, excessChunks)) {
+        sequenceState = terminalSequenceStateAfter(sequenceState, chunk.data);
         retainedBytes -= chunk.byteLength;
       }
       retainedChunks = retainedChunks.slice(excessChunks);
@@ -225,18 +266,19 @@ function appendOutput(
     retainedBytes,
     resetVersion: current.resetVersion,
     nextOffset: appended.nextOffset,
+    sequenceState,
     textStartOffset: current.textStartOffset,
   };
 }
 
 function resetOutput(
   current: TerminalOutputState,
-  data: string,
+  snapshot: Pick<TerminalSessionSnapshot, "history" | "historySequenceState">,
   maxBufferBytes: number,
 ): TerminalOutputState {
-  const retained = retainedTerminalHistory(data, maxBufferBytes);
+  const retained = retainTerminalSnapshotHistory(snapshot.history, maxBufferBytes);
   const reset = splitOutputChunks(
-    retained,
+    retained.history,
     0,
     Math.min(DEFAULT_TERMINAL_CHUNK_BYTES, Math.max(1, maxBufferBytes)),
   );
@@ -246,6 +288,8 @@ function resetOutput(
     retainedBytes: reset.byteLength,
     resetVersion: current.resetVersion + 1,
     nextOffset: reset.nextOffset,
+    sequenceState: TERMINAL_SEQUENCE_GROUND,
+    pendingSnapshotSequenceState: snapshot.historySequenceState ?? retained.historySequenceState,
     textStartOffset: 0,
   };
 }
@@ -258,7 +302,7 @@ const CLEAR_TERMINAL_TEXT = "\u001b[H\u001b[2J\u001b[3J";
 function clearOutput(current: TerminalOutputState, maxBufferBytes: number): TerminalOutputState {
   // The erase rides over the budget: trimming here would evict the output that set those modes.
   const cleared = appendOutput(
-    current,
+    { ...current, pendingSnapshotSequenceState: undefined },
     CLEAR_TERMINAL_TEXT,
     maxBufferBytes <= 0
       ? maxBufferBytes
@@ -267,16 +311,19 @@ function clearOutput(current: TerminalOutputState, maxBufferBytes: number): Term
   return { ...cleared, textStartOffset: cleared.nextOffset };
 }
 
-/** Everything retained, for an emulator that is fed the whole history. */
+/** Everything a fresh emulator replays: retained output from outside any control sequence. */
 export function terminalOutputReplay(output: TerminalOutputState): string {
-  return output.chunks.map((chunk) => chunk.data).join("");
+  const text = output.chunks.map((chunk) => chunk.data).join("");
+  return text.slice(terminalSequenceEnd(output.sequenceState, text));
 }
 
 /** The output as plain text, for surfaces that do not interpret escape sequences. */
 export function terminalOutputText(output: TerminalOutputState): string {
-  return output.chunks
-    .map((chunk) => chunk.data.slice(Math.max(0, output.textStartOffset - chunk.startOffset)))
-    .join("");
+  const text = output.chunks.map((chunk) => chunk.data).join("");
+  const firstOffset = output.chunks[0]?.startOffset ?? output.nextOffset;
+  return text.slice(
+    Math.max(terminalSequenceEnd(output.sequenceState, text), output.textStartOffset - firstOffset),
+  );
 }
 
 export function readTerminalOutputUpdate(
