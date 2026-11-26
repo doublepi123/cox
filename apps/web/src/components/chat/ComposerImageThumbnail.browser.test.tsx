@@ -1,6 +1,6 @@
 import { expect, it, vi } from "vite-plus/test";
 
-import { act, render } from "../../../test/render";
+import { act, render, stubGlobal } from "../../../test/render";
 import { createComposerImageThumbnail } from "../../lib/imageCompression";
 import { ComposerImageThumbnail } from "./ComposerImageThumbnail";
 
@@ -13,7 +13,12 @@ it("keeps a native preview available after thumbnail generation has failed", asy
   using _bitmap = vi
     .spyOn(window, "createImageBitmap")
     .mockRejectedValue(new Error("Thumbnail decoder unavailable"));
-  expect(await createComposerImageThumbnail(file)).toBeNull();
+  vi.stubGlobal("Worker", undefined);
+  try {
+    expect(await createComposerImageThumbnail(file)).toBeNull();
+  } finally {
+    vi.unstubAllGlobals();
+  }
 
   const container = document.createElement("div");
   const holdLoad = (event: Event) => event.stopPropagation();
@@ -79,6 +84,7 @@ it("loads the local image before the generated thumbnail is ready", async () => 
     resolveThumbnail = resolve;
   });
   const bitmap = await createImageBitmap(file);
+  using _worker = stubGlobal("Worker", undefined);
   using _bitmap = vi.spyOn(window, "createImageBitmap").mockReturnValue(generate);
   await using screen = await render(
     <ComposerImageThumbnail
