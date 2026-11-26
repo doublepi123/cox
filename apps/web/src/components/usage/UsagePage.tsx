@@ -1,4 +1,4 @@
-import { useTranslation } from "../../i18n";
+import { useFormattingLocale, useTranslation } from "../../i18n";
 import { ChatGptUsageButton } from "../settings/ChatGptUsageButton";
 import { usesChatGptSharing } from "@t3tools/shared/usageLimits";
 import { RefreshIcon } from "~/components/ui/refresh-icon";
@@ -177,6 +177,7 @@ function UsageModelDialogHost({
 
 export function UsagePage() {
   const { t } = useTranslation();
+  const locale = useFormattingLocale() ?? new Intl.DateTimeFormat().resolvedOptions().locale;
   const [preferences, setPreferences] = useState(readUsagePagePreferences);
   const keybindings = useAtomValue(primaryServerKeybindingsAtom);
   const hour12 = usePrimarySettings((settings) => resolveHour12(settings.timestampFormat));
@@ -356,7 +357,7 @@ export function UsagePage() {
 
   const windowLabel =
     shownHourly && shownWindow.sinceTime !== undefined && shownWindow.untilTime !== undefined
-      ? `${formatDateTimeShort(shownWindow.sinceTime, shownWindow.timeZone, hour12)} to ${formatDateTimeShort(shownWindow.untilTime, shownWindow.timeZone, hour12)}`
+      ? `${formatDateTimeShort(shownWindow.sinceTime, shownWindow.timeZone, hour12, locale)} to ${formatDateTimeShort(shownWindow.untilTime, shownWindow.timeZone, hour12, locale)}`
       : `${formatDayShort(shownWindow.sinceDay)} to ${formatDayShort(shownWindow.untilDay)}`;
   const topbarContent = (
     <div className="grid w-full min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 py-2 @4xl/usage-header:flex">
@@ -618,6 +619,7 @@ function UsageOverview({
   readonly onSelectModel: (key: string) => void;
 }) {
   const { t } = useTranslation();
+  const locale = useFormattingLocale() ?? new Intl.DateTimeFormat().resolvedOptions().locale;
   const [breakdown, setBreakdown] = useState<"model" | "time">("model");
   const shownHourly = shownWindow.resolution === "hour";
   const loading = usageLoading(showingKept, selectedEnvironments, refreshingUsage, hiddenProviders);
@@ -992,7 +994,7 @@ function UsageOverview({
                     >
                       <td className="py-2 pl-2 text-foreground">
                         {"hourStart" in period
-                          ? formatHourShort(period.hourStart, shownWindow.timeZone, hour12)
+                          ? formatHourShort(period.hourStart, shownWindow.timeZone, hour12, locale)
                           : formatDayShort(period.day)}
                       </td>
                       {activeProviders.map((provider) => (
