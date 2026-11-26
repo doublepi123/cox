@@ -9,6 +9,7 @@ import {
   type UnifiedSettings,
 } from "@t3tools/contracts";
 import { AsyncResult, type Atom } from "effect/reactivity";
+import * as Duration from "effect/Duration";
 import type { ReactNode } from "react";
 import { describe, expect, it, vi } from "vite-plus/test";
 import { page, userEvent } from "vite-plus/test/browser";
@@ -271,6 +272,39 @@ async function phoneViewport() {
 }
 
 describe("EnvironmentProviderSettings routing", () => {
+  it("commits the provider health interval on Enter and preserves input focus", async () => {
+    await setup();
+    await using _screen = await render(panel());
+    const input = page.getByRole("textbox", { name: "Provider health check interval in seconds" });
+    await input.fill("120");
+    const writesBeforeEnter = state.updateSettings.mock.calls.length;
+    for (const composition of [
+      { isComposing: true, keyCode: 13 },
+      { isComposing: false, keyCode: 229 },
+    ]) {
+      await act(() =>
+        input.element().dispatchEvent(
+          new KeyboardEvent("keydown", {
+            key: "Enter",
+            bubbles: true,
+            cancelable: true,
+            ...composition,
+          }),
+        ),
+      );
+    }
+    expect(state.updateSettings).toHaveBeenCalledTimes(writesBeforeEnter);
+    await userEvent.keyboard("{Enter}");
+    await expect.element(input).toHaveFocus();
+    expect(state.updateSettings).toHaveBeenLastCalledWith({
+      backgroundActivity: expect.objectContaining({
+        overrides: expect.objectContaining({
+          providerHealthRefreshInterval: Duration.seconds(120),
+        }),
+      }),
+    });
+  });
+
   it.each([
     ["error", "连接失败"],
     ["reconnecting", "重新连接中…"],

@@ -13,6 +13,7 @@ import {
   useUpdateScopedSettings,
 } from "./useScopedSettings";
 import { useSettingsScope } from "./SettingsScopeContext";
+import { commitNumberFieldOnEnter } from "./commitNumberFieldOnEnter";
 import { Button } from "../ui/button";
 import {
   Dialog,
@@ -209,7 +210,10 @@ function BackgroundActivityAdvancedDialog({
                   >
                     <NumberFieldGroup>
                       <NumberFieldDecrement aria-label={t("Decrease Git fetch interval")} />
-                      <NumberFieldInput aria-label={t("Git fetch interval in seconds")} />
+                      <NumberFieldInput
+                        aria-label={t("Git fetch interval in seconds")}
+                        onKeyDown={commitNumberFieldOnEnter}
+                      />
                       <NumberFieldIncrement aria-label={t("Increase Git fetch interval")} />
                     </NumberFieldGroup>
                   </NumberField>
@@ -250,7 +254,10 @@ function BackgroundActivityAdvancedDialog({
                   >
                     <NumberFieldGroup>
                       <NumberFieldDecrement aria-label={t("Decrease provider health interval")} />
-                      <NumberFieldInput aria-label={t("Provider health interval in seconds")} />
+                      <NumberFieldInput
+                        aria-label={t("Provider health interval in seconds")}
+                        onKeyDown={commitNumberFieldOnEnter}
+                      />
                       <NumberFieldIncrement aria-label={t("Increase provider health interval")} />
                     </NumberFieldGroup>
                   </NumberField>
@@ -289,7 +296,10 @@ function BackgroundActivityAdvancedDialog({
                   >
                     <NumberFieldGroup>
                       <NumberFieldDecrement aria-label={t("Decrease active host power interval")} />
-                      <NumberFieldInput aria-label={t("Active host power interval in seconds")} />
+                      <NumberFieldInput
+                        aria-label={t("Active host power interval in seconds")}
+                        onKeyDown={commitNumberFieldOnEnter}
+                      />
                       <NumberFieldIncrement aria-label={t("Increase active host power interval")} />
                     </NumberFieldGroup>
                   </NumberField>
@@ -328,7 +338,10 @@ function BackgroundActivityAdvancedDialog({
                   >
                     <NumberFieldGroup>
                       <NumberFieldDecrement aria-label={t("Decrease idle host power interval")} />
-                      <NumberFieldInput aria-label={t("Idle host power interval in seconds")} />
+                      <NumberFieldInput
+                        aria-label={t("Idle host power interval in seconds")}
+                        onKeyDown={commitNumberFieldOnEnter}
+                      />
                       <NumberFieldIncrement aria-label={t("Increase idle host power interval")} />
                     </NumberFieldGroup>
                   </NumberField>

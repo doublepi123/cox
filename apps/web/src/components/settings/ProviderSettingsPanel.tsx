@@ -1,3 +1,4 @@
+import { commitNumberFieldOnEnter } from "./commitNumberFieldOnEnter";
 import { translateCurrent, useTranslation } from "../../i18n";
 import { SettingsGroup } from "./SettingsGroup";
 import { RefreshIcon } from "~/components/ui/refresh-icon";
@@ -1175,7 +1176,10 @@ export function EnvironmentProviderSettings({
                     <NumberFieldDecrement
                       aria-label={t("Decrease provider health check interval")}
                     />
-                    <NumberFieldInput aria-label={t("Provider health check interval in seconds")} />
+                    <NumberFieldInput
+                      aria-label={t("Provider health check interval in seconds")}
+                      onKeyDown={commitNumberFieldOnEnter}
+                    />
                     <NumberFieldIncrement
                       aria-label={t("Increase provider health check interval")}
                     />
