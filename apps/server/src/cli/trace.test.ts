@@ -1,5 +1,6 @@
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, it } from "@effect/vitest";
+import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
@@ -41,21 +42,28 @@ function browserSpan(
 }
 
 it("drops spans that ended before the window and counts unreadable lines", () => {
-  const summarizer = makeTraceSpanSummary(MINUTE_MS);
+  const nowMs = Date.UTC(2026, 10, 24);
+  const cutoff = BigInt(nowMs) * 1_000_000n - 1n;
+  const summarizer = makeTraceSpanSummary({ nowMs, duration: Duration.nanos(1n) });
   [
     span("old", 1, 0),
+    JSON.stringify({
+      name: "just-before",
+      durationMs: 1,
+      endTimeUnixNano: String(cutoff - 1n),
+    }),
     "",
     "{not json",
     JSON.stringify({ name: "no-duration" }),
     JSON.stringify({ name: "far-future", durationMs: 1, endTimeUnixNano: "9".repeat(22) }),
-    span("recent", 4, 5 * MINUTE_MS),
+    JSON.stringify({ name: "at-cutoff", durationMs: 4, endTimeUnixNano: String(cutoff) }),
   ].forEach(summarizer.addLine);
   const summary = summarizer.finish();
 
   assert.strictEqual(summary.skippedLineCount, 3);
   assert.deepStrictEqual(
     summary.spans.map((entry) => [entry.name, entry.count, entry.perMinute]),
-    [["recent", 1, undefined]],
+    [["at-cutoff", 1, undefined]],
   );
 });
 
@@ -96,7 +104,10 @@ it.effect("prints exact dates while keeping sub-millisecond windows and rates", 
     const lines = ["1795478399998000000", "1795478399998999950", "1795478399999999999"].map(
       (endTimeUnixNano) => JSON.stringify({ name: "rpc", durationMs: 1, endTimeUnixNano }),
     );
-    const summarizer = makeTraceSpanSummary(1_795_478_399_998.25);
+    const summarizer = makeTraceSpanSummary({
+      nowMs: 1_795_478_400_000,
+      duration: Duration.millis(1.75),
+    });
     lines.forEach(summarizer.addLine);
     const summary = summarizer.finish();
     assert.strictEqual(summary.spanCount, 2);
@@ -114,8 +125,8 @@ it.effect("prints exact dates while keeping sub-millisecond windows and rates", 
   }).pipe(Effect.provide(services), Effect.scoped),
 );
 
-it("keeps reading end times in other numeric spellings", () => {
-  const summarizer = makeTraceSpanSummary();
+it("includes an end time in scientific notation at the window boundary", () => {
+  const summarizer = makeTraceSpanSummary({ nowMs: 1_795_478_400_001, duration: Duration.zero });
   summarizer.addLine(
     JSON.stringify({ name: "rpc", durationMs: 1, endTimeUnixNano: "1795478400001e6" }),
   );
