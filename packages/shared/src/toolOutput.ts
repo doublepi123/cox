@@ -21,6 +21,7 @@ const MAX_PARSED_BYTES = 16_384;
 const MAX_METADATA_BYTES = 8_192;
 const MAX_ID_LENGTH = 256;
 const MAX_THREADS = 100;
+const MAX_PULL_REQUEST_ITEMS = 100;
 const MAX_CONTENT_BLOCKS = 32;
 const MAX_ENVELOPE_DEPTH = 4;
 const MAX_ENVELOPE_NODES = 128;
@@ -50,6 +51,7 @@ interface CompactToolOutput {
   threads?: Array<{ threadId?: string; status?: "rolled_back" }>;
   linkedCount?: number;
   unlinkedCount?: number;
+  guides?: Array<{ outcome: "started" | "running" | "failed" }>;
 }
 
 function readResult(value: unknown, budget: ResultReadBudget, depth = 0): ResultEnvelope {
@@ -122,6 +124,20 @@ function boundedId(value: unknown): string | undefined {
   return Array.from(value).join("");
 }
 
+function readEntries<T>(
+  value: unknown,
+  read: (entry: { readonly [key: string]: unknown }) => T | undefined,
+): T[] | undefined {
+  if (!Array.isArray(value) || value.length > MAX_PULL_REQUEST_ITEMS) return undefined;
+  const entries: T[] = [];
+  for (const entry of value) {
+    const compact = Predicate.isObject(entry) ? read(entry) : undefined;
+    if (compact === undefined) return undefined;
+    entries.push(compact);
+  }
+  return entries;
+}
+
 export function compactDynamicToolOutput(value: unknown): CompactToolOutput | undefined {
   const budget: ResultReadBudget = {
     remainingBytes: MAX_PARSED_BYTES,
@@ -141,6 +157,12 @@ export function compactDynamicToolOutput(value: unknown): CompactToolOutput | un
       const count = data[key];
       if (typeof count === "number" && Number.isSafeInteger(count)) output[key] = count;
     }
+    const guides = readEntries(data.guides, (entry) =>
+      entry.outcome === "started" || entry.outcome === "running" || entry.outcome === "failed"
+        ? ({ outcome: entry.outcome } as const)
+        : undefined,
+    );
+    if (guides !== undefined) output.guides = guides;
     const htmlRender = readHtmlRenderReference(data.htmlRender);
     if (htmlRender !== undefined) output.htmlRender = htmlRender;
     const mcpApp = readMcpAppReference(data[MCP_APP_OUTPUT_KEY]);
@@ -184,6 +206,7 @@ export function compactDynamicToolOutput(value: unknown): CompactToolOutput | un
     delete output.threads;
     delete output.threadId;
     delete output.status;
+    delete output.guides;
   }
   const app = output[MCP_APP_OUTPUT_KEY];
   if (app?.csp !== undefined && oversized()) {

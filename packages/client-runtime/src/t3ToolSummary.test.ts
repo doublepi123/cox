@@ -1,3 +1,4 @@
+import { compactCoxMcpToolOutput } from "@t3tools/shared/toolOutput";
 import { describe, expect, it } from "vite-plus/test";
 
 import { summarizeT3ToolCalls, type T3ToolSummaryCall } from "./t3ToolSummary.ts";
@@ -7,6 +8,22 @@ function completed(input: unknown, output?: unknown): T3ToolSummaryCall {
 }
 
 describe("summarizeT3ToolCalls", () => {
+  it("preserves mixed guide outcomes after MCP compaction", () => {
+    const call = completed(
+      {},
+      compactCoxMcpToolOutput("cox.write_pull_request_guides", {
+        guides: [
+          { number: 1, outcome: "started", detail: null },
+          { number: 2, outcome: "failed", detail: "Private error" },
+        ],
+      }),
+    );
+    expect(summarizeT3ToolCalls("write-pr-guides", [call])).toEqual({
+      label: "Started 1 review guide, 1 failed",
+      failedCount: 1,
+    });
+  });
+
   it("reads provider result envelopes without treating JSON in the message as result data", () => {
     const result = { messageId: "message-1", threadId: "actual-thread" };
     const json = JSON.stringify(result);

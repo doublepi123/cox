@@ -1,3 +1,4 @@
+import { compactCoxMcpToolOutput } from "@t3tools/shared/toolOutput";
 import { describe, expect, it } from "vite-plus/test";
 
 import { ThreadId, TurnItemId, type OrchestrationV2TurnItem } from "@t3tools/contracts";
@@ -109,6 +110,22 @@ describe("workEntryIndicatesToolFailure", () => {
 });
 
 describe("resolveWorkEntryToolPresentation", () => {
+  it("names a failed guide in its completed activity row", () => {
+    const displayName = resolveWorkEntryToolPresentation({
+      label: "cox.write_pull_request_guides",
+      toolLifecycleStatus: "completed",
+      toolData: {
+        output: compactCoxMcpToolOutput("cox.write_pull_request_guides", {
+          guides: [
+            { number: 1, outcome: "started", detail: null },
+            { number: 2, outcome: "failed", detail: "Private error" },
+          ],
+        }),
+      },
+    })?.displayName;
+    expect(displayName).toBe("Started 1 review guide, 1 failed");
+  });
+
   it("shows returned MCP errors as failures even in the live activity row", () => {
     const entry: WorkLogPresentationEntry = {
       id: "clone",

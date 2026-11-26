@@ -11,6 +11,22 @@ import {
 } from "./toolOutput.ts";
 
 describe("compactDynamicToolOutput", () => {
+  it("retains guide outcomes without private detail or partial batches", () => {
+    expect(
+      compactDynamicToolOutput({
+        guides: [
+          { number: 1, outcome: "started", detail: null },
+          { number: 2, outcome: "failed", detail: "Private error" },
+        ],
+      }),
+    ).toEqual({
+      guides: [{ outcome: "started" }, { outcome: "failed" }],
+    });
+    expect(
+      compactDynamicToolOutput({ guides: [{ outcome: "started" }, { outcome: "unknown" }] }),
+    ).toBeUndefined();
+  });
+
   it("extracts IDs through the MCP result envelopes used by T3 summaries", () => {
     const metadata = { threadId: "thread-1", messageId: "message-1" };
     const json = JSON.stringify({ ...metadata, response: "Private response body" });

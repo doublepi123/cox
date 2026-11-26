@@ -68,6 +68,17 @@ export function t3ToolResultIndicatesFailure(output: unknown): boolean {
   return readResult(output).failed;
 }
 
+export function t3ToolOutcomeLabel(
+  action: T3McpToolSummaryAction,
+  call: T3ToolSummaryCall,
+): string | undefined {
+  if (action !== "write-pr-guides") return undefined;
+  const guides = readResult(call.output).data?.guides;
+  return Array.isArray(guides) && guides.some((guide) => asRecord(guide)?.outcome === "failed")
+    ? summarizeT3ToolCalls(action, [call]).label
+    : undefined;
+}
+
 function countEntities(ids: ReadonlyArray<string | undefined>): number {
   return (
     new Set(ids.filter((value) => value !== undefined)).size +
