@@ -56,6 +56,8 @@ export const en = {
     "{count} malformed or inconsistent usage records were skipped; usage may be incomplete.",
   "0 bytes": "0 bytes",
   "{count} matches": "{count} matches",
+  "{terminalLabel} line {lineStart}": "{terminalLabel} line {lineStart}",
+  "{terminalLabel} lines {lineStart}-{lineEnd}": "{terminalLabel} lines {lineStart}-{lineEnd}",
   "Saved on this device. Select All projects to change it.":
     "Saved on this device. Select All projects to change it.",
   "Terminal input": "Terminal input",
