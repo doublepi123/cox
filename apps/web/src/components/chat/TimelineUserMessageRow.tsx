@@ -624,8 +624,10 @@ function UserTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "message" 
     // Claim the copy: without preventDefault the browser default overwrites the
     // custom MIME type. The default content must then be written back explicitly.
     const payload = chatMarkdownClipboardPayload(selection);
+    const text = payload?.text ?? selection.toString();
+    rememberCopiedComposerContext(text, fragment);
     event.preventDefault();
-    event.clipboardData.setData("text/plain", payload?.text ?? selection.toString());
+    event.clipboardData.setData("text/plain", text);
     if (payload) {
       event.clipboardData.setData(
         "text/html",
@@ -1230,3 +1232,4 @@ const UserMessageBody = memo(function UserMessageBody(props: {
     />
   );
 });
+import { rememberCopiedComposerContext } from "../composerInlineTokenPaste";

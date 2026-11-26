@@ -5,6 +5,7 @@ import {
   encodeComposerContextClipboardHtml,
 } from "@t3tools/shared/composerContextClipboard";
 import { useStableCallback } from "./useStableCallback";
+import { rememberCopiedComposerContext } from "../components/composerInlineTokenPaste";
 
 export class ClipboardApiUnavailableError extends Schema.TaggedError<ClipboardApiUnavailableError>()(
   "ClipboardApiUnavailableError",
@@ -128,7 +129,10 @@ export async function writeTextToClipboard(
     };
 
   if (typeof navigator === "undefined" || !navigator.clipboard?.writeText) {
-    if (writeTextWithExecCommand(value, extraFlavors, options?.requireHtml)) return true;
+    if (writeTextWithExecCommand(value, extraFlavors, options?.requireHtml)) {
+      rememberCopiedComposerContext(value, contextFragment);
+      return true;
+    }
     throw new ClipboardApiUnavailableError({
       target,
     });
@@ -148,6 +152,7 @@ export async function writeTextToClipboard(
             ),
           }),
         ]);
+        rememberCopiedComposerContext(value, contextFragment);
         return true;
       } catch {
         // Safari/native bridges may accept HTML but reject Chromium's custom web flavor.
@@ -160,16 +165,21 @@ export async function writeTextToClipboard(
                 "text/html": new Blob([html], { type: "text/html" }),
               }),
             ]);
+            rememberCopiedComposerContext(value, contextFragment);
             return true;
           } catch {}
         }
       }
     }
     if (options?.requireHtml) {
-      if (writeTextWithExecCommand(value, extraFlavors, true)) return true;
+      if (writeTextWithExecCommand(value, extraFlavors, true)) {
+        rememberCopiedComposerContext(value, contextFragment);
+        return true;
+      }
       throw new Error("HTML clipboard writing is unavailable or was rejected");
     }
     await navigator.clipboard.writeText(value);
+    rememberCopiedComposerContext(value, contextFragment);
     return true;
   } catch (cause) {
     throw new ClipboardWriteError({

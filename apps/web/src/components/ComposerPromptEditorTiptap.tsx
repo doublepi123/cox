@@ -136,7 +136,10 @@ import type { AssistantCitationSourceAnchor } from "~/lib/assistantTextSelection
 import { ComposerCodeBlockNodeView } from "./chat/ComposerCodeBlockNodeView";
 import { resolveAssistantCitationCommentDismissal } from "./chat/assistantCitationCommentDismissal";
 import { composerCodeBlockHighlight } from "./composerCodeBlockHighlight";
-import { importPastedComposerText } from "./composerInlineTokenPaste";
+import {
+  importPastedComposerText,
+  rememberCopiedComposerContext,
+} from "./composerInlineTokenPaste";
 import { didComposerSelectionChangeVisibly } from "./composerSelection";
 import {
   captureComposerAttachmentInsertion,
@@ -1880,6 +1883,7 @@ function ComposerPromptEditorTiptapInner(
     const text = serializeSelection(editor.state.doc, from, to);
     const contextIds = literalText ? [] : Array.from(new Set(collectInlineContextIds(text)));
     const fragment = contextIds.length > 0 ? build?.(contextIds) : null;
+    rememberCopiedComposerContext(text, fragment);
     event.preventDefault();
     clipboardData.setData("text/plain", text);
     if (fragment) {

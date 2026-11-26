@@ -10,13 +10,26 @@ import {
   formatComposerContextReference,
   replaceComposerContextReferences,
 } from "@t3tools/shared/composerContextReferences";
+import { getMobileShellInfo } from "../mobile/mobileShellBridge";
+
+let copiedComposerContext: { text: string; fragment: string } | null = null;
+
+export function rememberCopiedComposerContext(text: string, fragment: string | null | undefined) {
+  copiedComposerContext =
+    getMobileShellInfo()?.platform === "android" && fragment ? { text, fragment } : null;
+}
+
 export function readPastedComposerContext(
   clipboardData: Pick<DataTransfer, "getData">,
 ): ComposerContextClipboardFragment | null {
   const pastedText = clipboardData.getData("text/plain");
+  if (copiedComposerContext?.text !== pastedText) copiedComposerContext = null;
   const decodedFragment =
     decodeComposerContextFragment(clipboardData.getData(COMPOSER_CONTEXT_CLIPBOARD_MIME)) ??
-    decodeComposerContextClipboardHtml(clipboardData.getData("text/html"));
+    decodeComposerContextClipboardHtml(clipboardData.getData("text/html")) ??
+    (copiedComposerContext && getMobileShellInfo()?.platform === "android"
+      ? decodeComposerContextFragment(copiedComposerContext.fragment)
+      : null);
   if (decodedFragment === null) return null;
   const pastedIds = new Set<string>(
     collectComposerContextReferences(pastedText).map((occurrence) => occurrence.contextId),
