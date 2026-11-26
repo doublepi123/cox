@@ -180,8 +180,7 @@ export function isHostPath(value: string): boolean {
 
 export function resolveWorkspaceFilePath(path: string, workspaceRoot: string): string {
   if (isAbsolutePath(path) || path.startsWith("~/") || path.startsWith("~\\")) return path;
-  const base = workspaceRoot.replace(/[/\\]+$/, "");
-  return isWindowsAbsolutePath(workspaceRoot)
-    ? `${base}\\${path.replaceAll("/", "\\")}`
-    : `${base}/${path}`;
+  const isWindows = isWindowsAbsolutePath(workspaceRoot);
+  const base = workspaceRoot.replace(isWindows ? /[/\\]+$/ : /\/+$/, "");
+  return isWindows ? `${base}\\${path.replaceAll("/", "\\")}` : `${base}/${path}`;
 }
