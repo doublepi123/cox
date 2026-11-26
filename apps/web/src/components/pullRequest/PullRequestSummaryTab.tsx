@@ -106,9 +106,11 @@ function reviewerKey(login: string): string {
 function CommentIdentity({
   comment,
   detail,
+  threadRef,
 }: {
   comment: PullRequestComment;
   detail: PullRequestDetailView;
+  threadRef: ScopedThreadRef | null;
 }) {
   const timestampFormat = useClientSettings((settings) => settings.timestampFormat);
   const actor = comment.author;
@@ -117,7 +119,12 @@ function CommentIdentity({
     : null;
   return (
     <h2 className="flex min-w-0 flex-1 flex-wrap items-baseline gap-x-2 gap-y-1 text-xs">
-      <PullRequestActorLabel actor={actor} profileUrl={profileUrl} className="max-w-full" />
+      <PullRequestActorLabel
+        actor={actor}
+        profileUrl={profileUrl}
+        threadRef={threadRef}
+        className="max-w-full"
+      />
       <Tooltip>
         <TooltipTrigger
           render={
@@ -263,6 +270,7 @@ function CollapsedComment({
   body,
   reactionBar,
   detail,
+  threadRef,
   thread,
   replyCount = 0,
   replies = null,
@@ -275,6 +283,7 @@ function CollapsedComment({
   body: string | null;
   reactionBar: ReactNode;
   detail: PullRequestDetailView;
+  threadRef: ScopedThreadRef | null;
   thread: PullRequestReviewThread | undefined;
   replyCount?: number;
   replies?: ReactNode;
@@ -288,7 +297,7 @@ function CollapsedComment({
       <article className="group rounded-lg border border-border/60 [contain-intrinsic-block-size:44px] [content-visibility:auto]">
         <div className="p-3">
           <div className="flex flex-wrap items-baseline gap-2">
-            <CommentIdentity comment={comment} detail={detail} />
+            <CommentIdentity comment={comment} detail={detail} threadRef={threadRef} />
             {replyCount > 0 ? (
               <span className="shrink-0 py-1 text-xs text-muted-foreground">
                 {replyCount} {replyCount === 1 ? "reply" : "replies"}
@@ -713,7 +722,7 @@ export function PullRequestSummaryTab({
       >
         <div className="flex flex-wrap items-baseline gap-2 rounded-t-lg bg-muted/25 px-3 py-2.5">
           <div className="flex min-w-0 flex-1 flex-wrap items-baseline gap-2 text-xs text-muted-foreground">
-            <CommentIdentity comment={comment} detail={detail} />
+            <CommentIdentity comment={comment} detail={detail} threadRef={threadRef} />
             {outcome ? (
               <PullRequestReviewOutcomeBadge outcome={outcome} />
             ) : comment.reviewState ? (
@@ -775,6 +784,7 @@ export function PullRequestSummaryTab({
           comment={comment}
           editing={commentEditing}
           detail={detail}
+          threadRef={threadRef}
           thread={thread}
           label={thread?.isResolved ? "Resolved" : "Review dismissed"}
           body={visibleBody(comment.body)}

@@ -12,9 +12,12 @@ import { userEvent } from "vite-plus/test/browser";
 const state = vi.hoisted(() => ({
   update: vi.fn(),
   refresh: vi.fn(),
+  openLink: vi.fn(async () => {}),
   canUpdate: true,
   timestampFormat: "locale" as "locale" | "12-hour" | "24-hour",
 }));
+
+vi.mock(import("~/browser/useOpenLink"), () => ({ useOpenLink: () => state.openLink }));
 
 vi.mock(import("~/state/use-atom-command"), async (original) => ({
   ...(await original()),
@@ -54,6 +57,7 @@ function setup() {
   state.update.mockResolvedValue({ _tag: "Success", value: undefined });
   state.canUpdate = true;
   state.refresh.mockReset();
+  state.openLink.mockClear();
   state.timestampFormat = "locale";
 }
 
@@ -602,4 +606,36 @@ it("scrolls from the keyboard after a click inside it", async () => {
   await userEvent.click(screen.getByText("Paragraph 0", { exact: true }));
   await userEvent.keyboard("{PageDown}");
   await vi.waitFor(() => expect(scroller.scrollTop).toBeGreaterThan(0));
+});
+
+it("opens a comment author's profile through the link-target setting, not a popup", async () => {
+  setup();
+  await using screen = await render({
+    ...detail,
+    comments: [
+      {
+        id: "1",
+        kind: "issue-comment" as const,
+        body: "Looks good",
+        author: { login: "reviewer", name: null, avatarUrl: null },
+        createdAt: "2026-09-01T00:00:00Z",
+        url: null,
+        path: null,
+        reviewState: null,
+      },
+    ],
+    commentCount: 1,
+  });
+  const link = await vi.waitFor(() => {
+    const found = screen.container.querySelector('a[aria-label="Open reviewer\'s profile"]');
+    expect(found).not.toBeNull();
+    return found!;
+  });
+  const href = link.getAttribute("href")!;
+  const click = new MouseEvent("click", { bubbles: true, cancelable: true });
+  link.dispatchEvent(click);
+
+  expect(click.defaultPrevented).toBe(true);
+  expect(state.openLink).toHaveBeenCalledOnce();
+  expect(state.openLink).toHaveBeenCalledWith(href, { event: expect.anything() });
 });
