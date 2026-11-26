@@ -1,3 +1,5 @@
+import { ensureWorktreeLayoutApproved } from "../../worktreeLayoutApproval";
+import { translateCurrent } from "../../i18n";
 import { useTranslation } from "../../i18n";
 import { isClearComposerCommand } from "@t3tools/shared/composerTrigger";
 import { readWorktreeBaseBranch } from "../../worktreeRepositoryChoiceStore";
@@ -931,6 +933,37 @@ export function useComposerSend(input: ComposerSendInput) {
     if (missingWorktreeBaseBranch) {
       setThreadError(threadIdForSend, "Select a base branch before sending in New worktree mode.");
       return;
+    }
+    // A project may set its worktrees up with its own commands, which run only once a person
+    // has approved their text. Asking takes as long as the user does, so the draft is compared
+    // across it like any other wait before a send.
+    if (baseBranchForWorktree || multipleModelSelections !== null) {
+      const draftBeforeApproval = useComposerDraftStore
+        .getState()
+        .getComposerDraft(composerDraftTarget);
+      sendInFlightRef.current = true;
+      const layoutApproval = await ensureWorktreeLayoutApproved({
+        environmentId,
+        projectId: activeProject.id,
+        projectTitle: activeProject.title,
+      }).finally(() => {
+        sendInFlightRef.current = false;
+      });
+      if (layoutApproval.status === "cancelled") return;
+      if (layoutApproval.status === "blocked") {
+        setThreadError(threadIdForSend, layoutApproval.message);
+        return;
+      }
+      if (
+        draftBeforeApproval !==
+        useComposerDraftStore.getState().getComposerDraft(composerDraftTarget)
+      ) {
+        setThreadError(
+          threadIdForSend,
+          translateCurrent("Draft changed while preparing this message. Review it and send again."),
+        );
+        return;
+      }
     }
     // Records bind attachments by the id each side knows: the local id for the optimistic
     // row, the upload id (or local id on the data-URL path) on the wire; the server

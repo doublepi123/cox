@@ -117,6 +117,7 @@ type PreparationInput = Pick<
   ThreadLaunchInput,
   "commandId" | "projectId" | "workspaceStrategy" | "initialMessage"
 > & {
+  readonly askedByAgent?: { readonly threadId: ThreadId | undefined };
   readonly reusedWorktree?: { readonly baseRef: string };
 };
 
@@ -377,6 +378,26 @@ const make = Effect.gen(function* () {
     return false;
   });
 
+  const projectCommandsFor = Effect.fn("ThreadLaunchService.projectCommandsFor")(function* (
+    input: PreparationInput,
+    threadId: ThreadId,
+  ): Effect.fn.Return<TaskFolders.ProjectCommands> {
+    if (input.askedByAgent === undefined) return "permitted";
+    const asker = yield* threads
+      .getThreadShell(input.askedByAgent.threadId ?? threadId)
+      .pipe(Effect.orElseSucceed(() => null));
+    return asker === null || asker.deletedAt !== null
+      ? "agent-below-full-access"
+      : TaskFolders.projectCommandsForAgent(asker);
+  });
+
+  const askedByAgent = (
+    thread: Pick<OrchestrationV2ThreadProjection["thread"], "createdBy">,
+    message: OrchestrationV2ThreadProjection["messages"][number] | undefined,
+  ): Pick<PreparationInput, "askedByAgent"> =>
+    (message?.createdBy ?? thread.createdBy) === "agent"
+      ? { askedByAgent: { threadId: message?.senderThreadId } }
+      : {};
   const prepareInBackground = Effect.fn("ThreadLaunchService.prepareInBackground")(function* (
     input: PreparationInput,
     threadId: ThreadId,
@@ -419,6 +440,7 @@ const make = Effect.gen(function* () {
         fiber: yield* Effect.fiber,
       });
     }
+    const projectCommandsNow = projectCommandsFor(input, threadId);
     yield* Effect.gen(function* () {
       const initialMessage = input.initialMessage;
       const generateBranchNameFor = Effect.fn("ThreadLaunchService.generateBranchNameFor")(
@@ -579,7 +601,7 @@ const make = Effect.gen(function* () {
               projectStart: { refName: startRef, baseRefName },
               baseBranch: input.workspaceStrategy.baseRef,
               startFromOrigin: input.workspaceStrategy.startFromOrigin === true,
-              projectCommands: true,
+              projectCommands: projectCommandsNow,
               onClaimed: (taskFolder, branch) =>
                 Effect.sync(() => {
                   createdTaskFolderBranch = branch;
@@ -678,8 +700,9 @@ const make = Effect.gen(function* () {
           .pipe(Effect.mapError(mapError(input, "update-thread", threadId)));
       }
       yield* setupTracker.stageStatus(threadId, "setup-script", "running");
+      // The saved setup script is the project's code too.
       const setup =
-        worktreePath === null
+        worktreePath === null || (yield* projectCommandsNow) === "agent-below-full-access"
           ? ({ status: "no-script" } as const)
           : yield* setupScripts
               .runForThread({
@@ -803,7 +826,7 @@ const make = Effect.gen(function* () {
                       root: removedTaskFolder,
                       force: true,
                       forget: true,
-                      projectCommands: true,
+                      projectCommands: projectCommandsNow,
                       deleteBranch: removedBranch,
                     })
                     .pipe(Effect.mapError(mapError(input, "provision-worktree", threadId)));
@@ -1206,8 +1229,25 @@ const make = Effect.gen(function* () {
                       Effect.mapError(mapError(input, "update-thread", threadId)),
                     );
               if (preparationStillRequired) {
+                const accepted = projection.runs.find((run) => run.id === runId);
+                const messages =
+                  accepted === undefined
+                    ? []
+                    : (yield* threads
+                        .getThreadRecords(threadId, ["messages"], {
+                          messageIds: [accepted.userMessageId],
+                        })
+                        .pipe(Effect.mapError(mapError(input, "update-thread", threadId))))
+                        .messages;
+                const askedBy =
+                  accepted === undefined && input.createdBy === "agent"
+                    ? { askedByAgent: { threadId: input.initialMessage?.senderThreadId } }
+                    : askedByAgent(
+                        projection.thread,
+                        messages.find((message) => message.id === accepted?.userMessageId),
+                      );
                 yield* schedulePreparation(
-                  { ...input, workspaceStrategy: preparationStrategy },
+                  { ...input, ...askedBy, workspaceStrategy: preparationStrategy },
                   threadId,
                   runId,
                 );
@@ -1303,6 +1343,7 @@ const make = Effect.gen(function* () {
         commandId: input.commandId,
         projectId: thread.projectId,
         workspaceStrategy: reuse?.strategy ?? workspacePreparation,
+        ...askedByAgent(thread, message),
         ...(reuse === null ? {} : { reusedWorktree: reuse.reusedWorktree }),
         ...(message === undefined
           ? {}

@@ -77,6 +77,34 @@ What the commands can rely on, and what they must do:
   `orchestration:operate` nor `terminal:operate` cannot create a task folder for a project that
   declares a layout. It can remove an existing task folder without running the project’s `remove` command.
 
+#### Approve the commands
+
+Cox runs `create` and `remove` only after you have approved them. The first time you start a
+worktree thread in the project from the web or desktop app, it shows both commands in full and asks.
+**Approve and continue** records the approval and starts the thread; **Cancel** leaves your draft as
+it was. You can also review, approve, and revoke each command under **Worktree layout** in the
+project's settings. Approving needs a client that can use the terminal (`terminal:operate`).
+
+An approval is kept on the environment, not in the repository, and covers the exact text of one
+command for one project. When the text in `t3.json` changes, for example after a pull, the command
+stops running until you approve the new text. An approval covers the command text only: when the
+command runs a script file, later changes to that file do not ask again.
+
+While a command is not approved:
+
+- **Nothing that needs `create` gets a worktree.** A worktree thread started by a scheduled task or an agent fails with a message that says so. Approve the command in the
+  web or desktop app, then start it again.
+- **A thread folder that went missing comes back as plain checkouts**, without the project's
+  `create`.
+- **Removing a thread's worktree skips `remove`** and removes the checkouts.
+
+Agents never approve a command, and an approval is not enough for one that works below Full access.
+When an agent hands its thread off to a worktree or starts a worktree thread, the commands run
+only if the thread that asked is in Full access when they are about to run. A project that declares a
+layout cannot create a worktree for an agent below Full access. In any project, an action set to **Run automatically on worktree
+creation** does not run for a worktree an agent asked for below Full access. Start the worktree
+thread yourself, or switch the thread to Full access.
+
 A project with no other repository can declare a layout too. This example gives each thread
 a worktree with its submodules checked out. The command runs in `sh`, and in `cmd.exe` on Windows,
 so write it for the shell of the machine the project is on; this one is for `sh`:

@@ -120,7 +120,7 @@ export const makeRestoreMissingWorktree = Effect.fn("makeRestoreMissingWorktree"
         .restore({
           taskFolder,
           branch,
-          projectCommands: true,
+          projectCommands: "permitted",
           recreate: (checkout) =>
             recreateMissingWorktree({
               cwd: checkout.repositoryPath,

@@ -43,6 +43,7 @@ import { ProjectFaviconPickerDialog } from "./ProjectFaviconPickerDialog";
 import { ProjectActionsSettings } from "./ProjectActionsSettings";
 import { ProjectDefaultsSettings } from "./ProjectDefaultsSettings";
 import { ProjectRepositoriesSettings } from "./ProjectRepositoriesSettings";
+import { ProjectWorktreeLayoutSettings } from "./ProjectWorktreeLayoutSettings";
 import {
   defaultProjectIcon,
   hasDefaultProjectIcon,
@@ -552,6 +553,7 @@ function ProjectDetail({
         <ProjectDefaultsSettings category="project" />
         <ProjectActionsSettings />
         <ProjectRepositoriesSettings members={group.memberProjects} />
+        <ProjectWorktreeLayoutSettings members={group.memberProjects} />
         {hasMultipleCheckouts ? checkoutChoices : null}
         <SettingsSection title={t("Danger")}>
           <SettingsRow

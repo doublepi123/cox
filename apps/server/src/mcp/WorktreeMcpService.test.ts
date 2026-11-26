@@ -58,6 +58,8 @@ const makeScope = (
 });
 
 interface ThreadFixture {
+  readonly runtimeMode?: OrchestrationV2ThreadProjection["thread"]["runtimeMode"];
+  readonly interactionMode?: OrchestrationV2ThreadProjection["thread"]["interactionMode"];
   readonly branch?: string | null;
   readonly worktreePath?: string | null;
   readonly archivedAt?: string | null;
@@ -70,6 +72,8 @@ const makeProjection = (overrides: ThreadFixture = {}): OrchestrationV2ThreadPro
       id: threadId,
       projectId,
       title: "Worktree test thread",
+      runtimeMode: "full-access",
+      interactionMode: "default",
       branch: null,
       worktreePath: null,
       archivedAt: null,
@@ -387,6 +391,25 @@ const runStatus = (harness: ReturnType<typeof makeHarness>) =>
 const decodeHandoffInput = Schema.decodeUnknownEffect(WorktreeMcpHandoffInput);
 
 describe("cox_worktree_handoff", () => {
+  it.effect.each([
+    { runtimeMode: "approval-required", interactionMode: "default" },
+    { runtimeMode: "full-access", interactionMode: "plan" },
+  ] as const)(
+    "does not run a setup script for a $runtimeMode/$interactionMode handoff",
+    (thread) => {
+      const harness = makeHarness({ thread });
+      return Effect.gen(function* () {
+        const result = yield* runHandoff(harness, {
+          branch: "feature/restricted",
+          baseRef: "main",
+          runSetupScript: true,
+        });
+        expect(result.setupScript).toEqual({ status: "skipped" });
+        expect(harness.runForThread).not.toHaveBeenCalled();
+      });
+    },
+  );
+
   it.effect("reports a continuation failure without failing the handoff", () => {
     const harness = makeHarness({ continuation: "fails" });
     return Effect.gen(function* () {

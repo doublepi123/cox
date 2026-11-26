@@ -1,4 +1,31 @@
 export const zh = {
+  "{project} sets up worktree threads with its own commands from t3.json. They run on this machine with your permissions, outside any agent sandbox. You are asked again whenever their text changes.":
+    "{project} 会运行 t3.json 中的命令来设置工作树。命令会以你的权限在此机器上运行，且不受智能体沙箱限制。命令文本更改后，需要重新批准。",
+  "This project's t3.json sets up worktree threads with its own commands. They run on this machine with your permissions. A command whose text changes needs approval again.":
+    "此项目会运行 t3.json 中的命令来设置工作树。命令会以你的权限在此机器上运行。命令文本更改后，需要重新批准。",
+  "Draft changed while preparing this message. Review it and send again.":
+    "准备发送时草稿发生了变化。请检查后重新发送。",
+  "Let this project run its worktree commands?": "允许此项目运行工作树命令吗？",
+  "Runs when a worktree thread starts, and when its folder is restored":
+    "启动工作树线程或恢复其目录时运行",
+  "Runs when a thread's worktree is removed": "移除线程的工作树时运行",
+  "Approve and continue": "批准并继续",
+  "Create command": "创建命令",
+  "Remove command": "移除命令",
+  "Worktree layout": "工作树布局",
+  "Could not load the worktree layout commands": "无法加载工作树布局命令",
+  "Could not approve the command": "无法批准命令",
+  "Could not revoke the approval": "无法撤销批准",
+  "Needs approval": "需要批准",
+  Approved: "已批准",
+  Revoke: "撤销",
+  "Revoke approval of the {kind} command": "撤销对 {kind} 命令的批准",
+  "Approve the {kind} command": "批准 {kind} 命令",
+  "This connection cannot approve commands. Use a client that can use the terminal.":
+    "此连接无法批准命令。请使用有终端访问权限的客户端。",
+  "Could not approve the worktree layout command.": "无法批准工作树布局命令。",
+  "This project sets up worktrees with its own command, which nobody has approved as it is written now. This connection cannot approve it: approve it from a client that can use the terminal.":
+    "此项目使用自定义命令设置工作树。当前命令文本尚未获批，请通过有终端访问权限的客户端批准。",
   ", or ask an agent to.": "，也可以让智能体编写。",
   "Line {line}:": "第 {line} 行：",
   "Leave without saving? Your changes to this file are lost.":

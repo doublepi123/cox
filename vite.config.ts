@@ -130,6 +130,7 @@ export default defineConfig({
       "react/no-unstable-nested-components": "error",
       "eslint/no-empty-pattern": "error",
       "eslint/no-new": "error",
+      "t3code/no-layout-command-approval-writes": "error",
       "t3code/no-inline-schema-compile": "error",
       "t3code/no-polling-loop-in-tests": "error",
       "t3code/no-real-time-wait-in-tests": "error",
@@ -137,6 +138,15 @@ export default defineConfig({
       "t3code/no-test-timeout-or-unreasoned-skip": "error",
     },
     overrides: [
+      {
+        files: [
+          "apps/server/src/ws.ts",
+          "apps/server/src/server.ts",
+          "apps/server/src/ws.test.ts",
+          "apps/server/src/workspace/TaskFolders.testkit.ts",
+        ],
+        rules: { "t3code/no-layout-command-approval-writes": "off" },
+      },
       {
         files: ["apps/web/src/**/*.browser.test.{ts,tsx}"],
         rules: { "t3code/require-disposable-render": "error" },

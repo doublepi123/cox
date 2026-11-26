@@ -131,6 +131,12 @@ const browserTestProject = {
         resetPointer: async ({ page }) => {
           await page.mouse.move(-1, -1);
         },
+        pointerDown: async ({ page }) => {
+          await page.mouse.down();
+        },
+        pointerUp: async ({ page }) => {
+          await page.mouse.up();
+        },
         setImeComposition: async ({ page }, text: string) => {
           const session = await page.context().newCDPSession(page);
           try {

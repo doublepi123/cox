@@ -7,6 +7,7 @@ import noFrameWaitsInBrowserTests from "./rules/no-frame-waits-in-browser-tests.
 import noGlobalProcessRuntime from "./rules/no-global-process-runtime.ts";
 import noHooklessUseFunction from "./rules/no-hookless-use-function.ts";
 import noInlineSchemaCompile from "./rules/no-inline-schema-compile.ts";
+import noLayoutCommandApprovalWrites from "./rules/no-layout-command-approval-writes.ts";
 import noLowValueComments from "./rules/no-low-value-comments.ts";
 import noManualMemo from "./rules/no-manual-memo.ts";
 import noManualEffectRuntimeInTests from "./rules/no-manual-effect-runtime-in-tests.ts";
@@ -40,6 +41,7 @@ export default definePlugin({
     "no-global-process-runtime": noGlobalProcessRuntime,
     "no-hookless-use-function": noHooklessUseFunction,
     "no-inline-schema-compile": noInlineSchemaCompile,
+    "no-layout-command-approval-writes": noLayoutCommandApprovalWrites,
     "no-low-value-comments": noLowValueComments,
     "no-manual-effect-runtime-in-tests": noManualEffectRuntimeInTests,
     "no-manual-memo": noManualMemo,

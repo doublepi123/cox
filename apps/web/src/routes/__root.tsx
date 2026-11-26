@@ -18,6 +18,7 @@ import { AppSidebarLayout } from "../components/AppSidebarLayout";
 import { CommandPalette } from "../components/CommandPalette";
 import { CustomSnoozeDialogHost } from "../components/CustomSnoozeDialog";
 import { ThreadProjectMoveDialogHost } from "../components/ThreadProjectMoveDialog";
+import { WorktreeLayoutApprovalDialogHost } from "../components/WorktreeLayoutApprovalDialogHost";
 import { ConfirmDialogHost } from "../components/ConfirmDialogHost";
 import { DevReplayHost } from "../components/DevReplayHost";
 import { FirstRunGate } from "../components/onboarding/FirstRunGate";
@@ -136,6 +137,7 @@ function RootRouteBranch() {
         <ConfirmDialogHost />
         <CustomSnoozeDialogHost />
         <ThreadProjectMoveDialogHost />
+        <WorktreeLayoutApprovalDialogHost />
         <ThemeEditorHost />
         <Outlet />
       </SidebarProvider>
@@ -185,6 +187,7 @@ function RootRouteBranch() {
         <ConfirmDialogHost />
         <CustomSnoozeDialogHost />
         <ThreadProjectMoveDialogHost />
+        <WorktreeLayoutApprovalDialogHost />
 
         <ProjectCloneToastCoordinator />
 

@@ -258,7 +258,7 @@ export const layer: Layer.Layer<
         yield* taskFolders.restore({
           taskFolder,
           branch,
-          projectCommands: true,
+          projectCommands: "permitted",
           recreate: (checkout) =>
             gitWorkflow.pruneWorktrees({ cwd: checkout.repositoryPath }).pipe(
               Effect.andThen(

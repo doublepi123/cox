@@ -2980,3 +2980,91 @@ it.effect("lists workflow agent threads only when child threads are requested", 
     );
   }).pipe(Effect.provide(harness.layer));
 });
+
+it.effect(
+  "an agent's launch leaves the project's setup script unrun when its thread leaves Full access while the worktree is made",
+  () => {
+    let whileCreating: Effect.Effect<void> = Effect.void;
+    const harness = makeHarness({
+      createWorktree: (input) =>
+        Effect.suspend(() => whileCreating).pipe(
+          Effect.as({
+            worktree: {
+              path: "/repo-worktrees/feature",
+              refName: input.newRefName,
+              headSha: "abc",
+            },
+          } as never),
+        ),
+    });
+    return Effect.gen(function* () {
+      const launches = yield* ThreadLaunch.ThreadLaunchService;
+      const threads = yield* ThreadManagement.ThreadManagementService;
+      const tracker = yield* WorktreeSetupTracker.WorktreeSetupTracker;
+      const input = launchInput({
+        command: "launch:lowered",
+        thread: "thread:lowered",
+        message: "Start",
+        workspace: { type: "worktree", baseRef: "main", branch: "feature/lowered" },
+      });
+      whileCreating = threads
+        .dispatch({
+          type: "thread.runtime-mode.set",
+          commandId: CommandId.make("launch:lowered:lower"),
+          threadId: input.threadId,
+          runtimeMode: "approval-required",
+        })
+        .pipe(Effect.orDie);
+      const launched = yield* launches.launch({
+        ...input,
+        createdBy: "agent",
+        creationSource: "mcp",
+      });
+
+      yield* preparationSettled(launched.threadId);
+      assert.equal(
+        (yield* tracker.get(launched.threadId))?.stages.find((stage) => stage.id === "setup-script")
+          ?.status,
+        "skipped",
+      );
+      assert.equal(harness.runSetup.mock.calls.length, 0);
+    }).pipe(Effect.provide(harness.layer));
+  },
+);
+
+it.effect(
+  "an agent's launch from a thread below Full access leaves the project's setup script unrun",
+  () => {
+    const harness = makeHarness();
+    return Effect.gen(function* () {
+      const launches = yield* ThreadLaunch.ThreadLaunchService;
+      const tracker = yield* WorktreeSetupTracker.WorktreeSetupTracker;
+      const launch = Effect.fnUntraced(function* (
+        name: string,
+        runtimeMode: "full-access" | "approval-required",
+      ) {
+        const launched = yield* launches.launch({
+          ...launchInput({
+            command: `launch:${name}`,
+            thread: `thread:${name}`,
+            message: "Start",
+            workspace: { type: "worktree", baseRef: "main", branch: `feature/${name}` },
+          }),
+          runtimeMode,
+          createdBy: "agent",
+          creationSource: "mcp",
+        });
+        yield* preparationSettled(launched.threadId);
+        return (yield* tracker.get(launched.threadId))?.stages.find(
+          (stage) => stage.id === "setup-script",
+        )?.status;
+      });
+
+      assert.equal(yield* launch("supervised", "approval-required"), "skipped");
+      assert.equal(harness.runSetup.mock.calls.length, 0);
+
+      yield* launch("full", "full-access");
+      assert.equal(harness.runSetup.mock.calls.length, 1);
+    }).pipe(Effect.provide(harness.layer));
+  },
+);

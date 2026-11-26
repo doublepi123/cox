@@ -21,6 +21,34 @@ export const en = {
   "{count}nd try": "{count}nd try",
   "{count}rd try": "{count}rd try",
   "{count}th try": "{count}th try",
+  "{project} sets up worktree threads with its own commands from t3.json. They run on this machine with your permissions, outside any agent sandbox. You are asked again whenever their text changes.":
+    "{project} sets up worktree threads with its own commands from t3.json. They run on this machine with your permissions, outside any agent sandbox. You are asked again whenever their text changes.",
+  "This project's t3.json sets up worktree threads with its own commands. They run on this machine with your permissions. A command whose text changes needs approval again.":
+    "This project's t3.json sets up worktree threads with its own commands. They run on this machine with your permissions. A command whose text changes needs approval again.",
+  "Draft changed while preparing this message. Review it and send again.":
+    "Draft changed while preparing this message. Review it and send again.",
+  "Let this project run its worktree commands?": "Let this project run its worktree commands?",
+  "Runs when a worktree thread starts, and when its folder is restored":
+    "Runs when a worktree thread starts, and when its folder is restored",
+  "Runs when a thread's worktree is removed": "Runs when a thread's worktree is removed",
+  "Approve and continue": "Approve and continue",
+  "Create command": "Create command",
+  "Remove command": "Remove command",
+  "Worktree layout": "Worktree layout",
+  "Could not load the worktree layout commands": "Could not load the worktree layout commands",
+  "Could not approve the command": "Could not approve the command",
+  "Could not revoke the approval": "Could not revoke the approval",
+  "Needs approval": "Needs approval",
+  Approved: "Approved",
+  Revoke: "Revoke",
+  "Revoke approval of the {kind} command": "Revoke approval of the {kind} command",
+  "Approve the {kind} command": "Approve the {kind} command",
+  "This connection cannot approve commands. Use a client that can use the terminal.":
+    "This connection cannot approve commands. Use a client that can use the terminal.",
+  "Could not approve the worktree layout command.":
+    "Could not approve the worktree layout command.",
+  "This project sets up worktrees with its own command, which nobody has approved as it is written now. This connection cannot approve it: approve it from a client that can use the terminal.":
+    "This project sets up worktrees with its own command, which nobody has approved as it is written now. This connection cannot approve it: approve it from a client that can use the terminal.",
   ", or ask an agent to.": ", or ask an agent to.",
   "Line {line}:": "Line {line}:",
   "Leave without saving? Your changes to this file are lost.":

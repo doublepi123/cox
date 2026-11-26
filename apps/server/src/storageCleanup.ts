@@ -1215,7 +1215,7 @@ const make = Effect.gen(function* () {
             root: taskFolder.root,
             force: false,
             forget: false,
-            projectCommands: true,
+            projectCommands: "permitted",
             inspect: Effect.fnUntraced(
               function* (checkout) {
                 const changed = yield* branchChanged(checkout.worktreePath, thread.branch!);
