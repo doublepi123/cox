@@ -48,7 +48,7 @@ import {
   ComboboxTrigger,
   useComboboxFilter,
 } from "../ui/combobox";
-import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
+import { Tooltip, TooltipPopup, TooltipScrollDismissArea, TooltipTrigger } from "../ui/tooltip";
 import { InlineButton } from "../ui/button";
 import { DraftProjectName } from "./DraftProjectName";
 import { DraftHeroProjectHeading } from "./DraftHeroProjectHeading";
@@ -310,7 +310,11 @@ export function DraftHeroHeadline({
           <TooltipPopup side="top">{activeProjectTitle}</TooltipPopup>
         ) : null}
       </Tooltip>
-      <ComboboxPopup align="center" width="md">
+      <ComboboxPopup
+        align="center"
+        width="md"
+        render={<TooltipScrollDismissArea holdPositionOnExit />}
+      >
         <ComboboxSearchInput
           aria-label={t("Search projects")}
           placeholder={t("Search projects...")}

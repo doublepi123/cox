@@ -249,7 +249,7 @@ import {
 import { SidebarContent, SidebarGroup, useSidebar } from "./ui/sidebar";
 import { SidebarChromeFooter, SidebarChromeHeader } from "./sidebar/SidebarChrome";
 import { SidebarHeaderIconButton, SidebarThreadHeader } from "./sidebar/SidebarThreadHeader";
-import { TooltipProvider } from "./ui/tooltip";
+import { TooltipProvider, TooltipScrollDismissArea } from "./ui/tooltip";
 import { composerDraftHasUserContent, DraftId, useComposerDraftStore } from "../composerDraftStore";
 import { useShownThreadRouteTarget } from "../hooks/useShownThreadRouteTarget";
 import {
@@ -3151,7 +3151,12 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                       <FolderIcon className="size-4" />
                     )}
                   </ComboboxTrigger>
-                  <ComboboxPopup align="start" anchor={headerSearchRef} width="sidebar">
+                  <ComboboxPopup
+                    align="start"
+                    anchor={headerSearchRef}
+                    width="sidebar"
+                    render={<TooltipScrollDismissArea holdPositionOnExit />}
+                  >
                     <ComboboxSearchInput
                       aria-label={t("Search projects")}
                       placeholder={t("Search projects...")}
