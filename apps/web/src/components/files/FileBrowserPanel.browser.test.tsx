@@ -18,6 +18,7 @@ const directory = {
   entries,
   load: () => Promise.resolve(),
   refresh: () => {},
+  revalidate: (_path: string) => {},
   ready: true,
   error: null,
   isPending: false,
@@ -247,8 +248,13 @@ describe("FileBrowserPanel", () => {
     await vi.waitFor(() => expect(findTreeRow("src/")?.getAttribute("aria-expanded")).toBe("true"));
     await first.unmount();
 
+    using revalidate = vi.spyOn(directory, "revalidate");
     await using _second = await render(panel);
     await vi.waitFor(() => expect(findTreeRow("src/")?.getAttribute("aria-expanded")).toBe("true"));
+
+    revalidate.mockClear();
+    await userEvent.click(page.getByRole("button", { name: "Refresh workspace files" }));
+    expect(revalidate.mock.calls).toEqual([["src"], [""]]);
   });
 
   it("copies with the pointer and returns to the row after keyboard dismissal", async () => {

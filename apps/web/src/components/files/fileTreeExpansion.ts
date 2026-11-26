@@ -7,11 +7,21 @@ const expansionStorageSchema = Schema.Array(
   Schema.Struct({ root: Schema.String, paths: Schema.Array(Schema.String) }),
 );
 
+const MAX_STORED_PATHS_PER_ROOT = 100;
+
+function nearestToRoot(paths: readonly string[]): readonly string[] {
+  if (paths.length <= MAX_STORED_PATHS_PER_ROOT) return paths;
+  const depth = (path: string) => path.split("/").length;
+  return paths
+    .toSorted((left, right) => depth(left) - depth(right))
+    .slice(0, MAX_STORED_PATHS_PER_ROOT);
+}
+
 export function readExpandedDirectories(root: string): readonly string[] {
-  return (
+  return nearestToRoot(
     readLocalStorageValue(expansionStorageKey, [], expansionStorageSchema).find(
       (entry) => entry.root === root,
-    )?.paths ?? []
+    )?.paths ?? [],
   );
 }
 
@@ -20,7 +30,10 @@ export function writeExpandedDirectories(root: string, paths: readonly string[])
     expansionStorageKey,
     (previous) => {
       const others = previous.filter((entry) => entry.root !== root);
-      return (paths.length > 0 ? [{ root, paths }, ...others] : others).slice(0, 20);
+      return (paths.length > 0 ? [{ root, paths: nearestToRoot(paths) }, ...others] : others).slice(
+        0,
+        20,
+      );
     },
     [],
     expansionStorageSchema,
