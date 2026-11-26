@@ -902,6 +902,10 @@ export const layer = Layer.effect(
       return yield* instance.snapshot.resolveMaintenance(options);
     });
 
+    let rescanWorkspace: (
+      instanceId: ProviderInstanceId,
+      cwd: string,
+    ) => Effect.Effect<void> = () => Effect.void;
     const syncLiveSources = syncSemaphore.withPermits(1)(
       Effect.gen(function* () {
         const instances = yield* instanceRegistry.listInstances;
@@ -959,6 +963,11 @@ export const layer = Layer.effect(
           yield* Stream.runForEach(source.streamChanges, (provider) =>
             syncProvider(instance, provider),
           ).pipe(Effect.forkScoped);
+          if (instance.workspaceRescans) {
+            yield* Stream.runForEach(instance.workspaceRescans, (cwd) =>
+              rescanWorkspace(instance.instanceId, cwd),
+            ).pipe(Effect.forkScoped);
+          }
         }
         yield* Effect.yieldNow;
 
@@ -1208,6 +1217,18 @@ export const layer = Layer.effect(
         ? []
         : yield* instance.runtimeModeLimitsForCwd(input.scanCwd);
     });
+    rescanWorkspace = (instanceId, cwd) =>
+      updateProviders((providers) =>
+        providers.map((provider) =>
+          provider.instanceId === instanceId
+            ? dropProviderWorkspaceSnapshot(provider, cwd)
+            : provider,
+        ),
+      ).pipe(
+        Effect.andThen(refreshWorkspaceSnapshot({ instanceId, cwd })),
+        Effect.ignoreCause({ log: true }),
+        Effect.asVoid,
+      );
 
     const invalidateModelCaches = Effect.fn("ProviderRegistry.invalidateModelCaches")(function* (
       input: Parameters<ProviderRegistry["Service"]["invalidateModelCaches"]>[0],

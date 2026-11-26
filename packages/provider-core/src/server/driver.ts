@@ -57,6 +57,7 @@ export interface ProviderInstance {
   readonly runtimeModeLimitsForCwd?: (
     cwd: string,
   ) => Effect.Effect<ReadonlyArray<ProviderRuntimeModeLimit>>;
+  readonly workspaceRescans?: Stream.Stream<string>;
   readonly refreshModels?: () => Effect.Effect<void, ProviderDriverError>;
   readonly refreshModelsWhenUninstalled?: boolean;
   readonly invalidateCaches?: Effect.Effect<void>;

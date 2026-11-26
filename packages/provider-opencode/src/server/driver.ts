@@ -1,5 +1,7 @@
 import { ProviderDriverKind, settingsSecretLiteral } from "@t3tools/contracts";
 import { OpenCodeSettings } from "../settings.ts";
+import * as Cause from "effect/Cause";
+import * as Queue from "effect/Queue";
 import * as Digest from "effect/crypto/Digest";
 import * as SecureRandom from "effect/crypto/SecureRandom";
 import * as Deferred from "effect/Deferred";
@@ -374,22 +376,59 @@ export const OpenCodeDriver: ProviderDriver<
       scannedByConnection.set(connection, scanned);
       return scanned;
     };
-    yield* Stream.runForEach(openCode2Server.connections, (connection) => {
+    const skillRescans = yield* Queue.unbounded<string, Cause.Done>();
+    yield* Effect.addFinalizer(() => Queue.end(skillRescans));
+    const skillUpdates = new Map<string, number>();
+    const listed = new Map<string, string>();
+    const followScans = Effect.fn("OpenCodeDriver.followScans")(function* (
+      connection: OpenCode2Server.OpenCode2Connection,
+    ) {
+      if (following.has(connection)) return;
+      following.add(connection);
       const scanned = scannedDirectories(connection);
-      return connection.events.pipe(
+      const subscribed = yield* Deferred.make<void>();
+      yield* connection.events.pipe(
+        Effect.tap(() => Deferred.succeed(subscribed, undefined)),
         Effect.flatMap((events) =>
-          followOpenCode2Scans(events, (directory) =>
-            Effect.sync(() => {
-              scanned.add(directory);
-            }),
+          followOpenCode2Scans(
+            events.pipe(
+              Stream.tap((event) => {
+                const directory = "location" in event ? event.location?.directory : undefined;
+                if (
+                  event.type !== "skill.updated" ||
+                  directory === undefined ||
+                  !scanned.has(directory)
+                )
+                  return Effect.void;
+                skillUpdates.set(directory, (skillUpdates.get(directory) ?? 0) + 1);
+                const cwd = listed.get(directory);
+                return cwd === undefined
+                  ? Effect.void
+                  : Queue.offer(skillRescans, cwd).pipe(Effect.asVoid);
+              }),
+            ),
+            (directory) =>
+              Effect.sync(() => {
+                scanned.add(directory);
+              }),
           ),
         ),
         Effect.scoped,
         Effect.ignore,
-        Effect.forkScoped({ startImmediately: true }),
-        Effect.andThen(followCatalog(connection)),
+        Effect.ensuring(
+          Effect.sync(() => {
+            following.delete(connection);
+          }).pipe(Effect.andThen(Deferred.succeed(subscribed, undefined))),
+        ),
+        Effect.forkIn(driverScope, { startImmediately: true }),
       );
-    }).pipe(Effect.forkScoped({ startImmediately: true }));
+      yield* Deferred.await(subscribed);
+    });
+    const following = new WeakSet<OpenCode2Server.OpenCode2Connection>();
+    const driverScope = yield* Effect.scope;
+    yield* Stream.runForEach(openCode2Server.connections, (connection) =>
+      followScans(connection).pipe(Effect.andThen(followCatalog(connection))),
+    ).pipe(Effect.forkScoped({ startImmediately: true }));
     const loadOpenCode2Models = yield* makeOpenCode2ModelLoader(
       openCode2Server.withConnection((connection) =>
         followCatalog(connection).pipe(
@@ -411,6 +450,7 @@ export const OpenCodeDriver: ProviderDriver<
     const listOpenCode2Workspace = (cwd: string) =>
       openCode2Server.withConnection((connection) =>
         Effect.gen(function* () {
+          yield* followScans(connection);
           const { client, events } = connection;
           const directory = pathService.resolve(cwd);
           const location = { directory };
@@ -424,18 +464,33 @@ export const OpenCodeDriver: ProviderDriver<
                 : Effect.void,
             ).pipe(Effect.forkScoped({ startImmediately: true }));
           }
+          const wasListed = listed.has(directory);
+          let skillUpdatesBeforeRead = 0;
           const workspace = yield* loadOpenCode2Workspace(
-            Effect.all(
-              {
-                skills: client.skill.list({ location }).pipe(Effect.map((list) => list.data)),
-                commands: client.command.list({ location }).pipe(Effect.map((list) => list.data)),
-              },
-              { concurrency: "unbounded" },
+            Effect.sync(() => {
+              skillUpdatesBeforeRead = skillUpdates.get(directory) ?? 0;
+            }).pipe(
+              Effect.andThen(
+                Effect.all(
+                  {
+                    skills: client.skill.list({ location }).pipe(Effect.map((list) => list.data)),
+                    commands: client.command
+                      .list({ location })
+                      .pipe(Effect.map((list) => list.data)),
+                  },
+                  { concurrency: "unbounded" },
+                ),
+              ),
             ),
             Effect.suspend(() => (seen.has(directory) ? Effect.void : Deferred.await(scanned))),
             stream._tag === "None" || seen.has(directory),
           );
           seen.add(directory);
+          listed.set(directory, cwd);
+          // The listener rescans a listed location itself; a first read may miss what it announced.
+          if (!wasListed && (skillUpdates.get(directory) ?? 0) !== skillUpdatesBeforeRead) {
+            yield* Queue.offer(skillRescans, cwd);
+          }
           return workspace;
         }).pipe(Effect.scoped),
       );
@@ -695,6 +750,7 @@ export const OpenCodeDriver: ProviderDriver<
                 ),
               ),
             }),
+      workspaceRescans: Stream.fromQueue(skillRescans),
       orchestrationAdapter,
       textGeneration,
       installation,
