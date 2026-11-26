@@ -32,6 +32,7 @@ import {
 import { extractDshElicitationForm } from "./elicitation.ts";
 import { dshUsageDirectories } from "./usage.ts";
 import { discoverDshSkills } from "./skills.ts";
+import { listDshSessions } from "./sessions.ts";
 import * as HostProcess from "@t3tools/shared/HostProcess";
 import {
   dshRuntimeManifest,
@@ -558,6 +559,12 @@ it.layer(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))("DeepSeek Harness
       assert.deepStrictEqual(args.slice(0, 4), ["--profile", "acp", "--patch", overlayPath]);
       assert.strictEqual(args[4], "--patch");
       assert.isFalse(yield* fs.exists(args[5]!));
+      assert.deepStrictEqual(draft.nativeSessions, {
+        canList: true,
+        canLoad: true,
+        canResume: false,
+        canDelete: false,
+      });
     }).pipe(Effect.scoped),
   );
 
@@ -630,6 +637,57 @@ it.layer(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))("DeepSeek Harness
     }).pipe(Effect.provideService(HostProcess.Platform, "linux")),
   );
 });
+
+it.layer(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))(
+  "DeepSeek Harness sessions",
+  (it) => {
+    it.effect("lists the project's native sessions with titles from the harness projection", () =>
+      Effect.gen(function* () {
+        const fs = yield* FileSystem.FileSystem;
+        const path = yield* Path.Path;
+        const root = yield* fs.makeTempDirectoryScoped({ prefix: "cox-dsh-sessions-test-" });
+        const home = path.join(root, "dsh");
+        const projections = path.join(home, "storages", "session_projcache", "sessions");
+        yield* fs.makeDirectory(projections, { recursive: true });
+        yield* fs.writeFileString(
+          path.join(projections, "titled.json"),
+          JSON.stringify({
+            version: 7,
+            record: { rows: { title: { val: "  Fix the parser  " } } },
+          }),
+        );
+        yield* fs.writeFileString(path.join(projections, "broken.json"), "{");
+        yield* fs.chmod(FAKE_DSH, 0o755);
+        const listed = yield* listDshSessions({
+          launch: { executablePath: FAKE_DSH, overlayPath: path.join(root, "overlay.yml") },
+          environment: {
+            ...process.env,
+            DSH_HOME: home,
+            FAKE_DSH_LOG: path.join(root, "calls.log"),
+            FAKE_DSH_SESSIONS: JSON.stringify([
+              { sessionId: "titled", cwd: root },
+              { sessionId: "broken", cwd: root },
+              { sessionId: "untracked", cwd: root, title: "Agent title" },
+              { sessionId: "elsewhere", cwd: path.join(root, "other") },
+            ]),
+          },
+          cwd: root,
+        });
+        assert.deepStrictEqual(
+          listed.sessions.map((session) => [session.sessionId, session.title]),
+          [
+            ["titled", "Fix the parser"],
+            ["broken", null],
+            ["untracked", "Agent title"],
+          ],
+        );
+        assert.isString(listed.sessions[0]!.updatedAt);
+        assert.isNull(listed.sessions[2]!.updatedAt);
+        assert.deepInclude(listed, { canLoad: true, canResume: false, canDelete: false });
+      }).pipe(Effect.scoped),
+    );
+  },
+);
 
 it.layer(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))("DeepSeek Harness skills", (it) => {
   it.effect("lists skills from the harness project and user roots in priority order", () =>

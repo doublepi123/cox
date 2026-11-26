@@ -69,20 +69,20 @@ export interface ProviderInstance {
       readonly cwd: string;
       readonly cursor?: string;
     }) => Effect.Effect<AcpRegistryListSessionsResult, AcpRegistryOperationError>;
-    readonly logout: (cwd: string) => Effect.Effect<void, AcpRegistryOperationError>;
-    readonly deleteSession: (input: {
+    readonly logout?: (cwd: string) => Effect.Effect<void, AcpRegistryOperationError>;
+    readonly deleteSession?: (input: {
       readonly cwd: string;
       readonly sessionId: string;
     }) => Effect.Effect<void, AcpRegistryOperationError>;
-    readonly listProviders: (
+    readonly listProviders?: (
       cwd: string,
     ) => Effect.Effect<AcpRegistryListProvidersResult, AcpRegistryOperationError>;
-    readonly setProvider: (
+    readonly setProvider?: (
       input: Omit<AcpRegistrySetProviderInput, "instanceId" | "projectId"> & {
         readonly cwd: string;
       },
     ) => Effect.Effect<void, AcpRegistryOperationError>;
-    readonly disableProvider: (input: {
+    readonly disableProvider?: (input: {
       readonly cwd: string;
       readonly providerId: string;
     }) => Effect.Effect<void, AcpRegistryOperationError>;

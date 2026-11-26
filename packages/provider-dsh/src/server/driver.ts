@@ -41,6 +41,7 @@ import { buildInitialDshProviderSnapshot, checkDshProviderStatus } from "./statu
 import { makeDshTextGeneration } from "./textGeneration.ts";
 import { dshUsageReader } from "./usage.ts";
 import { discoverDshSkills } from "./skills.ts";
+import { listDshSessions } from "./sessions.ts";
 
 const decodeDshSettings = Schema.decodeSync(DshSettings);
 const MAINTENANCE = {
@@ -204,6 +205,20 @@ export const DshDriver: ProviderDriver<DshSettings, DshDriverEnv, Path.Path> = {
       orchestrationAdapter,
       textGeneration,
       installation,
+      acpSessionManagement: {
+        listSessions: ({ cwd, cursor }) =>
+          listDshSessions({
+            launch,
+            environment: processEnv,
+            cwd,
+            ...(cursor === undefined ? {} : { cursor }),
+          }).pipe(
+            Effect.provideService(SecureRandom.SecureRandom, random),
+            Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, spawner),
+            Effect.provideService(FileSystem.FileSystem, fileSystem),
+            Effect.provideService(Path.Path, path),
+          ),
+      },
     } satisfies ProviderInstance;
   }),
 };

@@ -1442,7 +1442,8 @@ export function ProviderInstanceCard({
           secretSources={secretSources}
         />
       </SettingsSection>
-      {environmentId !== undefined && liveProvider?.driver === "acpRegistry" ? (
+      {environmentId !== undefined &&
+      (liveProvider?.driver === "acpRegistry" || liveProvider?.nativeSessions?.canList === true) ? (
         <AcpSessionManagementSection
           environmentId={environmentId}
           instanceId={instanceId}

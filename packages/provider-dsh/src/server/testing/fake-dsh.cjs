@@ -94,6 +94,15 @@ process.stdin.on("data", (chunk) => {
           },
         },
       });
+    } else if (request.method === "session/list") {
+      const sessions = JSON.parse(process.env.FAKE_DSH_SESSIONS ?? "[]");
+      send({
+        id: request.id,
+        result: {
+          sessions: sessions.filter((session) => session.cwd === request.params.cwd),
+          nextCursor: null,
+        },
+      });
     } else if (request.id !== undefined) {
       send({ id: request.id, result: {} });
     }

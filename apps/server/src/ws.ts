@@ -1465,6 +1465,15 @@ export const layerWsRpc = (
         return { instance, manager: instance.acpSessionManagement };
       });
 
+      const acpManagementOperation = <Operation>(
+        operation: Operation | undefined,
+        reason: AcpRegistryOperationError["reason"],
+        message: string,
+      ) =>
+        operation === undefined
+          ? Effect.fail(new AcpRegistryOperationError({ reason, message }))
+          : Effect.succeed(operation);
+
       const importedAcpThreadId = (input: {
         readonly driver: ProviderDriverKind;
         readonly instanceId: ProviderInstanceId;
@@ -1648,7 +1657,12 @@ export const layerWsRpc = (
                 message: "Delete the imported T3 thread before deleting its native ACP session.",
               });
             }
-            yield* manager.deleteSession({
+            const deleteSession = yield* acpManagementOperation(
+              manager.deleteSession,
+              "session_delete_unsupported",
+              "The ACP agent does not advertise session deletion.",
+            );
+            yield* deleteSession({
               cwd: project.workspaceRoot,
               sessionId: input.sessionId,
             });
@@ -1669,7 +1683,12 @@ export const layerWsRpc = (
             message: "The ACP agent does not advertise provider configuration.",
           });
         }
-        return yield* manager.listProviders(project.workspaceRoot);
+        const listProviders = yield* acpManagementOperation(
+          manager.listProviders,
+          "providers_unsupported",
+          "The ACP agent does not advertise provider configuration.",
+        );
+        return yield* listProviders(project.workspaceRoot);
       });
 
       const setAcpRegistryProvider = Effect.fn("ws.acpRegistry.setProvider")(function* (
@@ -1677,13 +1696,23 @@ export const layerWsRpc = (
       ) {
         const project = yield* acpRegistryProject(input.projectId);
         const { manager } = yield* acpSessionManager(input.instanceId);
+        const listProviders = yield* acpManagementOperation(
+          manager.listProviders,
+          "providers_unsupported",
+          "The ACP agent does not advertise provider configuration.",
+        );
+        const setProvider = yield* acpManagementOperation(
+          manager.setProvider,
+          "providers_unsupported",
+          "The ACP agent does not advertise provider configuration.",
+        );
         if (input.headers !== undefined && Object.keys(input.headers).length > 32) {
           return yield* new AcpRegistryOperationError({
             reason: "provider_configuration_failed",
             message: "ACP provider configuration accepts at most 32 headers.",
           });
         }
-        const listed = yield* manager.listProviders(project.workspaceRoot);
+        const listed = yield* listProviders(project.workspaceRoot);
         const provider = listed.providers.find(
           (candidate) => candidate.providerId === input.providerId,
         );
@@ -1703,7 +1732,7 @@ export const layerWsRpc = (
               }),
           ),
         );
-        yield* manager.setProvider({
+        yield* setProvider({
           cwd: project.workspaceRoot,
           providerId: input.providerId,
           apiType: input.apiType,
@@ -1719,7 +1748,17 @@ export const layerWsRpc = (
       ) {
         const project = yield* acpRegistryProject(input.projectId);
         const { manager } = yield* acpSessionManager(input.instanceId);
-        const listed = yield* manager.listProviders(project.workspaceRoot);
+        const listProviders = yield* acpManagementOperation(
+          manager.listProviders,
+          "providers_unsupported",
+          "The ACP agent does not advertise provider configuration.",
+        );
+        const disableProvider = yield* acpManagementOperation(
+          manager.disableProvider,
+          "providers_unsupported",
+          "The ACP agent does not advertise provider configuration.",
+        );
+        const listed = yield* listProviders(project.workspaceRoot);
         const provider = listed.providers.find(
           (candidate) => candidate.providerId === input.providerId,
         );
@@ -1742,7 +1781,7 @@ export const layerWsRpc = (
               }),
           ),
         );
-        yield* manager.disableProvider({
+        yield* disableProvider({
           cwd: project.workspaceRoot,
           providerId: input.providerId,
         });
@@ -2336,6 +2375,11 @@ export const layerWsRpc = (
                     message: "The ACP agent does not advertise logout.",
                   });
                 }
+                const logout = yield* acpManagementOperation(
+                  manager.logout,
+                  "logout_unsupported",
+                  "The ACP agent does not advertise logout.",
+                );
                 if (instance.auth) {
                   yield* providerAuth.logout(input).pipe(
                     Effect.mapError(
@@ -2358,7 +2402,7 @@ export const layerWsRpc = (
                         }),
                     ),
                   );
-                  yield* manager.logout(config.cwd);
+                  yield* logout(config.cwd);
                 }
                 yield* providerRegistry.refreshInstance(input.instanceId);
                 return { loggedOut: true } as const;

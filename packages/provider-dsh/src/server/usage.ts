@@ -3,7 +3,6 @@ import * as Option from "effect/Option";
 import * as Path from "effect/Path";
 import * as Schema from "effect/Schema";
 
-import { expandHomePath } from "@t3tools/provider-core/server/pathExpansion";
 import {
   tokenCount,
   totalTokens,
@@ -11,8 +10,8 @@ import {
   type TranscriptUsageFormat,
   type UsageRecord,
 } from "@t3tools/provider-core/server/usage";
-import * as HostProcess from "@t3tools/shared/HostProcess";
 import type { DshSettings } from "../settings.ts";
+import { dshHomeDirectory } from "./sessions.ts";
 
 const DshScanState = Schema.Struct({ sessionId: Schema.mutableKey(Schema.String) });
 const Event = Schema.Union([
@@ -96,15 +95,7 @@ export const dshUsageDirectories = Effect.fn("dshUsageReader.directories")(funct
   readonly environment: NodeJS.ProcessEnv;
 }) {
   const path = yield* Path.Path;
-  const platform = yield* HostProcess.Platform;
-  const homeDirectory =
-    (platform === "win32" ? environment.USERPROFILE : environment.HOME) ||
-    (yield* HostProcess.HomeDirectory);
-  const home = expandHomePath(
-    environment.DSH_HOME?.trim() || path.join(homeDirectory, ".dsh"),
-    homeDirectory,
-  );
-  return [{ dir: path.resolve(home, "sessions") }];
+  return [{ dir: path.join(yield* dshHomeDirectory(environment), "sessions") }];
 });
 
 export const dshUsageReader: ProviderUsageReader<DshSettings, Path.Path> = {

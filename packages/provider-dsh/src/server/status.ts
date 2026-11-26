@@ -104,8 +104,9 @@ const snapshot = (
   probe: ProviderProbeResult,
   models: ReadonlyArray<ServerProviderModel> = [],
   slashCommands: ReadonlyArray<ServerProviderSlashCommand> = [],
-): ServerProviderDraft =>
-  buildServerProvider({
+  nativeSessions?: ServerProviderDraft["nativeSessions"],
+): ServerProviderDraft => ({
+  ...buildServerProvider({
     driver: DSH_DRIVER_KIND,
     presentation: DSH_PRESENTATION,
     enabled: settings.enabled,
@@ -113,7 +114,9 @@ const snapshot = (
     models: providerModelsFromSettings(models, settings.customModels, EMPTY_CAPABILITIES),
     slashCommands,
     probe,
-  });
+  }),
+  ...(nativeSessions === undefined ? {} : { nativeSessions }),
+});
 
 export const buildInitialDshProviderSnapshot = (
   settings: DshSettings,
@@ -156,9 +159,16 @@ const probeRuntime = Effect.fn("probeDshRuntime")(function* (
   );
   const started = yield* runtime.start();
   yield* Deferred.await(advertised).pipe(Effect.timeoutOption(COMMAND_GRACE));
+  const capabilities = started.initializeResult.agentCapabilities;
   return {
     models: dshModelsFromConfigOptions(started.sessionSetupResult.configOptions),
     commands: dshSlashCommands(yield* Ref.get(commands)),
+    nativeSessions: {
+      canList: capabilities?.sessionCapabilities?.list != null,
+      canLoad: capabilities?.loadSession === true,
+      canResume: capabilities?.sessionCapabilities?.resume != null,
+      canDelete: false,
+    },
   };
 });
 
@@ -216,7 +226,7 @@ export const checkDshProviderStatus = Effect.fn("checkDshProviderStatus")(functi
       message: `DeepSeek Harness could not start (${detail}).`,
     });
   }
-  const { models, commands } = result.success.value;
+  const { models, commands, nativeSessions } = result.success.value;
   if (models.length === 0) {
     return snapshot(
       settings,
@@ -230,6 +240,7 @@ export const checkDshProviderStatus = Effect.fn("checkDshProviderStatus")(functi
       },
       [],
       commands,
+      nativeSessions,
     );
   }
   return snapshot(
@@ -247,5 +258,6 @@ export const checkDshProviderStatus = Effect.fn("checkDshProviderStatus")(functi
     },
     models,
     commands,
+    nativeSessions,
   );
 });
