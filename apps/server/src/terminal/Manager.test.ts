@@ -1895,6 +1895,18 @@ it.layer(
     }),
   );
 
+  it.effect.each(["linux", "darwin"] as const)(
+    "does not apply zsh flags to a literal backslash shell on %s",
+    (platform) =>
+      Effect.gen(function* () {
+        const shell = "/opt/team\\zsh";
+        const { manager, ptyAdapter } = yield* createManager(5, { shellResolver: () => shell });
+        yield* manager.open(openInput());
+        expect(ptyAdapter.spawnInputs[0]?.shell).toBe(shell);
+        expect(ptyAdapter.spawnInputs[0]?.args).toBeUndefined();
+      }).pipe(Effect.provide(layerWithHostPlatform(platform))),
+  );
+
   it.effect("starts a $SHELL whose path contains a space", () =>
     Effect.gen(function* () {
       const { manager, ptyAdapter } = yield* createManager(5, {
