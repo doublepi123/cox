@@ -1,3 +1,4 @@
+import * as NodePath from "@effect/platform-node/NodePath";
 import * as Cause from "effect/Cause";
 import * as Context from "effect/Context";
 import * as Hex from "effect/encoding/Hex";
@@ -8,7 +9,9 @@ import * as Exit from "effect/Exit";
 import * as Fiber from "effect/Fiber";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
+import * as Path from "effect/Path";
 import * as PubSub from "effect/PubSub";
+import * as RcMap from "effect/RcMap";
 import * as Ref from "effect/Ref";
 import * as Schedule from "effect/Schedule";
 import * as Scope from "effect/Scope";
@@ -852,11 +855,45 @@ export const make = Effect.gen(function* () {
     }
   });
 
+  const headWatchers = yield* RcMap.make({
+    lookup: Effect.fnUntraced(function* (cwd: string) {
+      const ready = yield* Deferred.make<void>();
+      yield* Effect.gen(function* () {
+        const headPath = yield* workflow.headPath(cwd);
+        if (headPath === null) return;
+        const path = yield* Path.Path;
+        const directory = path.dirname(headPath);
+        // Git replaces HEAD by renaming HEAD.lock, which a watch on the file itself would lose.
+        yield* fs.watch(directory, { onReady: () => Deferred.doneUnsafe(ready, Exit.void) }).pipe(
+          Stream.takeUntilEffect((event) =>
+            event._tag === "Remove"
+              ? fs.exists(directory).pipe(Effect.map((exists) => !exists))
+              : Effect.succeed(false),
+          ),
+          // A terminal commit moves the branch ref but not HEAD; it always rewrites the index beside it.
+          Stream.filter((event) => {
+            const name = path.basename(event.path);
+            return name === "HEAD" || name === "index";
+          }),
+          Stream.buffer({ capacity: 1, strategy: "sliding" }),
+          Stream.runForEach(() => refreshLocalStatusCore(cwd).pipe(Effect.ignore({ log: true }))),
+        );
+      }).pipe(
+        Effect.provide(NodePath.layer),
+        Effect.ignore({ log: true }),
+        Effect.ensuring(Deferred.succeed(ready, undefined)),
+        Effect.forkScoped,
+      );
+      yield* Deferred.await(ready);
+    }),
+  });
+
   const streamStatus: VcsStatusBroadcaster["Service"]["streamStatus"] = (input) =>
     Stream.unwrap(
       Effect.gen(function* () {
         const cwd = yield* withFileSystem(normalizeCwd(input.cwd));
         const subscription = yield* PubSub.subscribe(changesPubSub);
+        yield* RcMap.get(headWatchers, cwd);
         const initialLocal = yield* getOrLoadLocalStatus(cwd);
         const cachedStatus = yield* getCachedStatus(cwd);
         const initialRemote = cachedStatus?.remote?.value ?? null;

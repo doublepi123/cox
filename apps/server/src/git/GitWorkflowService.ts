@@ -40,6 +40,7 @@ export class GitWorkflowService extends Context.Service<
   {
     readonly isRepository: (cwd: string) => Effect.Effect<boolean, GitManagerServiceError>;
     readonly repositoryRoot: (cwd: string) => Effect.Effect<string | null>;
+    readonly headPath: (cwd: string) => Effect.Effect<string | null>;
     readonly hasCommit: (input: {
       readonly cwd: string;
       readonly refName: string;
@@ -287,6 +288,22 @@ export const make = Effect.gen(function* () {
       ensureGit(operation, input.cwd).pipe(Effect.andThen(run(input)));
 
   return GitWorkflowService.of({
+    headPath: Effect.fn("GitWorkflowService.headPath")(function (cwd) {
+      return git
+        .execute({
+          operation: "GitWorkflowService.headPath",
+          cwd,
+          args: ["rev-parse", "--path-format=absolute", "--git-path", "HEAD"],
+          allowNonZeroExit: true,
+          timeoutMs: 5_000,
+        })
+        .pipe(
+          Effect.map(({ exitCode, stdout }) =>
+            exitCode === 0 ? stdout.replace(/\r?\n$/, "") || null : null,
+          ),
+          Effect.orElseSucceed(() => null),
+        );
+    }),
     repositoryRoot: Effect.fn("GitWorkflowService.repositoryRoot")(function (cwd) {
       return registry.detect({ cwd }).pipe(
         Effect.map((handle) => handle?.repository.rootPath ?? null),

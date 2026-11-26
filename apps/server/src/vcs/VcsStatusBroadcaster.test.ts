@@ -72,6 +72,66 @@ import * as BackgroundPolicy from "../background/BackgroundPolicy.ts";
 import * as GitWorkflowService from "../git/GitWorkflowService.ts";
 import { symlinksSupported } from "@t3tools/shared/testing/symlinks";
 
+it.live("a terminal commit clears a local-only subscriber's Changes totals", () =>
+  Effect.gen(function* () {
+    const fs = yield* FileSystem.FileSystem;
+    const path = yield* Path.Path;
+    const gitDir = yield* fs.makeTempDirectoryScoped({ prefix: "vcs-head-watch-" });
+    const headPath = path.join(gitDir, "HEAD");
+    yield* fs.writeFileString(headPath, "ref: refs/heads/main\n");
+    yield* fs.makeDirectory(path.join(gitDir, "refs", "heads"), { recursive: true });
+    const dirty: VcsStatusLocalResult = {
+      ...baseLocalStatus,
+      refName: "main",
+      hasWorkingTreeChanges: true,
+      workingTree: {
+        files: [{ path: "lib.txt", insertions: 40, deletions: 0 }],
+        insertions: 40,
+        deletions: 0,
+      },
+    };
+    const state = {
+      currentLocalStatus: dirty,
+      currentRemoteStatus: null,
+      localStatusCalls: 0,
+      remoteStatusCalls: 0,
+      localInvalidationCalls: 0,
+      remoteInvalidationCalls: 0,
+      headPath,
+    };
+
+    yield* Effect.gen(function* () {
+      const broadcaster = yield* VcsStatusBroadcaster.VcsStatusBroadcaster;
+      const clean = yield* Deferred.make<void>();
+      const subscribed = yield* Deferred.make<void>();
+      // The collapsed repository row in Thread Details subscribes like this.
+      yield* Stream.runForEach(
+        broadcaster.streamStatus({ cwd: "/repo", includeRemote: false }),
+        (event) =>
+          Effect.gen(function* () {
+            yield* Deferred.succeed(subscribed, undefined);
+            if (event._tag === "localUpdated" && event.local.workingTree.files.length === 0) {
+              yield* Deferred.succeed(clean, undefined);
+            }
+          }),
+      ).pipe(Effect.forkScoped);
+      yield* Deferred.await(subscribed);
+
+      // What `git commit` in a terminal does: the index and the branch ref move, HEAD does not.
+      state.currentLocalStatus = { ...baseLocalStatus, refName: "main" };
+      const indexLock = path.join(gitDir, "index.lock");
+      yield* fs.writeFileString(indexLock, "index");
+      yield* fs.rename(indexLock, path.join(gitDir, "index"));
+      const refLock = path.join(gitDir, "refs", "heads", "main.lock");
+      yield* fs.writeFileString(refLock, "88a38bfa\n");
+      yield* fs.rename(refLock, path.join(gitDir, "refs", "heads", "main"));
+
+      const result = yield* Deferred.await(clean).pipe(Effect.timeoutOption("3 seconds"));
+      assert.isTrue(Option.isSome(result), "the row kept the committed change counts");
+    }).pipe(Effect.provide(layerTestFor(state)), Effect.scoped);
+  }).pipe(Effect.provide(NodeServices.layer)),
+);
+
 it.effect("shares a branch check across overlapping subscriptions", () =>
   Effect.gen(function* () {
     const checked = yield* Deferred.make<void>();
@@ -162,6 +222,7 @@ function layerTestFor(state: {
   automaticFetchInterval?: Effect.Effect<Duration.Duration>;
   beforeRemoteStatus?: Effect.Effect<void>;
   beforeLocalStatus?: Effect.Effect<void>;
+  headPath?: string;
   readBranch?: () => Effect.Effect<string | null>;
   fileSystem?: FileSystem.FileSystem;
   pullCurrentBranch?: GitWorkflowService.GitWorkflowService["Service"]["pullCurrentBranch"];
@@ -181,6 +242,7 @@ function layerTestFor(state: {
     ),
     Layer.provide(
       Layer.mock(GitWorkflowService.GitWorkflowService)({
+        headPath: () => Effect.succeed(state.headPath ?? null),
         readLocalStatusRefSnapshot: () => Effect.sync(() => state.refSnapshot ?? "initial"),
         readRefSnapshot: (_cwd, refs) =>
           Effect.sync(() =>
@@ -567,6 +629,7 @@ describe("VcsStatusBroadcaster", () => {
         ),
         Layer.provide(
           Layer.mock(GitWorkflowService.GitWorkflowService)({
+            headPath: () => Effect.succeed(null),
             readRefSnapshot: () => Effect.succeed("initial"),
             readLocalStatusRefSnapshot: () => Effect.succeed("initial"),
             localStatus: () => Effect.succeed(localStatus),
@@ -664,6 +727,7 @@ describe("VcsStatusBroadcaster", () => {
       Layer.provide(layerBackgroundPolicy(() => true)),
       Layer.provide(
         Layer.mock(GitWorkflowService.GitWorkflowService)({
+          headPath: () => Effect.succeed(null),
           readRefSnapshot: () => Effect.succeed("initial"),
           readLocalStatusRefSnapshot: () => Effect.succeed("initial"),
           localStatus: () => Effect.succeed(baseLocalStatus),
@@ -712,6 +776,7 @@ describe("VcsStatusBroadcaster", () => {
       Layer.provide(layerBackgroundPolicy(() => true)),
       Layer.provide(
         Layer.mock(GitWorkflowService.GitWorkflowService)({
+          headPath: () => Effect.succeed(null),
           readRefSnapshot: () => Effect.succeed("initial"),
           readLocalStatusRefSnapshot: () => Effect.succeed("initial"),
           localStatus: () => Effect.succeed(baseLocalStatus),
@@ -763,6 +828,7 @@ describe("VcsStatusBroadcaster", () => {
       Layer.provide(layerBackgroundPolicy(() => true)),
       Layer.provide(
         Layer.mock(GitWorkflowService.GitWorkflowService)({
+          headPath: () => Effect.succeed(null),
           readRefSnapshot: () => Effect.succeed("initial"),
           readLocalStatusRefSnapshot: () => Effect.succeed("initial"),
           localStatus: () =>
@@ -848,6 +914,7 @@ describe("VcsStatusBroadcaster", () => {
         Layer.provide(layerBackgroundPolicy(() => true)),
         Layer.provide(
           Layer.mock(GitWorkflowService.GitWorkflowService)({
+            headPath: () => Effect.succeed(null),
             readRefSnapshot: () => Effect.succeed("initial"),
             readLocalStatusRefSnapshot: () => Effect.succeed("initial"),
             localStatus: (input) =>
@@ -1222,6 +1289,7 @@ describe("VcsStatusBroadcaster", () => {
       Layer.provide(layerBackgroundPolicy(() => true)),
       Layer.provide(
         Layer.mock(GitWorkflowService.GitWorkflowService)({
+          headPath: () => Effect.succeed(null),
           readRefSnapshot: () => Effect.succeed("initial"),
           readLocalStatusRefSnapshot: () => Effect.succeed("initial"),
           localStatus: () =>
