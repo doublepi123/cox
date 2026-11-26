@@ -703,6 +703,10 @@ export interface ProviderAdapterV2SessionRuntime {
     cwd?: string | null,
   ) => number | undefined;
   readonly canReuseContextUsage?: (previous: ModelSelection, next: ModelSelection) => boolean;
+  /**
+   * False when the native session no longer holds a stopped turn's request. Set only by
+   * providers that can drop one, so a turn a restart cut off is settled like a Stop.
+   */
   readonly nativeTurnKept?: (input: {
     readonly providerThread: OrchestrationV2ProviderThread;
     readonly nativeTurnId: string;

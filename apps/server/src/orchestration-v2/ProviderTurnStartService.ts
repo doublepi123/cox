@@ -11,6 +11,7 @@ import {
   type OrchestrationV2DomainEvent,
   type OrchestrationV2ContextHandoff,
   type OrchestrationV2ExecutionNode,
+  type OrchestrationV2ThreadProjection,
   type OrchestrationV2ProviderThread,
   type OrchestrationV2Run,
   type OrchestrationV2RunAttempt,
@@ -115,7 +116,7 @@ const CUT_TURN_SETTLED = "cut-turn-settled";
 function unsettledStoppedProviderTurn(
   projection: Pick<OrchestrationV2ThreadProjection, "runs" | "providerTurns">,
   run: Pick<OrchestrationV2Run, "ordinal">,
-  providerThread: Pick<OrchestrationV2ProviderThread, "id">,
+  providerThread: Pick<OrchestrationV2ProviderThread, "id" | "nativeThreadRef">,
 ) {
   const previous = projection.runs.reduce<OrchestrationV2Run | undefined>(
     (latest, candidate) =>
@@ -142,7 +143,9 @@ function unsettledStoppedProviderTurn(
     turn === undefined ||
     nativeTurnId == null ||
     (turn.status !== "cancelled" && turn.status !== "interrupted") ||
-    turn.promptDropped === true
+    turn.promptDropped === true ||
+    (turn.nativeThreadRef !== undefined &&
+      turn.nativeThreadRef.nativeId !== providerThread.nativeThreadRef?.nativeId)
   )
     return undefined;
   return { run: previous, turn, nativeTurnId };
