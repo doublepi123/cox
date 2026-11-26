@@ -5,7 +5,7 @@ import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
 import { DraftId, useComposerDraftStore } from "../composerDraftStore";
 import { moveDraftToProject } from "./moveDraftToProject";
-import { readPendingWorkspaceDefault } from "../hooks/useHandleNewThread";
+import { readPendingWorkspaceDefault } from "./draftWorkspaceDefaults";
 import type { T3ProjectFile } from "@t3tools/contracts";
 
 const destination = vi.hoisted(() => ({

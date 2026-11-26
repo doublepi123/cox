@@ -7,7 +7,7 @@ import { resolveNewThreadEnvMode, resolveProjectSettings } from "@t3tools/shared
 
 import type { EnvironmentProject } from "@t3tools/client-runtime/state/shell";
 import { type DraftId, type DraftSessionState, useComposerDraftStore } from "../composerDraftStore";
-import { trackPendingWorkspaceDefault } from "../hooks/useHandleNewThread";
+import { trackPendingWorkspaceDefault } from "./draftWorkspaceDefaults";
 import { flushSync } from "react-dom";
 import { readProject, readThreadShells, subscribeProjects } from "../state/entities";
 import { readEnvironment } from "../state/environments";
@@ -120,7 +120,11 @@ export function loadRetargetedDraftWorkspace(
         });
         try {
           const projectFile = shouldReadProjectFileDefault(projectRef, currentProject)
-            ? await readT3ProjectFile(project.environmentId, root, controller.signal)
+            ? await readT3ProjectFile(
+                project.environmentId,
+                root,
+                AbortSignal.any([controller.signal, AbortSignal.timeout(5_000)]),
+              )
             : null;
           if (!isCurrent()) return;
           const destination = readProject(projectRef);

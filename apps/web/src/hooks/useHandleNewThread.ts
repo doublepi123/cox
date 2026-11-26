@@ -15,7 +15,6 @@ import {
   composerDraftHasUserContent,
   markPromotedDraftThreadByRef,
   type DraftId,
-  type DraftSessionState,
   type DraftThreadEnvMode,
   type DraftThreadState,
   useComposerDraftStore,
@@ -44,6 +43,7 @@ import {
   resolveNewThreadModelSelectionOverride,
 } from "../lib/chatThreadActions";
 import type { EnvironmentProject } from "@t3tools/client-runtime/state/shell";
+import { trackPendingWorkspaceDefault } from "../lib/draftWorkspaceDefaults";
 import { peekT3ProjectFile, readT3ProjectFile } from "../lib/t3ProjectFileDefaults";
 import { appAtomRegistry } from "../rpc/atomRegistry";
 import { environmentSummaries } from "../state/presentation";
@@ -55,62 +55,6 @@ import { useThreadRouteTarget } from "./useThreadRouteTarget";
 import { readUnloadedThreadCount } from "../state/olderSettledShelf";
 import { resolveProjectDefaultProviderModelSelection } from "../providerInstances";
 import { resolveNewThreadModelSelection } from "@t3tools/shared/usageLimits";
-
-// Drafts that opened before their project's t3.json was read. A send waits for the file's
-// workspace default unless the user has already chosen a workspace.
-interface ProvisionalWorkspace {
-  readonly envMode: DraftThreadEnvMode;
-  readonly branch: DraftSessionState["branch"];
-  readonly project: ScopedProjectRef;
-}
-
-const pendingWorkspaceDefaults = new Map<
-  DraftId,
-  ProvisionalWorkspace & { readonly settled: Promise<void> }
->();
-
-function keepsProvisionalWorkspace(
-  draft: DraftSessionState | null,
-  provisional: ProvisionalWorkspace,
-): draft is DraftSessionState {
-  return (
-    draft !== null &&
-    draft.promotedTo == null &&
-    !draft.workspaceExplicit &&
-    draft.envMode === provisional.envMode &&
-    draft.worktreePath === null &&
-    draft.branch === provisional.branch &&
-    draft.environmentId === provisional.project.environmentId &&
-    draft.projectId === provisional.project.projectId
-  );
-}
-
-export function readPendingWorkspaceDefault(draftId: DraftId): Promise<void> | null {
-  const pending = pendingWorkspaceDefaults.get(draftId);
-  if (pending === undefined) return null;
-  const draft = useComposerDraftStore.getState().getDraftSession(draftId);
-  return keepsProvisionalWorkspace(draft, pending) ? pending.settled : null;
-}
-export function trackPendingWorkspaceDefault(
-  draftId: DraftId,
-  provisional: ProvisionalWorkspace,
-  load: (isCurrent: () => boolean) => Promise<void>,
-): void {
-  const isCurrent = () =>
-    pendingWorkspaceDefaults.get(draftId)?.settled === settled &&
-    keepsProvisionalWorkspace(
-      useComposerDraftStore.getState().getDraftSession(draftId),
-      provisional,
-    );
-  const settled: Promise<void> = Promise.resolve()
-    .then(() => load(isCurrent))
-    .finally(() => {
-      if (pendingWorkspaceDefaults.get(draftId)?.settled === settled) {
-        pendingWorkspaceDefaults.delete(draftId);
-      }
-    });
-  pendingWorkspaceDefaults.set(draftId, { ...provisional, settled });
-}
 
 interface NewThreadWorkspaceOptions {
   branch?: string | null;
@@ -284,22 +228,21 @@ export function createNewThreadHandler(router: AnyRouter) {
       }
       const envMode = envModeFor(null);
       const applyProjectFile = (draftId: DraftId) => {
-        const provisional: ProvisionalWorkspace = {
-          envMode,
-          branch: getDraftSession(draftId)?.branch ?? null,
-          project: projectRef,
-        };
-        const settled = projectFileRead
-          .then((projectFile) => {
+        const branch = getDraftSession(draftId)?.branch ?? null;
+        trackPendingWorkspaceDefault(
+          draftId,
+          { envMode, branch, project: projectRef },
+          async (isCurrent) => {
+            const projectFile = await projectFileRead;
             const fileEnvMode = envModeFor(projectFile);
             const draft = getDraftSession(draftId);
             if (
+              !isCurrent() ||
+              !draft ||
               fileEnvMode === envMode ||
-              !keepsProvisionalWorkspace(draft, provisional) ||
               readProject(projectRef) === null
             )
               return;
-            // Commit before a waiting send re-reads the composer's workspace.
             flushSync(() =>
               setDraftThreadContext(draftId, {
                 envMode: fileEnvMode,
@@ -308,13 +251,8 @@ export function createNewThreadHandler(router: AnyRouter) {
                   : {}),
               }),
             );
-          })
-          .finally(() => {
-            if (pendingWorkspaceDefaults.get(draftId)?.settled === settled) {
-              pendingWorkspaceDefaults.delete(draftId);
-            }
-          });
-        pendingWorkspaceDefaults.set(draftId, { ...provisional, settled });
+          },
+        );
       };
       return { envMode, applyProjectFile };
     };

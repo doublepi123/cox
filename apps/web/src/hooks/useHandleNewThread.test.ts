@@ -62,6 +62,9 @@ const testState = vi.hoisted(() => {
 
   return {
     completeProjectFileRead: (value: ProjectFile) => completeProjectFileRead(value),
+    switchProject() {
+      draftSession = { ...draftSession, projectId: "project-other" };
+    },
     pickBranch(branch: string) {
       draftSession = { ...draftSession, branch };
     },
@@ -266,7 +269,8 @@ vi.mock("../uiStateStore", () => ({
 }));
 vi.mock("./useSettings", () => ({ getClientSettings: () => ({}) }));
 
-import { readPendingWorkspaceDefault, useNewThreadHandler } from "./useHandleNewThread";
+import { readPendingWorkspaceDefault } from "../lib/draftWorkspaceDefaults";
+import { useNewThreadHandler } from "./useHandleNewThread";
 
 describe.each([
   ["new", null],
@@ -352,6 +356,24 @@ describe.each([
     expect(readPendingWorkspaceDefault(opened!.draftId)).toBeNull();
     testState.completeProjectFileRead({ defaultThreadEnvMode: "worktree" });
     await testState.projectFileRead;
+
+    expect(testState.draftStore.setDraftThreadContext).not.toHaveBeenCalled();
+  });
+
+  it("ignores the original project's workspace default after the draft moves to another project", async () => {
+    testState.reset(draft, { envMode: null, startFromOrigin: false });
+    const opened = await useNewThreadHandler()({
+      environmentId: "environment-ssh",
+      projectId: "project-remote",
+    } as never);
+    testState.draftStore.setDraftThreadContext.mockClear();
+    const pendingDefault = readPendingWorkspaceDefault(opened!.draftId);
+    expect(pendingDefault).not.toBeNull();
+
+    testState.switchProject();
+    expect(readPendingWorkspaceDefault(opened!.draftId)).toBeNull();
+    testState.completeProjectFileRead({ defaultThreadEnvMode: "worktree" });
+    await pendingDefault;
 
     expect(testState.draftStore.setDraftThreadContext).not.toHaveBeenCalled();
   });

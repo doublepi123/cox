@@ -68,7 +68,8 @@ import { writeTextToClipboard } from "~/hooks/useCopyToClipboard";
 import { stackedThreadToast, toastManager } from "../ui/toast";
 import { newMessageId, newThreadId } from "~/lib/utils";
 import { useStableCallback } from "../../hooks/useStableCallback";
-import { readPendingWorkspaceDefault, useNewThreadHandler } from "../../hooks/useHandleNewThread";
+import { useNewThreadHandler } from "../../hooks/useHandleNewThread";
+import { readPendingWorkspaceDefault } from "../../lib/draftWorkspaceDefaults";
 import { buildThreadRouteParams } from "../../threadRoutes";
 import {
   beginBackgroundDraftSubmissionByRef,
