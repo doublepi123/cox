@@ -93,6 +93,84 @@ const create = (
 const noHttp = HttpClient.make(() => Effect.die("A local binary must not be probed over HTTP"));
 
 it.layer(layer)("OpenCodeDriver runtime selection", (it) => {
+  it.effect("reads remote workspace budgets without sending a client directory", () =>
+    Effect.gen(function* () {
+      const replay = replayOpenCodeServer(OPENCODE_2_RESPONSES, "secret");
+      const requests: string[] = [];
+      const server = HttpClient.make((request) => {
+        const path = new URL(request.url).pathname;
+        const reply = (body: unknown, status = 200) =>
+          Effect.succeed(HttpClientResponse.fromWeb(request, Response.json(body, { status })));
+        assert.notInclude(request.url, "opencode.ai/zen");
+        if (path === "/api/config") return reply([]);
+        if (path === "/api/agent")
+          return reply({
+            location: { directory: "/work" },
+            data: [
+              {
+                id: "build",
+                name: "Build",
+                mode: "primary",
+                hidden: false,
+                request: { settings: {}, headers: {}, body: {} },
+                permissions: [],
+              },
+            ],
+          });
+        if (
+          path === "/api/experimental/usage/limits" ||
+          (path === "/api/provider" && Array.from(request.urlParams).length === 0)
+        ) {
+          assert.strictEqual(request.headers.authorization, "Basic b3BlbmNvZGU6c2VjcmV0");
+          if (Array.from(request.urlParams).length > 0)
+            return reply({ message: "Location not found" }, 404);
+          requests.push(path);
+          return path === "/api/provider"
+            ? reply({
+                data: [
+                  { id: "opencode", integrationID: "opencode" },
+                  { id: "opencode-go", integrationID: "opencode" },
+                ],
+              })
+            : reply({
+                location: { directory: "/work" },
+                data: {
+                  workspace: {
+                    id: "remote",
+                    name: "Remote workspace",
+                    usageURL: "https://example.test/usage",
+                  },
+                  budgets: [
+                    {
+                      id: "budget",
+                      limit: 100,
+                      spent: 75,
+                      scope: "combined",
+                      per: "set",
+                      coverage: "all",
+                      models: [],
+                      shared: true,
+                      resetsAt: 1_800_000_000_000,
+                    },
+                  ],
+                },
+              });
+        }
+        return replay.execute(request);
+      });
+      const instance = yield* create(
+        { serverUrl: "http://127.0.0.1:4096", serverPassword: "secret" },
+        server,
+      );
+      const snapshot = yield* instance.snapshot.refresh;
+      assert.strictEqual(snapshot.usageLimits?.windows[0]?.usedPercent, 75);
+      assert.strictEqual(snapshot.usageLimits?.externalUsage?.label, "Remote workspace");
+      assert.deepStrictEqual(snapshot.usageLimits?.windows[0]?.providerIds, ["opencode"]);
+      assert.include(requests, "/api/experimental/usage/limits");
+      assert.include(requests, "/api/provider");
+    }),
+  );
+
   it.effect(
     "isolates model service sessions while preserving shared servers for other instances",
     () =>

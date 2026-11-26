@@ -510,7 +510,7 @@ export const OpenCodeDriver: ProviderDriver<
       ),
     );
 
-    const checkUsageLimits = readOpenCodeGoUsageLimits({
+    const legacyUsageLimits = readOpenCodeGoUsageLimits({
       enabled: effectiveConfig.enabled,
       serverUrl: effectiveConfig.serverUrl,
       environment: processEnv,
@@ -520,6 +520,18 @@ export const OpenCodeDriver: ProviderDriver<
       Effect.provideService(HttpClient.HttpClient, httpClient),
       Effect.provideService(Digest.Digest, digest),
     );
+    const checkUsageLimits =
+      !effectiveConfig.enabled || effectiveConfig.serverUrl.trim().length === 0
+        ? legacyUsageLimits
+        : Effect.gen(function* () {
+            const runtime = yield* runtimeProbe.get.pipe(Effect.option);
+            if (Option.isNone(runtime) || runtime.value.generation !== "v2")
+              return yield* legacyUsageLimits;
+            const limits = yield* openCode2Server
+              .withConnection((connection) => connection.usageLimits?.(undefined) ?? Effect.void)
+              .pipe(Effect.orElseSucceed(() => undefined));
+            return limits ?? (yield* legacyUsageLimits);
+          });
     const checkProvider = Effect.all(
       {
         provider: checkOpenCodeProviderStatus(
