@@ -2470,14 +2470,21 @@ export const makeCursorAdapterV2 = Effect.fn("makeCursorAdapterV2")(function* (
                 );
               }
               return;
+            case "shell-tool-call-delta":
             case "shell-output-delta": {
-              const shell = Array.from(context.tools.values())
-                .toReversed()
-                .find((candidate) => candidate.toolCall.type === "shell");
-              if (shell === undefined) {
-                return;
-              }
-              const chunk = shellOutputText(update.event);
+              const callId =
+                update.type === "shell-tool-call-delta" ? update.callId : update.event.toolCallId;
+              const shell =
+                typeof callId === "string"
+                  ? context.tools.get(callId)
+                  : Array.from(context.tools.values())
+                      .toReversed()
+                      .find((candidate) => candidate.toolCall.type === "shell");
+              if (shell?.toolCall.type !== "shell") return;
+              const chunk =
+                update.type === "shell-tool-call-delta"
+                  ? update.content
+                  : shellOutputText(update.event);
               if (chunk.length === 0) return;
               // Persist output once; live hub deltas avoid quadratic event-store growth.
               shell.streamedOutput += chunk;

@@ -2142,11 +2142,25 @@ describe("CursorAdapterV2", () => {
                     callId: "shell-call",
                     toolCall: shell,
                   });
-                  for (const chunk of chunks) {
-                    yield* input.onDelta!({
-                      type: "shell-output-delta",
-                      event: { case: "stdout", value: { data: chunk }, toolCallId: "shell-call" },
-                    });
+                  for (const [index, chunk] of chunks.entries()) {
+                    yield* input.onDelta!(
+                      index % 2 === 0
+                        ? {
+                            type: "shell-tool-call-delta",
+                            modelCallId: "model-call",
+                            callId: "shell-call",
+                            stream: "stdout",
+                            content: chunk,
+                          }
+                        : {
+                            type: "shell-output-delta",
+                            event: {
+                              case: "stdout",
+                              value: { data: chunk },
+                              toolCallId: "shell-call",
+                            },
+                          },
+                    );
                   }
                   yield* input.onDelta!({
                     type: "tool-call-completed",

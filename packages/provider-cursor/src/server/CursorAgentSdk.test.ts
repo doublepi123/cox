@@ -409,18 +409,17 @@ describe("CursorAgentSdkRunner", () => {
   );
 
   it.effect(
-    "ref-counts one disposable SqliteLocalAgentStore with no-op runEvents per workspace",
+    "ref-counts one disposable SqliteLocalAgentStore with run-event persistence disabled per workspace",
     () =>
       Effect.gen(function* () {
         const dispose = vi.fn(async () => {});
-        const underlyingAppend = vi.fn(async () => {
-          throw new Error("runEvents.append must not hit SQLite");
-        });
         const fakeStore = {
+          persistRunEvents: true,
+          retainAgent: vi.fn(),
           agents: { get: vi.fn() },
           runs: { list: vi.fn() },
           checkpoints: { save: vi.fn() },
-          runEvents: { append: underlyingAppend, list: vi.fn(), delete: vi.fn() },
+          runEvents: { append: vi.fn(), list: vi.fn(), delete: vi.fn() },
           dispose,
         };
         cursorSdkMock.sqliteOpen.mockClear();
@@ -445,37 +444,13 @@ describe("CursorAgentSdkRunner", () => {
           [{ workspaceRef: "/workspace/cursor-store-test" }],
         ]);
         const passedOptions = cursorSdkMock.create.mock.calls[0]?.[0] as
-          | {
-              readonly local?: {
-                readonly store?: {
-                  readonly agents: unknown;
-                  readonly checkpoints: unknown;
-                  readonly runEvents: {
-                    readonly append: (event: {
-                      readonly runId: string;
-                      readonly eventType: string;
-                      readonly payload?: unknown;
-                    }) => Promise<{ readonly seq: number }>;
-                  };
-                };
-              };
-            }
+          | { readonly local?: { readonly store?: { readonly persistRunEvents?: boolean } } }
           | undefined;
         const peerOptions = cursorSdkMock.create.mock.calls[1]?.[0] as typeof passedOptions;
         const passedStore = passedOptions?.local?.store;
-        assert.isDefined(passedStore);
+        assert.strictEqual(passedStore, fakeStore);
         assert.strictEqual(peerOptions?.local?.store, passedStore);
-        assert.strictEqual(passedStore?.agents, fakeStore.agents);
-        assert.strictEqual(passedStore?.checkpoints, fakeStore.checkpoints);
-        const appended = yield* Effect.promise(() =>
-          passedStore!.runEvents.append({
-            runId: "run-1",
-            eventType: "text-delta",
-            payload: { text: "hi" },
-          }),
-        );
-        assert.equal(appended.seq, 1);
-        assert.equal(underlyingAppend.mock.calls.length, 0);
+        assert.strictEqual(passedStore?.persistRunEvents, false);
         assert.equal(dispose.mock.calls.length, 0);
 
         // Closing one session keeps the shared workspace store alive; repeated close does not double-release.
