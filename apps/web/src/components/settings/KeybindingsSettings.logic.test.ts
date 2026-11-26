@@ -13,6 +13,8 @@ import {
   keybindingConflictLabels,
   keybindingFromKeyboardEvent,
   parseWhenExpressionDraft,
+  buildWhenVariableOptions,
+  unknownWhenVariables,
   shortcutToKeybindingInput,
   shortcutToKeybindingParts,
   whenAstToExpression,
@@ -330,6 +332,16 @@ describe("KeybindingsSettings.logic", () => {
         },
       },
     });
+    for (const [expression, condition] of [
+      ["previewOpen && !previewFocus", "previewOpen"],
+      ["composerFocus && turnRunning && composerEmpty", "composerEmpty"],
+    ] as const) {
+      const draft = parseWhenExpressionDraft(expression);
+      expect(draft.ok).toBe(true);
+      if (!draft.ok) throw new Error(draft.message);
+      expect(unknownWhenVariables(draft.value)).toEqual([]);
+      expect(buildWhenVariableOptions()).toContain(condition);
+    }
     expect(parseWhenExpressionDraft("editorFocus &&")).toEqual({
       ok: false,
       message: "Use variables with !, &&, ||, and parentheses.",
