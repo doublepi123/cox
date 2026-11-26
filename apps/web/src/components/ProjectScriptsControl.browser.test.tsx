@@ -1,11 +1,34 @@
 import { EnvironmentId } from "@t3tools/contracts";
 import * as Cause from "effect/Cause";
 import { AsyncResult } from "effect/reactivity";
-import { expect, it } from "vite-plus/test";
+import { expect, it, vi } from "vite-plus/test";
 import { page, userEvent } from "vite-plus/test/browser";
 
 import { act, render } from "../../test/render";
 import ProjectScriptsControl, { type ProjectScriptActionResult } from "./ProjectScriptsControl";
+
+it("refreshes project file actions each time the menu opens", async () => {
+  const refresh = vi.fn();
+  await using screen = await render(
+    <ProjectScriptsControl
+      displayMode="panel"
+      environmentId={EnvironmentId.make("test")}
+      scripts={[]}
+      fileScripts={[{ name: "Build", command: "echo build" }]}
+      onActionsMenuOpen={refresh}
+      onAddScript={async () => AsyncResult.success(undefined)}
+      onUpdateScript={async () => AsyncResult.success(undefined)}
+      onDeleteScript={async () => AsyncResult.success(undefined)}
+    />,
+  );
+  const actions = screen.getByRole("button", { name: "Project actions" });
+  await actions.click();
+  expect(refresh).toHaveBeenCalledOnce();
+  await userEvent.keyboard("{Escape}");
+  await expect.element(page.getByRole("menu")).not.toBeInTheDocument();
+  await actions.click();
+  expect(refresh).toHaveBeenCalledTimes(2);
+});
 
 function pendingImport() {
   let resolve!: (value: ProjectScriptActionResult) => void;
