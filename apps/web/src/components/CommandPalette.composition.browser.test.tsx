@@ -6,8 +6,10 @@ import { act, render } from "../../test/render";
 import { CommandPalette } from "./CommandPalette";
 import { openCommandPalette } from "../commandPaletteBus";
 import { primaryServerKeybindingsAtom } from "../state/server";
+import { sourceControlEnvironment } from "../state/sourceControl";
+import { AsyncResult } from "effect/reactivity";
 
-const discovery = vi.hoisted(() => ({ value: undefined as unknown }));
+const discovery = vi.hoisted(() => ({ value: undefined as unknown, lookupRepository: vi.fn() }));
 const githubAvailable = {
   versionControlSystems: [],
   sourceControlProviders: [
@@ -63,7 +65,10 @@ vi.mock("../state/use-atom-command", () => ({
 }));
 vi.mock("../state/use-atom-query-runner", () => ({
   // Doubles as the add-project folder scan, which finds nothing to track.
-  useAtomQueryRunner: () => async () => ({ _tag: "Success", value: { folders: [] } }),
+  useAtomQueryRunner: (family: unknown) =>
+    family === sourceControlEnvironment.repository
+      ? discovery.lookupRepository
+      : async () => ({ _tag: "Success", value: { folders: [] } }),
 }));
 vi.mock("../state/environments", async (original) => ({
   ...(await original<typeof import("../state/environments")>()),
@@ -181,4 +186,35 @@ it("tells screen readers whether a new project will be published", async () => {
   await expect.element(option).toHaveAttribute("aria-checked", "false");
   await option.click();
   await expect.element(option).toHaveAttribute("aria-checked", "true");
+});
+
+it("keeps the source list visible after a dismissed repository lookup succeeds", async () => {
+  discovery.value = githubAvailable;
+  const repository = AsyncResult.success({
+    provider: "github",
+    nameWithOwner: "example/slow",
+    url: "https://github.com/example/slow",
+    sshUrl: "git@github.com:example/slow.git",
+  });
+  let finishLookup: (value: typeof repository) => void = () => {};
+  const lookup = new Promise<typeof repository>((resolve) => {
+    finishLookup = resolve;
+  });
+  discovery.lookupRepository.mockReset().mockReturnValue(lookup);
+  await using _screen = await render(<CommandPalette>{null}</CommandPalette>);
+  await act(() => openCommandPalette({ open: "add-project" }));
+  await page.getByRole("option", { name: /^GitHub repository/ }).click();
+  await page.getByRole("combobox").fill("example/slow");
+  await userEvent.keyboard("{Enter}");
+  expect(discovery.lookupRepository).toHaveBeenCalledOnce();
+  await page.getByRole("combobox").fill("");
+  await userEvent.keyboard("{Backspace}");
+  const sources = page.getByText("Git URL", { exact: true });
+  await expect.element(sources).toBeVisible();
+
+  await act(async () => {
+    finishLookup(repository);
+    await lookup;
+  });
+  expect(sources.element()).toBeVisible();
 });
