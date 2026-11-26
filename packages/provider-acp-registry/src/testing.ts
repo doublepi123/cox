@@ -21,3 +21,4 @@ export {
   type AcpRegistryAvailableCommands,
   type AcpRegistryLiveConfiguration,
 } from "./server/probe.ts";
+export { makeAcpRegistryTextGeneration } from "./server/textGeneration.ts";

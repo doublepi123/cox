@@ -1,4 +1,5 @@
 import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
+import * as NodePath from "@effect/platform-node/NodePath";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { describe, expect, it } from "@effect/vitest";
 import {
@@ -292,19 +293,47 @@ describe("AcpRegistrySupport", () => {
         toolsDir: `${cacheDir}/tools`,
         registryUrl,
       }).pipe(Effect.provideService(HostProcess.Environment, environment));
+      const paths = yield* Path.Path;
       const resolved = yield* resolver.resolve(
-        decodeAcpRegistrySettings({ source: "local", commandPath }),
+        decodeAcpRegistrySettings({
+          source: "local",
+          commandPath: paths.relative(process.cwd(), commandPath),
+        }),
         "/workspace",
       );
-
-      expect(resolved.spawn).toEqual({
-        command: commandPath,
+      expect(resolved.spawn).toMatchObject({
         args: [],
         cwd: "/workspace",
         env: environment,
         shell: false,
       });
+      expect(paths.isAbsolute(resolved.spawn.command)).toBe(true);
+      expect(yield* fileSystem.realPath(resolved.spawn.command)).toBe(
+        yield* fileSystem.realPath(commandPath),
+      );
       expect(resolved.agent).toBeUndefined();
+
+      yield* fileSystem.makeDirectory(`${cacheDir}/target/nested`, { recursive: true });
+      yield* fileSystem.writeFileString(
+        `${cacheDir}/target/dsh wrapper`,
+        "#!/bin/sh\necho target\n",
+      );
+      yield* fileSystem.chmod(`${cacheDir}/target/dsh wrapper`, 0o755);
+      yield* fileSystem.symlink(`${cacheDir}/target/nested`, `${cacheDir}/link`);
+      const symlinkCommand = `${cacheDir}/link/../dsh wrapper`;
+      for (const command of [
+        symlinkCommand,
+        `${(yield* Path.Path).relative(process.cwd(), cacheDir)}/link/../dsh wrapper`,
+      ]) {
+        const throughSymlink = yield* resolver.resolve(
+          decodeAcpRegistrySettings({ source: "local", commandPath: command }),
+          "/workspace",
+        );
+        expect((yield* Path.Path).isAbsolute(throughSymlink.spawn.command)).toBe(true);
+        expect(yield* fileSystem.readFileString(throughSymlink.spawn.command)).toBe(
+          "#!/bin/sh\necho target\n",
+        );
+      }
 
       for (const extension of [".cmd", ".BAT"]) {
         const windowsResolver = yield* AcpRegistrySupport.makeAcpRegistryCatalog({
@@ -373,6 +402,31 @@ describe("AcpRegistrySupport", () => {
       Effect.scoped,
       Effect.provide(layerResolver(() => Effect.die("unexpected registry request"))),
     ),
+  );
+
+  it.effect("preserves Windows drive-relative executable traversal", () =>
+    Effect.gen(function* () {
+      const windowsPath = yield* Path.Path.pipe(Effect.provide(NodePath.layerWin32));
+      const local = decodeAcpRegistrySettings({ source: "local", commandPath: "cmdc" });
+      for (const drive of ["C:", "D:"]) {
+        const command = `${drive}tools\\link\\..\\cmdc.exe`;
+        const resolver = yield* AcpRegistrySupport.makeAcpRegistryCatalog({
+          cacheDir: "C:\\cache",
+          toolsDir: "C:\\cache\\tools",
+          registryUrl,
+        }).pipe(
+          Effect.provideService(HostProcess.Platform, "win32"),
+          Effect.provideService(SpawnExecutableResolution, async () => command),
+          Effect.provide(NodePath.layerWin32),
+        );
+        expect(yield* resolver.resolve(local, "C:\\workspace")).toMatchObject({
+          spawn: {
+            command: `${windowsPath.resolve(drive)}\\tools\\link\\..\\cmdc.exe`,
+            shell: false,
+          },
+        });
+      }
+    }).pipe(Effect.provide(layerResolver(() => Effect.die("unexpected registry request")))),
   );
 
   it.effect("resolves command overrides while preserving registry args and environment", () => {

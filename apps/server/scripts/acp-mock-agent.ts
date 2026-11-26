@@ -131,6 +131,9 @@ process.once("SIGINT", () => {
 });
 
 function configOptions(): ReadonlyArray<AcpSchema.SessionConfigOption> {
+  if (process.env.COX_ACP_OMIT_MODEL_OPTIONS === "1") {
+    return [];
+  }
   if (antigravityProfile) {
     return [
       {
