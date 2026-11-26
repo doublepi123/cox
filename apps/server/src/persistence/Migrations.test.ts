@@ -132,6 +132,7 @@ describe("runMigrations", () => {
         [96, "WorkflowRunSubject"],
         [97, "ForkHistoryMembership"],
         [98, "LayoutCommandApprovals"],
+        [99, "TurnItemTypeStatusIndex"],
       ]);
 
       const tables = yield* sql<{ readonly name: string }>`

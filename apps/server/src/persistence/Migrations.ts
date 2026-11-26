@@ -110,6 +110,7 @@ import Migration0095 from "./Migrations/095_WorkflowPools.ts";
 import Migration0096 from "./Migrations/096_WorkflowRunSubject.ts";
 import Migration0097 from "./Migrations/097_ForkHistoryMembership.ts";
 import Migration0098 from "./Migrations/098_LayoutCommandApprovals.ts";
+import Migration0099 from "./Migrations/099_TurnItemTypeStatusIndex.ts";
 
 const migrationEntries = [
   [1, "OrchestrationEvents", Migration0001],
@@ -211,6 +212,7 @@ const migrationEntries = [
   [96, "WorkflowRunSubject", Migration0096],
   [97, "ForkHistoryMembership", Migration0097],
   [98, "LayoutCommandApprovals", Migration0098],
+  [99, "TurnItemTypeStatusIndex", Migration0099],
 ] as const;
 
 export const migrationManifest = migrationEntries.map(([id, name]) => [id, name] as const);

@@ -390,6 +390,27 @@ it.effect("idle compaction filters keep the latest run, live work and the newest
       .join("\n");
     assert.notInclude(runPlan, "orchestration_v2_projection_runs_thread_ordinal_idx");
     assert.match(runPlan, /SEARCH orchestration_v2_projection_runs USING INDEX \w*status\w*/);
+    // Live items found by status alone: sorted by ordinal, SQLite would fetch every row of the thread.
+    const live = traceSqlStatements();
+    const liveItems = yield* store
+      .getThreadRecords(threadId, ["turnItems"], {
+        turnItemStatuses: ["pending", "running", "waiting"],
+      })
+      .pipe(Effect.withTracer(live.tracer));
+    assert.deepEqual(
+      liveItems.turnItems.map((item) => item.id),
+      ["item:idle-compaction:rolled-back"],
+    );
+    const liveQuery = live.statements.find((statement) =>
+      statement.includes("FROM orchestration_v2_projection_turn_items"),
+    );
+    assert.isDefined(liveQuery);
+    assert.include(
+      (yield* sql.unsafe<{ readonly detail: string }>(`EXPLAIN QUERY PLAN ${liveQuery}`))
+        .map((row) => row.detail)
+        .join("\n"),
+      "USING COVERING INDEX orchestration_v2_projection_turn_items_thread_type_idx",
+    );
     assert.deepEqual(
       records.providerTurns.map((turn) => turn.id),
       ["turn:idle-newest"],
@@ -452,8 +473,9 @@ it.effect("user-only record ordering uses the partial user-message index", () =>
       `EXPLAIN QUERY PLAN ${ordinalLookup}`,
       [threadId, "[]"],
     )).map((row) => row.detail);
+    // User-only reads must stay on a type-bounded index instead of scanning every turn item.
     assert.isTrue(
-      plan.some((detail) => detail.includes("turn_items_user_message_idx")),
+      plan.some((detail) => /turn_items_(user_message|thread_type)_idx/.test(detail)),
       plan.join("\n"),
     );
   }).pipe(Effect.provide(layerTest)),
