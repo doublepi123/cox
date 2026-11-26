@@ -150,6 +150,11 @@ describe("extractMarkdownLinkHrefs", () => {
     ["[a](<foo)bar> invalid [b](ok)", ["<foo", "ok"]],
     ["[[[nested](src/main.ts) [unfinished", ["src/main.ts"]],
     [`See ${serializeComposerFileLink("pages/posts/[id].tsx")} now`, ["pages/posts/%5Bid%5D.tsx"]],
+    [
+      "[![a](a.png)](src/index.ts) [![b](b.png)](lib/index.ts)",
+      ["a.png", "src/index.ts", "b.png", "lib/index.ts"],
+    ],
+    [String.raw`[\![a](a.png)](src/index.ts) [label!](ok)`, ["a.png", "ok"]],
     ["See [the [docs] guide](docs/guide.md) and [[1]](src/a.ts)", ["docs/guide.md", "src/a.ts"]],
     ["[a [b](x) [c \\[d](y) [e\\]](z)", ["x", "y", "z"]],
     ["[a [b]\n\nc](src/a.ts) [outer [inner]()](src/b.ts)", []],

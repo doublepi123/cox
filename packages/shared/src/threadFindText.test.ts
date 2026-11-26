@@ -87,6 +87,12 @@ it("searches displayed prose and file-chip labels without hidden paths", () => {
     "label main.ts · L3:C2",
   ]);
   expect(assistantSegments("[label](src/main.ts#L3C2)")).toEqual(["label"]);
+  expect(
+    assistantSegments(
+      "[![a](https://example.com/a.png)](src/index.ts) [![b](https://example.com/b.png)](lib/index.ts)",
+      "/workspace/repo",
+    ),
+  ).toEqual(["index.ts · repo/src index.ts · repo/lib"]);
 });
 
 it("keeps fence paths literal and indexes file-chip labels in user messages", () => {
