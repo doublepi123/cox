@@ -5,9 +5,38 @@ import * as Schema from "effect/Schema";
 export const THREAD_LINK_PROTOCOL = "t3-thread";
 const V1_PREFIX = `${THREAD_LINK_PROTOCOL}://v1/`;
 const V2_PREFIX = `${THREAD_LINK_PROTOCOL}://v2/`;
-// Code comes first in the alternation so a link written inside a code span or fence is skipped.
-const THREAD_LINK_OUTSIDE_CODE =
-  /(?<fence>(`{3,}|~{3,})[\s\S]*?(?:\2|$))|(?<span>(`+)[^\n]*?\4)|\[(?<label>[^\]\n]*)\]\((?:<(?<angleHref>t3-thread:\/\/v[12]\/[^\s<>]+)>|(?<href>t3-thread:\/\/v[12]\/[^\s>)]+))\)|<(?<autolink>t3-thread:\/\/v[12]\/[^\s<>]+)>/g;
+const THREAD_HREF = String.raw`t3-thread:\/\/v[12]\/`;
+// A label stops at any bracket, so a run of unclosed brackets is scanned once, not once per bracket.
+const LABEL = String.raw`[^[\]\n]*`;
+const LIST_MARKERS = String.raw`(?:(?:[-*+]|\d{1,9}[.)])[ \t]+)*`;
+// CommonMark fences start on their own line (optional blockquotes, indentation, or list markers)
+// and close on a line with at least as many of the same marker; backtick info strings hold no `.
+// Quote markers are compared from the first `>`, so lines may indent them differently.
+// Space after the markers is matched only after a `>`: two adjacent `[ \t]*` backtrack quadratically.
+const AFTER_QUOTE = String.raw`(?:(?<=>)[ \t]*)?`;
+const fencedCode = (char: "`" | "~", name: string) => {
+  const bq = `${name}Bq`;
+  const info = char === "`" ? "[^`\\r\\n]*" : "[^\\r\\n]*";
+  const closer = String.raw`[ \t]*\k<${bq}>${AFTER_QUOTE}\k<${name}>${char}*(?!${char})[ \t]*\r?$`;
+  return String.raw`^[ \t]*${LIST_MARKERS}(?<${bq}>(?:>(?:[ \t]*>)*)?)(?:(?<=>)[ \t]*${LIST_MARKERS})?(?<${name}>${char}{3,}(?!${char}))${info}(?=\r?$)(?:\r?\n(?!${closer})[ \t]*\k<${bq}>[^\r\n]*)*(?:\r?\n${closer})?`;
+};
+// A code span may wrap lines but ends where its paragraph does: a blank line, heading, list item, or fence.
+const SPAN_LINE_BREAK = String.raw`\n(?![ \t>]*(?:\r?$|#{1,6}(?:[ \t]|\r?$)|(?:[-*+]|\d{1,9}[.)])[ \t]|\`{3,}[^\`\r\n]*\r?$|~{3,}))`;
+// Earlier alternatives claim text so later ones cannot match inside it: an escaped character opens
+// nothing, code is literal, and a link to anywhere else keeps a thread URL in its label or href.
+const THREAD_LINK_OUTSIDE_CODE = new RegExp(
+  [
+    String.raw`\\[!-/:-@[-\`{-~]`,
+    fencedCode("`", "bt"),
+    fencedCode("~", "tl"),
+    String.raw`(?<span>(?<!\`)(?<spanTicks>\`+)(?!\`)(?:[^\n]|${SPAN_LINE_BREAK})*?(?<!\`)\k<spanTicks>(?!\`))`,
+    // A labeled link's destination may be angle-bracketed, as CommonMark allows: [label](<href>).
+    String.raw`\[(?<label>${LABEL})\]\((?:<(?<angleHref>${THREAD_HREF}[^\s<>]+)>|(?<href>${THREAD_HREF}[^\s>)]+))\)`,
+    String.raw`\[${LABEL}\]\((?:<[^<>\n]*>|[^\s()]*(?:\([^\s()]*\)[^\s()]*)*)(?:[ \t]+(?:"[^"\n]*"|'[^'\n]*'))?\)`,
+    String.raw`<(?<autolink>${THREAD_HREF}[^\s<>]+)>`,
+  ].join("|"),
+  "gm",
+);
 
 const decodeThreadId = Schema.decodeUnknownOption(ThreadId);
 const decodeEnvironmentId = Schema.decodeUnknownOption(EnvironmentId);
