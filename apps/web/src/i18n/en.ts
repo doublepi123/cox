@@ -56,6 +56,9 @@ export const en = {
     "{count} malformed or inconsistent usage records were skipped; usage may be incomplete.",
   "0 bytes": "0 bytes",
   "{count} matches": "{count} matches",
+  "Stash is full": "Stash is full",
+  "The stash holds {max} prompts. Restore or delete one to make room; the composer was left as-is.":
+    "The stash holds {max} prompts. Restore or delete one to make room; the composer was left as-is.",
   "{environment}: {count} more result.": "{environment}: {count} more result.",
   "{environment}: {count} more results.": "{environment}: {count} more results.",
   "{terminalLabel} line {lineStart}": "{terminalLabel} line {lineStart}",

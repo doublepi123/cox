@@ -33,6 +33,9 @@ export const zh = {
     "已跳过 {count} 条格式错误或不一致的用量记录，用量可能不完整。",
   "0 bytes": "0 字节",
   "{count} matches": "{count} 处匹配",
+  "Stash is full": "暂存已满",
+  "The stash holds {max} prompts. Restore or delete one to make room; the composer was left as-is.":
+    "暂存最多保留 {max} 条提示。请恢复或删除一条以腾出空间。输入框中的内容仍然保留。",
   "{environment}: {count} more result.": "{environment}：另有 {count} 个结果。",
   "{environment}: {count} more results.": "{environment}：另有 {count} 个结果。",
   "{terminalLabel} line {lineStart}": "{terminalLabel} 第 {lineStart} 行",
