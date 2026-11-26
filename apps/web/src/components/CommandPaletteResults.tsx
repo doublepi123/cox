@@ -1,3 +1,4 @@
+import { useStableCallback } from "~/hooks/useStableCallback";
 import { type ResolvedKeybindingsConfig } from "@t3tools/contracts";
 import { LegendList, type LegendListRef } from "@legendapp/list/react";
 import { ChevronRightIcon } from "lucide-react";
@@ -93,6 +94,20 @@ export function scrollCommandPaletteRowIntoView(
   void list?.scrollIndexIntoView?.({ index: rowIndex, animated: false });
 }
 
+// Keeps a mounted row's old data when it shows the same item, so typing re-renders only the
+// rows whose item or position changed.
+function commandPaletteRowsAreEqual(previous: CommandPaletteRow, next: CommandPaletteRow) {
+  if (previous.kind === "label" || next.kind === "label") {
+    return (
+      previous.kind === "label" &&
+      next.kind === "label" &&
+      previous.label === next.label &&
+      previous.first === next.first
+    );
+  }
+  return previous.item === next.item && previous.itemIndex === next.itemIndex;
+}
+
 interface CommandPaletteVirtualizedResultsProps extends Omit<CommandPaletteResultsProps, "groups"> {
   rows: ReadonlyArray<CommandPaletteRow>;
   listRef: RefObject<LegendListRef | null>;
@@ -102,6 +117,11 @@ interface CommandPaletteVirtualizedResultsProps extends Omit<CommandPaletteResul
  * unmounted rows. */
 export function CommandPaletteVirtualizedResults(props: CommandPaletteVirtualizedResultsProps) {
   const { listRef } = props;
+  const onExecuteItem = useStableCallback(props.onExecuteItem);
+  const rowInputs = {
+    highlightedItemValue: props.highlightedItemValue,
+    keybindings: props.keybindings,
+  };
   const [scrollFade, setScrollFade] = useState({ top: false, bottom: false });
   const updateScrollFade = () => {
     const scrollElement = listRef.current?.getScrollableNode?.();
@@ -125,7 +145,8 @@ export function CommandPaletteVirtualizedResults(props: CommandPaletteVirtualize
         data={props.rows}
         keyExtractor={(row) => row.key}
         getItemType={(row) => row.kind}
-        extraData={props.highlightedItemValue}
+        itemsAreEqual={commandPaletteRowsAreEqual}
+        extraData={rowInputs}
         renderItem={({ item: row }) =>
           row.kind === "label" ? (
             <div className={row.first ? undefined : "pt-1.5"}>
@@ -139,7 +160,7 @@ export function CommandPaletteVirtualizedResults(props: CommandPaletteVirtualize
               item={row.item}
               keybindings={props.keybindings}
               isActive={props.highlightedItemValue === row.item.value}
-              onExecuteItem={props.onExecuteItem}
+              onExecuteItem={onExecuteItem}
             />
           )
         }
