@@ -10,6 +10,7 @@ import {
   type DraftId,
   useComposerDraftStore,
 } from "../composerDraftStore";
+import { retargetDraftWorkspace } from "./retargetDraftWorkspace";
 import { getClientSettings } from "../hooks/useSettings";
 import { resolveProjectSettings } from "@t3tools/shared/projectSettings";
 import { resolveNewThreadModelSelection } from "@t3tools/shared/usageLimits";
@@ -48,6 +49,7 @@ export function moveDraftToProject(
       ),
     projectRef,
     draftId,
+    retargetDraftWorkspace(session, projectRef, project),
   );
   if (!hasExplicitComposerModelSelection(currentDraft)) {
     store.applyStickyState(draftId);

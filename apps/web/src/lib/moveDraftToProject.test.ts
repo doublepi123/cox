@@ -56,4 +56,17 @@ describe("moveDraftToProject", () => {
     expect(store.getDraftSessionByProjectRef(currentRef)?.draftId).toBe(draftId);
     expect(store.getDraftSessionByProjectRef(addedRef)).toBeNull();
   });
+
+  it.each([false, true])(
+    "uses the destination workspace default unless explicitly chosen (%s)",
+    (explicit) => {
+      const store = useComposerDraftStore.getState();
+      store.setPrompt(draftId, "Plan the next project");
+      store.setDraftThreadContext(draftId, { envMode: "local", workspaceExplicit: explicit });
+      expect(moveDraftToProject(draftId, { ...added, defaultThreadEnvMode: "worktree" })).toBe(
+        true,
+      );
+      expect(store.getDraftSession(draftId)?.envMode).toBe(explicit ? "local" : "worktree");
+    },
+  );
 });
