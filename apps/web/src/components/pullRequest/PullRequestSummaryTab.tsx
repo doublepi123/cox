@@ -113,6 +113,8 @@ function CommentIdentity({
   detail: PullRequestDetailView;
   threadRef: ScopedThreadRef | null;
 }) {
+  const openLink = useOpenLink(threadRef);
+  const url = comment.url;
   const timestampFormat = useClientSettings((settings) => settings.timestampFormat);
   const actor = comment.author;
   const profileUrl = actor
@@ -128,12 +130,16 @@ function CommentIdentity({
       />
       <SharedTooltipTrigger
         render={
-          comment.url ? (
+          url ? (
             <a
-              href={comment.url}
+              href={url}
               target="_blank"
               rel="noopener noreferrer"
               className="text-muted-foreground hover:text-foreground hover:underline"
+              onClick={(event) => {
+                event.preventDefault();
+                void openLink(url, { event }).catch(console.error);
+              }}
             />
           ) : (
             <span className="text-muted-foreground" />
@@ -142,7 +148,7 @@ function CommentIdentity({
         label={
           <>
             {formatFullTimestamp(comment.createdAt, timestampFormat)}
-            {comment.url ? " · Open comment on host" : ""}
+            {url ? " · Open comment on host" : ""}
           </>
         }
       >
