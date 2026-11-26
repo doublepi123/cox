@@ -5852,8 +5852,8 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
             },
           });
         });
-        // Only a turn's first API request is startup; later ones are the model at work.
-        const requestedTurns = new WeakSet<ActiveClaudeTurnContext>();
+        // Only a process's first API request is startup; a reused process is already connected.
+        const requestedQueries = new WeakSet<ClaudeAgentSdkQuerySession>();
         let connectingTurn: ActiveClaudeTurnContext | undefined;
 
         const persistAttachmentBudget = Effect.fnUntraced(function* (nativeThreadId: string) {
@@ -9662,9 +9662,9 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
               message.type === "system" &&
               message.subtype === "status" &&
               Reflect.get(message, "status") === "requesting" &&
-              !requestedTurns.has(context)
+              !requestedQueries.has(liveQuery.query)
             ) {
-              requestedTurns.add(context);
+              requestedQueries.add(liveQuery.query);
               connectingTurn = context;
               yield* reportStartupPhase("connecting");
             } else if (
