@@ -3296,6 +3296,9 @@ export const make = Effect.gen(function* () {
                 state: value.state,
                 checks: value.checks,
                 observedAt: value.observedAt,
+                ...(value.workflowApprovalsRequired === undefined
+                  ? {}
+                  : { workflowApprovalsRequired: value.workflowApprovalsRequired }),
               });
             }
             recordStats(

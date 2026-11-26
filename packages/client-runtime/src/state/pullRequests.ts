@@ -685,6 +685,18 @@ export function createPullRequestEnvironmentAtoms<R, E>(
   const listLabel = "environment-data:pull-requests:list";
   const listPersistence = persistQuery(PullRequestListResult);
 
+  const checks = normalizePullRequestQuery(
+    createEnvironmentRpcQueryAtomFamily(runtime, {
+      label: "environment-data:pull-requests:checks",
+      persistence: persistQuery(Schema.NullOr(PullRequestChecks)),
+      tag: WS_METHODS.pullRequestsChecks,
+      execute: (input) => routedRequest(WS_METHODS.pullRequestsChecks, input),
+      staleTimeMs: 45_000,
+      refreshTrigger: ({ environmentId }) => refreshes({ environmentId, input: {} }),
+      ...(onAnswer.checks === undefined ? {} : { onAnswer: onAnswer.checks }),
+    }),
+  );
+
   return {
     refreshes,
     linkedThreads: createEnvironmentRpcQueryAtomFamily(runtime, {
@@ -748,17 +760,7 @@ export function createPullRequestEnvironmentAtoms<R, E>(
     detailReadVersion,
     preview,
     previewCard,
-    checks: normalizePullRequestQuery(
-      createEnvironmentRpcQueryAtomFamily(runtime, {
-        label: "environment-data:pull-requests:checks",
-        persistence: persistQuery(Schema.NullOr(PullRequestChecks)),
-        tag: WS_METHODS.pullRequestsChecks,
-        execute: (input) => routedRequest(WS_METHODS.pullRequestsChecks, input),
-        staleTimeMs: 45_000,
-        refreshTrigger: ({ environmentId }) => refreshes({ environmentId, input: {} }),
-        ...(onAnswer.checks === undefined ? {} : { onAnswer: onAnswer.checks }),
-      }),
-    ),
+    checks,
     activity,
     threadComments: createEnvironmentRpcCommand(runtime, {
       label: "environment-data:pull-requests:thread-comments",
@@ -833,22 +835,36 @@ export function createPullRequestEnvironmentAtoms<R, E>(
       label: "environment-data:pull-requests:run-action",
       execute: runAction,
       onStart: (_target, registry) => readsInFlight(registry),
-      onSuccess: ({ environmentId, input }, registry, reply, readsBeforeSend) => {
+      onSuccess: Effect.fnUntraced(function* (
+        { environmentId, input },
+        registry,
+        reply,
+        readsBeforeSend: ReadonlySet<object> | undefined,
+      ) {
         const { projectId, host, repository, number, expectedAccountId } = input;
-        return applyActionReply(
+        const reference = {
+          projectId,
+          ...(host === undefined ? {} : { host }),
+          repository,
+          number,
+          ...(expectedAccountId === undefined ? {} : { expectedAccountId }),
+        };
+        yield* applyActionReply(
           registry,
           environmentId,
-          {
-            projectId,
-            ...(host === undefined ? {} : { host }),
-            repository,
-            number,
-            ...(expectedAccountId === undefined ? {} : { expectedAccountId }),
-          },
+          reference,
           reply,
           readsBeforeSend ?? new Set(),
         );
-      },
+        if (input.action !== "approve-workflows") return;
+        const query = checks({ environmentId, input: reference });
+        if (!registry.getNodes().get(query)?.listeners.size) return;
+        if (Option.getOrUndefined(AsyncResult.value(registry.get(query))) === null) return;
+        registry.refresh(query);
+        yield* AtomRegistry.getResult(registry, query, { suspendOnWaiting: true }).pipe(
+          Effect.ignore,
+        );
+      }),
       scheduler: commandScheduler,
       concurrency: serialPerEnvironment,
     }),
