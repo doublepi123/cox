@@ -1206,6 +1206,60 @@ it.layer(layer)("model service gateway", (it) => {
     }).pipe(Effect.scoped),
   );
 
+  it.effect("routes DeepSeek Harness through a cox model route patch without the key", () =>
+    Effect.gen(function* () {
+      const h = yield* harness({
+        driver: "dsh",
+        protocol: "anthropic-messages",
+        modelCapabilities: {
+          contextWindow: 64000,
+          optionDescriptors: [
+            {
+              id: "reasoningEffort",
+              label: "Reasoning",
+              type: "select",
+              options: [
+                { id: "none", label: "None" },
+                { id: "high", label: "High", isDefault: true },
+              ],
+            },
+          ],
+        },
+      });
+      const fs = yield* FileSystem.FileSystem;
+      const patchPath = String(h.config.modelServicePatch);
+      expect(patchPath.endsWith("/dsh/cox-models.yml")).toBe(true);
+      const text = yield* fs.readFileString(patchPath);
+      expect(text).not.toContain("private-upstream-key");
+      const key = h.materialized[instanceId]!.environment?.find(
+        (entry) => entry.name === "COX_MODEL_SERVICE_KEY",
+      )?.value;
+      expect(key).toBeTruthy();
+      expect(text).not.toContain(String(key));
+      const rows = parseYaml(text) as Array<Record<string, unknown>>;
+      expect(rows.map((row) => row.id)).toEqual(["llm-pi-ai", "agent-default-model"]);
+      const route = record(record(record(rows[0]!.config).providers).cox);
+      expect(route).toMatchObject({
+        api: "anthropic-messages",
+        apiKeyEnv: "COX_MODEL_SERVICE_KEY",
+        models: [
+          {
+            id: "Vendor/Exact",
+            name: "Exact",
+            contextWindow: 64000,
+            maxTokens: 4000,
+            reasoningEfforts: { off: null, high: "high" },
+          },
+        ],
+      });
+      expect(String(route.baseURL).endsWith("/api/model-gateway")).toBe(true);
+      expect(rows[1]!.config).toEqual({ provider: "cox", model: "Vendor/Exact" });
+      expect(h.config.customModels).toEqual([
+        expect.objectContaining({ slug: "cox/Vendor/Exact", name: "Exact" }),
+      ]);
+    }).pipe(Effect.scoped),
+  );
+
   it.effect("preserves OpenCode context limits without a known output cap", () =>
     Effect.gen(function* () {
       const h = yield* harness({ driver: "opencode", maxOutputTokens: null });

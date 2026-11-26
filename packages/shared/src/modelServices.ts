@@ -26,6 +26,7 @@ export const MODEL_SERVICE_AGENT_DRIVERS = [
   "omo",
   "omp",
   "opencode",
+  "dsh",
 ] as const;
 
 export function modelServiceDisplayName(id: string): string {
@@ -345,7 +346,11 @@ export function modelServiceSplitPlan(
 }
 
 export function modelServiceModelSlug(driver: string, id: string): string {
-  return driver === "pi" || driver === "omo" || driver === "omp" || driver === "opencode"
+  return driver === "pi" ||
+    driver === "omo" ||
+    driver === "omp" ||
+    driver === "opencode" ||
+    driver === "dsh"
     ? `cox/${id}`
     : id;
 }
@@ -382,7 +387,8 @@ export function modelServiceAgentCapabilities(
   driver: string,
   capabilities: ModelCapabilities | null,
 ): ModelCapabilities | undefined {
-  const nativeThinkingDriver = driver === "pi" || driver === "omo" || driver === "omp";
+  const nativeThinkingDriver =
+    driver === "pi" || driver === "omo" || driver === "omp" || driver === "dsh";
   if (!capabilities)
     return driver === "claudeAgent"
       ? (withClaudeUltracodeCapabilities(null) ?? undefined)
@@ -413,11 +419,14 @@ export function modelServiceAgentCapabilities(
             ...(options.length
               ? [
                   {
-                    id: nativeThinkingDriver
-                      ? "thinking"
-                      : driver === "claudeAgent"
-                        ? "effort"
-                        : "reasoningEffort",
+                    id:
+                      driver === "dsh"
+                        ? "reasoning_effort"
+                        : nativeThinkingDriver
+                          ? "thinking"
+                          : driver === "claudeAgent"
+                            ? "effort"
+                            : "reasoningEffort",
                     label: "Reasoning",
                     type: "select" as const,
                     options,

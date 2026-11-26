@@ -4655,8 +4655,8 @@ export const en = {
   "Cox installs DeepSeek Harness and its ACP bridge in its own tools directory.":
     "Cox installs DeepSeek Harness and its ACP bridge in its own tools directory.",
   "DeepSeek Harness model access": "DeepSeek Harness model access",
-  "Set DEEPSEEK_API_KEY below, or keep the models and keys saved in your DeepSeek Harness home. Installing does not start an agent turn.":
-    "Set DEEPSEEK_API_KEY below, or keep the models and keys saved in your DeepSeek Harness home. Installing does not start an agent turn.",
+  "Bind a model service above, set DEEPSEEK_API_KEY below, or keep the models and keys saved in your DeepSeek Harness home. Installing does not start an agent turn.":
+    "Bind a model service above, set DEEPSEEK_API_KEY below, or keep the models and keys saved in your DeepSeek Harness home. Installing does not start an agent turn.",
   "DeepSeek API key": "DeepSeek API key",
   "Optional. Overrides the key stored in the DeepSeek Harness home.":
     "Optional. Overrides the key stored in the DeepSeek Harness home.",

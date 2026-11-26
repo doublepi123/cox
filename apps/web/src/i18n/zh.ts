@@ -4494,8 +4494,8 @@ export const zh = {
   "Cox installs DeepSeek Harness and its ACP bridge in its own tools directory.":
     "Cox 会把 DeepSeek Harness 及其 ACP 桥接安装到自己的工具目录。",
   "DeepSeek Harness model access": "DeepSeek Harness 模型访问",
-  "Set DEEPSEEK_API_KEY below, or keep the models and keys saved in your DeepSeek Harness home. Installing does not start an agent turn.":
-    "在下方设置 DEEPSEEK_API_KEY，或继续使用 DeepSeek Harness 主目录中保存的模型和密钥。安装不会启动智能体回合。",
+  "Bind a model service above, set DEEPSEEK_API_KEY below, or keep the models and keys saved in your DeepSeek Harness home. Installing does not start an agent turn.":
+    "在上方绑定模型服务，或在下方设置 DEEPSEEK_API_KEY，也可以继续使用 DeepSeek Harness 主目录中保存的模型和密钥。安装不会启动智能体回合。",
   "DeepSeek API key": "DeepSeek API 密钥",
   "Optional. Overrides the key stored in the DeepSeek Harness home.":
     "可选。覆盖 DeepSeek Harness 主目录中保存的密钥。",

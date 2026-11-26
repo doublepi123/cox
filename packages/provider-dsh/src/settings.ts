@@ -1,4 +1,4 @@
-import { CustomModelSetting, makeProviderSettingsSchema } from "@t3tools/contracts";
+import { CustomModelSetting, makeProviderSettingsSchema, TrimmedString } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
 
@@ -10,6 +10,10 @@ export const DshSettings = makeProviderSettingsSchema(
     ),
     customModels: Schema.Array(CustomModelSetting).pipe(
       Schema.withDecodingDefault(Effect.succeed([])),
+      Schema.annotateKey({ providerSettingsForm: { hidden: true } }),
+    ),
+    modelServicePatch: TrimmedString.pipe(
+      Schema.withDecodingDefault(Effect.succeed("")),
       Schema.annotateKey({ providerSettingsForm: { hidden: true } }),
     ),
   },

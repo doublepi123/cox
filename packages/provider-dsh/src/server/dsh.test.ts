@@ -26,6 +26,7 @@ import {
   dshPermissionMode,
   dshProposedPlanMarkdown,
   resolveDshModelValue,
+  withDshModelServicePatch,
 } from "./acpSupport.ts";
 import { extractDshElicitationForm } from "./elicitation.ts";
 import {
@@ -123,6 +124,15 @@ describe("DeepSeek Harness launch", () => {
         }),
       ),
       "read-only",
+    );
+  });
+
+  it("appends the bound model-service patch only when the instance has one", () => {
+    const launch = { executablePath: "/rt/dsh", overlayPath: "/rt/cox-acp-plus.yml" };
+    assert.deepStrictEqual(withDshModelServicePatch(launch, { modelServicePatch: "" }), launch);
+    assert.deepStrictEqual(
+      withDshModelServicePatch(launch, { modelServicePatch: "/ms/dsh/cox-models.yml" }),
+      { ...launch, configPatches: ["/ms/dsh/cox-models.yml"] },
     );
   });
 
@@ -484,7 +494,11 @@ it.layer(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))(
   },
 );
 
-const statusWith = (environment: NodeJS.ProcessEnv, version: string | null = DSH_VERSION) =>
+const statusWith = (
+  environment: NodeJS.ProcessEnv,
+  version: string | null = DSH_VERSION,
+  configPatches?: ReadonlyArray<string>,
+) =>
   Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem;
     const path = yield* Path.Path;
@@ -495,7 +509,11 @@ const statusWith = (environment: NodeJS.ProcessEnv, version: string | null = DSH
       settings,
       environment: { ...process.env, ...environment, FAKE_DSH_LOG: log },
       cwd: root,
-      launch: { executablePath: FAKE_DSH, overlayPath: path.join(root, "overlay.yml") },
+      launch: {
+        executablePath: FAKE_DSH,
+        overlayPath: path.join(root, "overlay.yml"),
+        ...(configPatches === undefined ? {} : { configPatches }),
+      },
       version: Effect.succeed(version),
     });
     const calls = (yield* fs.readFileString(log).pipe(Effect.orElseSucceed(() => "")))
@@ -536,6 +554,28 @@ it.layer(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))("DeepSeek Harness
         status: "authenticated",
         type: "apiKey",
         label: "DeepSeek API key",
+      });
+    }).pipe(Effect.scoped),
+  );
+
+  it.effect("probes with the model-service patch and reports the bound service", () =>
+    Effect.gen(function* () {
+      const { draft, calls, overlayPath } = yield* statusWith({}, DSH_VERSION, [
+        "/runtime/dsh/cox-models.yml",
+      ]);
+      assert.deepStrictEqual(calls[0]!.slice(0, 6), [
+        "--profile",
+        "acp",
+        "--patch",
+        overlayPath,
+        "--patch",
+        "/runtime/dsh/cox-models.yml",
+      ]);
+      assert.strictEqual(calls[0]![6], "--patch");
+      assert.deepStrictEqual(draft.auth, {
+        status: "authenticated",
+        type: "modelService",
+        label: "Cox model service",
       });
     }).pipe(Effect.scoped),
   );

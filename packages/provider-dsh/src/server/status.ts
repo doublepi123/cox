@@ -239,9 +239,11 @@ export const checkDshProviderStatus = Effect.fn("checkDshProviderStatus")(functi
       installed: true,
       version,
       status: "ready",
-      auth: input.environment.DEEPSEEK_API_KEY?.trim()
-        ? { status: "authenticated", type: "apiKey", label: "DeepSeek API key" }
-        : { status: "unknown" },
+      auth: input.launch.configPatches?.length
+        ? { status: "authenticated", type: "modelService", label: "Cox model service" }
+        : input.environment.DEEPSEEK_API_KEY?.trim()
+          ? { status: "authenticated", type: "apiKey", label: "DeepSeek API key" }
+          : { status: "unknown" },
     },
     models,
     commands,

@@ -29,7 +29,12 @@ import {
   type ProviderSnapshotSettings,
 } from "@t3tools/provider-core/server/snapshotSettings";
 import { DshSettings } from "../settings.ts";
-import { DSH_DOCUMENTATION_URL, DSH_DRIVER_KIND, DSH_VERSION } from "./acpSupport.ts";
+import {
+  DSH_DOCUMENTATION_URL,
+  DSH_DRIVER_KIND,
+  DSH_VERSION,
+  withDshModelServicePatch,
+} from "./acpSupport.ts";
 import { DshAdapterV2Driver, type DshAdapterV2DriverEnv } from "./adapter.ts";
 import { makeDshInstallation } from "./installation.ts";
 import { buildInitialDshProviderSnapshot, checkDshProviderStatus } from "./status.ts";
@@ -128,12 +133,13 @@ export const DshDriver: ProviderDriver<DshSettings, DshDriverEnv> = {
           }),
       ),
     );
-    const textGeneration = yield* makeDshTextGeneration(installation.launch, processEnv);
+    const launch = withDshModelServicePatch(installation.launch, effectiveConfig);
+    const textGeneration = yield* makeDshTextGeneration(launch, processEnv);
     const checkProvider = checkDshProviderStatus({
       settings: effectiveConfig,
       environment: processEnv,
       cwd: host.paths.cwd,
-      launch: installation.launch,
+      launch,
       version: installation.installedVersion,
     }).pipe(
       Effect.map(stampSnapshot),

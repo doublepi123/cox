@@ -36,6 +36,7 @@ import {
   dshPermissionMode,
   dshProposedPlanMarkdown,
   dshRuntimeLaunch,
+  withDshModelServicePatch,
   makeDshAcpRuntime,
   resolveDshModelValue,
   type DshRuntimeLaunch,
@@ -146,11 +147,14 @@ export const DshAdapterV2Driver: ProviderAdapterDriver<DshSettings, DshAdapterV2
           input.environment,
           yield* HostProcess.Environment,
         ),
-        launch: dshRuntimeLaunch({
-          baseDir: host.paths.baseDir,
-          platform: yield* HostProcess.Platform,
-          join: (...segments) => path.join(...segments),
-        }),
+        launch: withDshModelServicePatch(
+          dshRuntimeLaunch({
+            baseDir: host.paths.baseDir,
+            platform: yield* HostProcess.Platform,
+            join: (...segments) => path.join(...segments),
+          }),
+          input.config,
+        ),
         selfInvocation,
         nativeLogging: (threadId) =>
           makeNativeLogger({

@@ -748,6 +748,69 @@ export const make = Effect.gen(function* () {
               apiKey: "",
             });
           }
+          if (instance.driver === "dsh") {
+            const patchPath = path.join(directory, "dsh", "cox-models.yml");
+            yield* writeYaml(patchPath, [
+              {
+                id: "llm-pi-ai",
+                name: "@deepseek-ai/dsh-llm-pi-ai",
+                config: {
+                  providers: {
+                    cox: {
+                      displayName: showSource ? "Cox" : service.name,
+                      api: API_NAMES[protocol],
+                      baseURL:
+                        protocol === "anthropic-messages"
+                          ? baseUrl
+                          : baseUrl + (protocol === "gemini" ? "/v1beta" : "/v1"),
+                      apiKeyEnv: "COX_MODEL_SERVICE_KEY",
+                      models: activeModels.flatMap((model) => {
+                        if (
+                          !modelServiceUpstreamProtocol(
+                            model.service,
+                            model.upstreamModel,
+                            protocol,
+                          )
+                        )
+                          return [];
+                        const thinking = modelServiceAgentCapabilities(
+                          "dsh",
+                          model.capabilities,
+                        )?.optionDescriptors?.find((option) => option.id === "reasoning_effort");
+                        const efforts = thinking?.type === "select" ? thinking.options : [];
+                        return [
+                          {
+                            id: model.id,
+                            name: model.name ?? model.id,
+                            ...(model.capabilities?.contextWindow
+                              ? { contextWindow: model.capabilities.contextWindow }
+                              : {}),
+                            ...(model.maxOutputTokens ? { maxTokens: model.maxOutputTokens } : {}),
+                            ...(efforts.length
+                              ? {
+                                  reasoningEfforts: Object.fromEntries(
+                                    efforts.map((option) => [
+                                      option.id,
+                                      option.id === "off" ? null : option.id,
+                                    ]),
+                                  ),
+                                }
+                              : {}),
+                          },
+                        ];
+                      }),
+                    },
+                  },
+                },
+              },
+              {
+                id: "agent-default-model",
+                name: "@deepseek-ai/dsh-agent-default-model",
+                config: { provider: "cox", model: selected },
+              },
+            ]);
+            Object.assign(additions, { modelServicePatch: patchPath });
+          }
           if (instance.driver === "opencode") {
             const opencode = {
               provider: {

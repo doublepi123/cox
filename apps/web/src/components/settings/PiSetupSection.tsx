@@ -88,7 +88,7 @@ const SETUP_COPY = {
     managed: "Cox installs DeepSeek Harness and its ACP bridge in its own tools directory.",
     credentials: "DeepSeek Harness model access",
     access:
-      "Set DEEPSEEK_API_KEY below, or keep the models and keys saved in your DeepSeek Harness home. Installing does not start an agent turn.",
+      "Bind a model service above, set DEEPSEEK_API_KEY below, or keep the models and keys saved in your DeepSeek Harness home. Installing does not start an agent turn.",
   },
 } as const;
 

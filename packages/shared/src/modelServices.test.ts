@@ -49,6 +49,35 @@ describe("central model settings", () => {
       modelServiceAgentCapabilities("omo", capabilities)?.optionDescriptors?.[0],
     ).toMatchObject({ id: "thinking", options: [{ id: "off" }, { id: "high" }] });
   });
+  it("binds DeepSeek Harness with cox slugs and its reasoning_effort option", () => {
+    expect(modelServiceModelSlug("dsh", "Vendor/Exact/ID")).toBe("cox/Vendor/Exact/ID");
+    expect(
+      modelServiceAgentCapabilities("dsh", {
+        optionDescriptors: [
+          {
+            id: "reasoningEffort",
+            label: "Reasoning",
+            type: "select" as const,
+            options: [
+              { id: "none", label: "Off" },
+              { id: "high", label: "High" },
+              { id: "unsupported", label: "Unsupported" },
+            ],
+          },
+        ],
+      })?.optionDescriptors,
+    ).toEqual([
+      {
+        id: "reasoning_effort",
+        label: "Reasoning",
+        type: "select",
+        options: [
+          { id: "off", label: "Off" },
+          { id: "high", label: "High" },
+        ],
+      },
+    ]);
+  });
   it("binds omp model services with the cox slug prefix and Pi-native thinking ladder", () => {
     expect(modelServiceModelSlug("omp", "Vendor/Exact/ID")).toBe("cox/Vendor/Exact/ID");
     const capabilities = {

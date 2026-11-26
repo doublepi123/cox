@@ -8,6 +8,7 @@ import type * as ChildProcessSpawner from "effect/process/ChildProcessSpawner";
 import type * as EffectAcpErrors from "effect-acp/errors";
 
 import * as AcpSessionRuntime from "@t3tools/provider-acp/server/AcpSessionRuntime";
+import type { DshSettings } from "../settings.ts";
 import type * as ProviderAdapter from "@t3tools/provider-core/server/ProviderAdapter";
 
 export const DSH_DRIVER_KIND = ProviderDriverKind.make("dsh");
@@ -121,6 +122,16 @@ export function dshProposedPlanMarkdown(toolCall: {
 export interface DshRuntimeLaunch {
   readonly executablePath: string;
   readonly overlayPath: string;
+  readonly configPatches?: ReadonlyArray<string>;
+}
+
+export function withDshModelServicePatch(
+  launch: DshRuntimeLaunch,
+  settings: Pick<DshSettings, "modelServicePatch">,
+): DshRuntimeLaunch {
+  return settings.modelServicePatch
+    ? { ...launch, configPatches: [settings.modelServicePatch] }
+    : launch;
 }
 
 export function dshRuntimeLaunch(input: {
@@ -166,7 +177,12 @@ export const makeDshAcpRuntime = Effect.fn("makeDshAcpRuntime")(function* (
       ...runtimeOptions,
       spawn: {
         command: launch.executablePath,
-        args: [...dshAcpArgs(launch.overlayPath, extraPatches)],
+        args: [
+          ...dshAcpArgs(launch.overlayPath, [
+            ...(launch.configPatches ?? []),
+            ...(extraPatches ?? []),
+          ]),
+        ],
         cwd: input.cwd,
         env: { ...environment, NO_COLOR: "1" },
       },
