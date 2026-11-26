@@ -40,6 +40,8 @@ import * as ProviderLatestVersions from "./ProviderLatestVersions.ts";
 
 const LATEST_VERSION_TIMEOUT_MS = 4_000;
 const PROBE_TIMEOUT_MS = 10_000;
+// npm leaves a killed packument download in its cache tmp dir.
+const NPM_REGISTRY_PROBE_TIMEOUT = null;
 const PROBE_MAX_BYTES = 256 * 1_024;
 const MISE_WRAPPER_MAX_BYTES = 16 * 1_024;
 const PROVIDER_UPDATE_ACTION_TOAST_MESSAGE = "Install the update now or review provider settings.";
@@ -368,6 +370,7 @@ const runProbe = Effect.fn("runProbe")(function* (
   args: ReadonlyArray<string>,
   env: NodeJS.ProcessEnv,
   okExitCodes: ReadonlyArray<number> = [0],
+  timeoutMs: number | null = PROBE_TIMEOUT_MS,
 ) {
   const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
   const collect = Effect.gen(function* () {
@@ -394,8 +397,13 @@ const runProbe = Effect.fn("runProbe")(function* (
   });
   return yield* collect.pipe(
     Effect.scoped,
-    Effect.timeoutOption(Duration.millis(PROBE_TIMEOUT_MS)),
-    Effect.map(Option.getOrNull),
+    (scoped) =>
+      timeoutMs === null
+        ? scoped
+        : scoped.pipe(
+            Effect.timeoutOption(Duration.millis(timeoutMs)),
+            Effect.map(Option.getOrNull),
+          ),
     Effect.catchCause((cause) =>
       Effect.logWarning("Maintenance probe failed", {
         command,
@@ -494,6 +502,7 @@ const runNpmGlobalLatestVersions = Effect.fn("runNpmGlobalLatestVersions")(funct
     env,
     // npm outdated exits 1 when updates are available.
     [0, 1],
+    NPM_REGISTRY_PROBE_TIMEOUT,
   );
   const outdatedEntries = outdated
     ? Option.getOrUndefined(decodePnpmOutdated(outdated))
@@ -1092,6 +1101,8 @@ const withConfiguredNpmVersionLookup = Effect.fn("withConfiguredNpmVersionLookup
           npmPath,
           ["view", "--global", "--json", `${packageName}@latest`, "version"],
           env,
+          [0],
+          NPM_REGISTRY_PROBE_TIMEOUT,
         ).pipe(
           Effect.map((stdout) => {
             const value = stdout ? Option.getOrNull(decodeNpmViewVersion(stdout.trim())) : null;
