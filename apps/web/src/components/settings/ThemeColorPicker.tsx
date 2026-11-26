@@ -266,6 +266,9 @@ function ThemeColorPicker({
   return (
     <Popover
       onOpenChange={(open, eventDetails) => {
+        if (!open && eventDetails.reason === "escape-key" && eventDetails.event.keyCode === 229) {
+          return eventDetails.cancel();
+        }
         cancelledRef.current = !open && eventDetails.reason === "escape-key";
         if (open) {
           onEditStart?.();

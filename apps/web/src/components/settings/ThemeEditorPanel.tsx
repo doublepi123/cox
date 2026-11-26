@@ -686,7 +686,7 @@ export function ThemeEditorPanel({
       shouldDisarmAfterClick = false;
     };
     const cancelInspection = (event: KeyboardEvent) => {
-      if (event.key !== "Escape") return;
+      if (event.key !== "Escape" || event.isComposing || event.keyCode === 229) return;
       event.preventDefault();
       event.stopImmediatePropagation();
       clearHover();
@@ -1139,6 +1139,7 @@ export function ThemeEditorPanel({
         if (event.key !== "Escape" || event.defaultPrevented) return;
         if (!event.currentTarget.contains(event.target as Node)) return;
         event.stopPropagation();
+        if (event.nativeEvent.isComposing || event.keyCode === 229) return;
         onOpenChange(false);
       }}
       ref={panelRef}
