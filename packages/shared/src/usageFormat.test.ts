@@ -35,7 +35,7 @@ describe("usage source messages", () => {
     });
 
     expect(usageSourceMessages([codex, claude])).toEqual([
-      "12 malformed or inconsistent usage record(s) were skipped; usage may be incomplete.",
+      "12 malformed or inconsistent usage records were skipped; usage may be incomplete.",
     ]);
   });
 
@@ -51,13 +51,17 @@ describe("usage source messages", () => {
       });
 
       expect(usageSourceMessages([source, source, otherHost, otherHost])).toEqual([
-        `${total} malformed or inconsistent usage record(s) were skipped; usage may be incomplete.`,
+        `${total} malformed or inconsistent usage records were skipped; usage may be incomplete.`,
       ]);
       expect(usageSourceMessages([source, source])).toEqual([
-        `${first} malformed or inconsistent usage record(s) were skipped; usage may be incomplete.`,
+        first === 1
+          ? "1 malformed or inconsistent usage record was skipped; usage may be incomplete."
+          : `${first} malformed or inconsistent usage records were skipped; usage may be incomplete.`,
       ]);
       expect(usageSourceMessages([otherHost, otherHost])).toEqual([
-        `${second} malformed or inconsistent usage record(s) were skipped; usage may be incomplete.`,
+        second === 1
+          ? "1 malformed or inconsistent usage record was skipped; usage may be incomplete."
+          : `${second} malformed or inconsistent usage records were skipped; usage may be incomplete.`,
       ]);
     },
   );
@@ -69,7 +73,7 @@ describe("usage source messages", () => {
     });
 
     expect(usageSourceMessages([source, otherMachine])).toEqual([
-      "12 malformed or inconsistent usage record(s) were skipped; usage may be incomplete.",
+      "12 malformed or inconsistent usage records were skipped; usage may be incomplete.",
     ]);
   });
 
@@ -77,7 +81,7 @@ describe("usage source messages", () => {
     const source = malformedSource(1);
 
     expect(usageSourceMessages([source, malformedSource(11), source])).toEqual([
-      "11 malformed or inconsistent usage record(s) were skipped; usage may be incomplete.",
+      "11 malformed or inconsistent usage records were skipped; usage may be incomplete.",
     ]);
   });
 
@@ -99,7 +103,7 @@ describe("usage source messages", () => {
     ).toEqual([
       readFailure,
       cursor.message,
-      "1 malformed or inconsistent usage record(s) were skipped; usage may be incomplete.",
+      "1 malformed or inconsistent usage record was skipped; usage may be incomplete.",
     ]);
   });
 
@@ -112,12 +116,12 @@ describe("usage source messages", () => {
       skippedFiles: 1,
       distinctSessions: 0,
       message:
-        "No transcript directory on this environment. 2 malformed or inconsistent usage record(s) were skipped; usage may be incomplete.",
+        "No transcript directory on this environment. 2 malformed or inconsistent usage records were skipped; usage may be incomplete.",
     });
 
     expect(usageSourceMessages([source, missing, missing])).toEqual([
       "No transcript directory on this environment.",
-      "3 malformed or inconsistent usage record(s) were skipped; usage may be incomplete.",
+      "3 malformed or inconsistent usage records were skipped; usage may be incomplete.",
     ]);
   });
 
@@ -133,6 +137,15 @@ describe("usage source messages", () => {
 });
 
 describe("hourly usage formatting", () => {
+  it("uses singular and plural copy for skipped malformed records", () => {
+    expect(usageSourceMessages([malformedSource(1)])).toEqual([
+      "1 malformed or inconsistent usage record was skipped; usage may be incomplete.",
+    ]);
+    expect(usageSourceMessages([malformedSource(2)])).toEqual([
+      "2 malformed or inconsistent usage records were skipped; usage may be incomplete.",
+    ]);
+  });
+
   it("keeps requested zones separate when formatting repeated calls", () => {
     const instant = "2026-08-11T12:37:00.000Z";
     for (const zone of ["UTC", "America/New_York", "Asia/Kathmandu", "UTC"]) {

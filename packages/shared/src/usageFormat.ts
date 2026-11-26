@@ -18,10 +18,15 @@ const CURRENCY = new Intl.NumberFormat("en-US", {
 const INTEGER = new Intl.NumberFormat("en-US");
 
 export function formatMalformedUsageWarning(count: number): string {
-  return `${count} malformed or inconsistent usage record(s) were skipped; usage may be incomplete.`;
+  return count === 1
+    ? "1 malformed or inconsistent usage record was skipped; usage may be incomplete."
+    : `${count} malformed or inconsistent usage records were skipped; usage may be incomplete.`;
 }
 
-export function usageSourceMessages(sources: readonly UsageSource[]): readonly string[] {
+export function usageSourceMessages(
+  sources: readonly UsageSource[],
+  formatWarning = formatMalformedUsageWarning,
+): readonly string[] {
   const messages = new Set<string>();
   const malformedBySource = new Map<string, number>();
   for (const source of sources) {
@@ -43,7 +48,10 @@ export function usageSourceMessages(sources: readonly UsageSource[]): readonly s
       );
       // Servers also append this warning to message; retain any preceding read failure.
       const warning = formatMalformedUsageWarning(source.malformedRecords);
+      const legacyWarning = `${source.malformedRecords} malformed or inconsistent usage record(s) were skipped; usage may be incomplete.`;
       if (message?.endsWith(warning)) message = message.slice(0, -warning.length).trim();
+      else if (message?.endsWith(legacyWarning))
+        message = message.slice(0, -legacyWarning.length).trim();
     }
     if (message) messages.add(message);
   }
@@ -51,7 +59,7 @@ export function usageSourceMessages(sources: readonly UsageSource[]): readonly s
     (total, count) => total + count,
     0,
   );
-  if (malformedRecords > 0) messages.add(formatMalformedUsageWarning(malformedRecords));
+  if (malformedRecords > 0) messages.add(formatWarning(malformedRecords));
   return [...messages];
 }
 

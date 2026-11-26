@@ -50,6 +50,10 @@ export const en = {
   "This project sets up worktrees with its own command, which nobody has approved as it is written now. This connection cannot approve it: approve it from a client that can use the terminal.":
     "This project sets up worktrees with its own command, which nobody has approved as it is written now. This connection cannot approve it: approve it from a client that can use the terminal.",
   "Verify Google account": "Verify Google account",
+  "1 malformed or inconsistent usage record was skipped; usage may be incomplete.":
+    "1 malformed or inconsistent usage record was skipped; usage may be incomplete.",
+  "{count} malformed or inconsistent usage records were skipped; usage may be incomplete.":
+    "{count} malformed or inconsistent usage records were skipped; usage may be incomplete.",
   "0 bytes": "0 bytes",
   "{count} matches": "{count} matches",
   ", or ask an agent to.": ", or ask an agent to.",

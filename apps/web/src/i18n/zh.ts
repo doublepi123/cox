@@ -27,6 +27,10 @@ export const zh = {
   "This project sets up worktrees with its own command, which nobody has approved as it is written now. This connection cannot approve it: approve it from a client that can use the terminal.":
     "此项目使用自定义命令设置工作树。当前命令文本尚未获批，请通过有终端访问权限的客户端批准。",
   "Verify Google account": "验证 Google 账号",
+  "1 malformed or inconsistent usage record was skipped; usage may be incomplete.":
+    "已跳过 1 条格式错误或不一致的用量记录，用量可能不完整。",
+  "{count} malformed or inconsistent usage records were skipped; usage may be incomplete.":
+    "已跳过 {count} 条格式错误或不一致的用量记录，用量可能不完整。",
   "0 bytes": "0 字节",
   "{count} matches": "{count} 处匹配",
   ", or ask an agent to.": "，也可以让智能体编写。",

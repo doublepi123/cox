@@ -645,6 +645,13 @@ function UsageOverview({
           (source) => !hiddenProviders.has(source.fingerprint.provider),
         ) ?? [],
     ),
+    (count) =>
+      count === 1
+        ? t("1 malformed or inconsistent usage record was skipped; usage may be incomplete.")
+        : t(
+            "{count} malformed or inconsistent usage records were skipped; usage may be incomplete.",
+            { count },
+          ),
   );
   const breakdownPeriods: readonly (DailyTotals | HourlyTotals)[] = (
     shownHourly ? merged.hourly : merged.daily
