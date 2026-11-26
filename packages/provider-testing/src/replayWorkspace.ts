@@ -19,6 +19,9 @@ class ReplayFixtureGitCommandError extends Schema.TaggedError<ReplayFixtureGitCo
   }
 }
 
+// A detached git maintenance run can still write into .git when the fixture removes it.
+const NO_BACKGROUND_MAINTENANCE = ["-c", "maintenance.auto=false", "-c", "gc.auto=0"];
+
 function runGit(
   cwd: string,
   args: ReadonlyArray<string>,
@@ -29,7 +32,9 @@ function runGit(
 > {
   return Effect.gen(function* () {
     const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
-    const exitCode = yield* spawner.exitCode(ChildProcess.make("git", args, { cwd }));
+    const exitCode = yield* spawner.exitCode(
+      ChildProcess.make("git", [...NO_BACKGROUND_MAINTENANCE, ...args], { cwd }),
+    );
     if (Number(exitCode) !== 0) {
       return yield* new ReplayFixtureGitCommandError({
         command: `git ${args.join(" ")}`,
