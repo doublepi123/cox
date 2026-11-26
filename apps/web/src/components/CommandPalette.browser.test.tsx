@@ -4,7 +4,7 @@ import { page, userEvent } from "vite-plus/test/browser";
 
 import { act, render } from "../../test/render";
 import { openCommandPalette } from "../commandPaletteBus";
-import { useCommandPaletteStore } from "../commandPaletteStore";
+import { dispatchCommandPalette, useCommandPaletteStore } from "../commandPaletteStore";
 import { makeThreadFixture } from "../test-fixtures";
 import type { Project, Thread } from "../types";
 import { CommandPalette } from "./CommandPalette";
@@ -26,6 +26,46 @@ function setup(state: { projects?: ReadonlyArray<Project>; threads?: ReadonlyArr
 }
 
 describe("CommandPalette open intents", () => {
+  it("ignores repeated Escape keydowns after stepping back from file search", async () => {
+    setup();
+    await using _screen = await render(<CommandPalette>{null}</CommandPalette>);
+
+    openCommandPalette({});
+    const palette = page.getByTestId("command-palette");
+    await expect.element(palette).toHaveAttribute("data-palette-mode", "command");
+
+    await act(() => {
+      dispatchCommandPalette({
+        _tag: "OpenChildSearch",
+        mode: "files",
+        context: { query: "", linkedThreadSearch: null },
+      });
+    });
+    await expect.element(palette).toHaveAttribute("data-palette-mode", "files");
+
+    await userEvent.keyboard("{Escape}");
+    await expect.element(palette).toHaveAttribute("data-palette-mode", "command");
+    await expect
+      .element(page.getByPlaceholder("Search commands, projects, and threads..."))
+      .toHaveFocus();
+
+    await act(() => {
+      document.activeElement?.dispatchEvent(
+        new KeyboardEvent("keydown", {
+          key: "Escape",
+          repeat: true,
+          bubbles: true,
+          cancelable: true,
+        }),
+      );
+    });
+    expect(useCommandPaletteStore.getState().open).toBe(true);
+    await expect.element(palette).toHaveAttribute("data-palette-mode", "command");
+
+    await userEvent.keyboard("{Escape}");
+    await expect.element(palette).not.toBeInTheDocument();
+  });
+
   it("leaves a submenu only on a fresh, unmodified Backspace", async () => {
     setup();
     await using _screen = await render(<CommandPalette>{null}</CommandPalette>);

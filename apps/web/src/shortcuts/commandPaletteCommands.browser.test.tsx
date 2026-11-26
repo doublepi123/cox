@@ -1,10 +1,14 @@
 import { compileResolvedKeybindingsConfig } from "@t3tools/shared/keybindings";
 import { describe, expect, it, vi } from "vite-plus/test";
-import { userEvent } from "vite-plus/test/browser";
+import { page, userEvent } from "vite-plus/test/browser";
 
 import { render } from "../../test/render";
 import { openCommandPalette } from "../commandPaletteBus";
-import { useCommandPaletteMount, useCommandPaletteStore } from "../commandPaletteStore";
+import {
+  dispatchCommandPalette,
+  useCommandPaletteMount,
+  useCommandPaletteStore,
+} from "../commandPaletteStore";
 import { installCommandPaletteCommands } from "./commandPaletteCommands";
 
 const keybindings = compileResolvedKeybindingsConfig([
@@ -21,6 +25,46 @@ function setup() {
 }
 
 describe("command palette shortcuts", () => {
+  it("keeps a child search open on a repeated Escape", async () => {
+    setup();
+    await using screen = await render(
+      <>
+        <MountedPalette />
+        <input aria-label="Search files" />
+      </>,
+      { router: "/" },
+    );
+    using commands = new DisposableStack();
+    commands.defer(
+      installCommandPaletteCommands(screen.router!, { keybindings: () => keybindings }),
+    );
+    dispatchCommandPalette({ _tag: "ToggleMode", mode: "files" });
+    const input = page.getByRole("textbox", { name: "Search files" });
+    await input.click();
+
+    const repeatEscape = new KeyboardEvent("keydown", {
+      key: "Escape",
+      keyCode: 27,
+      repeat: true,
+      bubbles: true,
+      cancelable: true,
+    });
+    input.element().dispatchEvent(repeatEscape);
+    expect(repeatEscape.defaultPrevented).toBe(true);
+    expect(useCommandPaletteStore.getState()).toMatchObject({ open: true, mode: "files" });
+
+    const freshEscape = new KeyboardEvent("keydown", {
+      key: "Escape",
+      keyCode: 27,
+      repeat: false,
+      bubbles: true,
+      cancelable: true,
+    });
+    input.element().dispatchEvent(freshEscape);
+    expect(freshEscape.defaultPrevented).toBe(true);
+    expect(useCommandPaletteStore.getState()).toMatchObject({ open: true, mode: "command" });
+  });
+
   it("stay inert on routes without the palette", async () => {
     setup();
     using _platform = vi.spyOn(navigator, "platform", "get").mockReturnValue("Linux x86_64");
