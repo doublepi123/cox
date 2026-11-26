@@ -28,7 +28,11 @@ import * as DateTime from "effect/DateTime";
 import { resolveNewThreadModelSelection } from "@t3tools/shared/usageLimits";
 import { resolveProjectScripts } from "@t3tools/shared/projectScripts";
 import { resolveProjectSettings } from "@t3tools/shared/projectSettings";
-import { resolveRuntimeMode } from "../../delegatedTaskModes.ts";
+import {
+  providerOptionDescriptors,
+  refuseAgentModePick,
+  resolveRuntimeMode,
+} from "../../delegatedTaskModes.ts";
 import * as McpInvocationContext from "../../McpInvocationContext.ts";
 import * as McpToolAccess from "../../McpToolAccess.ts";
 import * as OrchestrationMcp from "../../OrchestratorMcpService.ts";
@@ -272,6 +276,15 @@ export const layer = McpToolAccess.toLayer(ProjectToolkit, {
           const providers = yield* (yield* ProviderRegistry.ProviderRegistry).getProviders;
           const { instanceId } = modelSelection;
           const provider = providers.find((candidate) => candidate.instanceId === instanceId);
+          yield* refuseAgentModePick({
+            callerRuntimeMode: context.limits.runtimeMode,
+            picked: input.modelSelection?.options,
+            descriptors: providerOptionDescriptors(provider),
+            held:
+              caller?.modelSelection.instanceId === instanceId
+                ? caller.modelSelection.options
+                : undefined,
+          });
           if (provider !== undefined && input.modelSelection !== undefined) {
             const options = yield* OrchestrationMcp.validateModelOptions(
               provider,

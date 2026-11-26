@@ -135,6 +135,7 @@ describe("ACP Registry probe", () => {
           label: "Mode",
           type: "select",
           currentValue: "ask",
+          role: "mode",
           options: [{ id: "ask", label: "Ask" }],
         },
       ],

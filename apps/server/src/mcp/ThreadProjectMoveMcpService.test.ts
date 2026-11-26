@@ -20,6 +20,7 @@ import { McpSchema, McpServer } from "effect/ai";
 import * as Threads from "../orchestration-v2/ThreadManagementService.ts";
 import { OrchestratorDispatchError } from "../orchestration-v2/Orchestrator.ts";
 import * as Projects from "../project/ProjectService.ts";
+import * as ProviderRegistry from "../provider/ProviderRegistry.ts";
 import * as Schedules from "../scheduledTasks/ScheduledTaskService.ts";
 import * as McpHttpServer from "./McpHttpServer.ts";
 import * as Invocation from "./McpInvocationContext.ts";
@@ -72,6 +73,7 @@ function harness(
   const project = { id: targetId, workspaceRoot: "/projects/target" } as Project;
   const layer = Layer.mergeAll(
     NodeCrypto.layer,
+    Layer.mock(ProviderRegistry.ProviderRegistry)({ getProviders: Effect.succeed([]) }),
     Layer.mock(Threads.ThreadManagementService)({
       getThreadShell: () => Effect.succeed(shell),
       hasReceipt: (id) => Effect.succeed(receipts.has(id)),

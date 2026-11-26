@@ -74,6 +74,10 @@ const layerThreadToolkit = McpHttpServer.layerThreadToolkit.pipe(
   Layer.provide(Layer.mock(ThreadSearch.ThreadSearch)({})),
   Layer.provide(Layer.mock(ScheduledTaskService.ScheduledTaskService)({})),
   Layer.provide(Layer.mock(ProjectService.ProjectService)({})),
+  // Tool analytics read the registry whenever one is present.
+  Layer.provide(
+    Layer.mock(ProviderRegistry.ProviderRegistry)({ getProviders: Effect.succeed([]) }),
+  ),
 );
 
 const threadId = ThreadId.make("mcp-core-thread");
@@ -730,6 +734,82 @@ it.effect("a read-only client reads threads and is refused every write before it
 );
 const dispatched: Array<string> = [];
 
+it.effect("only a full-access client may change a thread's own agent mode", () =>
+  Effect.gen(function* () {
+    const server = yield* McpServer.McpServer;
+    const picks: Array<unknown> = [];
+    const configure = (access: "approval-required" | "full-access", mode: string) =>
+      server
+        .callTool({
+          name: "cox_thread_configure",
+          arguments: {
+            threadId: "agent-thread",
+            modelSelection: {
+              instanceId: "acp-agent",
+              model: "default",
+              options: [{ id: "_t3/session-mode", value: mode }],
+            },
+          },
+        })
+        .pipe(
+          Effect.provideService(McpInvocationContext.McpInvocationContext, clientScope(access)),
+          Effect.provideService(McpSchema.McpServerClient, client),
+          Effect.provideService(
+            ThreadManagement.ThreadManagementService,
+            ThreadManagement.ThreadManagementService.of({
+              getThreadShell: () =>
+                Effect.succeed({
+                  id: ThreadId.make("agent-thread"),
+                  projectId: "project",
+                  runtimeMode: "approval-required",
+                  interactionMode: "default",
+                  deletedAt: null,
+                } as never),
+              getProjectThreadRecords: () =>
+                Effect.succeed({
+                  thread: {
+                    id: ThreadId.make("agent-thread"),
+                    projectId: "project",
+                    providerInstanceId: "acp-agent",
+                    modelSelection: {
+                      instanceId: "acp-agent",
+                      model: "default",
+                      options: [{ id: "_t3/session-mode", value: "ask" }],
+                    },
+                    runtimeMode: "approval-required",
+                    interactionMode: "default",
+                    deletedAt: null,
+                  },
+                } as never),
+              dispatch: (command: { readonly modelSelection?: unknown }) =>
+                Effect.sync(() => {
+                  picks.push(command.modelSelection);
+                  return { sequence: 7 } as never;
+                }),
+            } as never),
+          ),
+        );
+
+    expect(declaredFailure(yield* configure("approval-required", "yolo"))).toMatchObject({
+      code: "runtime_mode_escalation_denied",
+    });
+    expect(picks).toEqual([]);
+
+    // The mode the thread already runs in can be sent again.
+    expect((yield* configure("approval-required", "ask")).isError).toBe(false);
+    expect((yield* configure("full-access", "yolo")).isError).toBe(false);
+    expect(picks).toHaveLength(2);
+  }).pipe(
+    Effect.provide(
+      layerThreadToolkit.pipe(
+        Layer.provideMerge(McpHttpServer.layerInProcessMcpServer),
+        Layer.provide(NodeCrypto.layer),
+        Layer.provide(Layer.mock(ThreadManagement.ThreadManagementService)({})),
+      ),
+    ),
+  ),
+);
+
 it.effect("refuses act-as-caller tools to a client caller", () =>
   Effect.gen(function* () {
     const server = yield* McpServer.McpServer;
@@ -844,6 +924,9 @@ it.effect("returns the public reason when a scheduled task run is refused", () =
   }).pipe(
     Effect.provide(
       McpHttpServer.layerThreadToolkit.pipe(
+        Layer.provide(Layer.mock(ProviderRegistry.ProviderRegistry)({})),
+        Layer.provide(Layer.mock(ProviderRegistry.ProviderRegistry)({})),
+        Layer.provide(Layer.mock(ProviderRegistry.ProviderRegistry)({})),
         Layer.provide(Layer.mock(ThreadSearch.ThreadSearch)({})),
         Layer.provideMerge(McpHttpServer.layerInProcessMcpServer),
         Layer.provide(NodeCrypto.layer),

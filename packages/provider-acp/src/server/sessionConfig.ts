@@ -81,6 +81,7 @@ export function acpProviderOptionDescriptors(input: {
         ...base,
         type: "boolean",
         currentValue: option.currentValue,
+        ...(option.category === "mode" ? { role: "mode" as const } : {}),
       });
       if (descriptors.length === MAX_OPTION_DESCRIPTORS) return descriptors;
       continue;
@@ -99,7 +100,11 @@ export function acpProviderOptionDescriptors(input: {
       ...base,
       type: "select",
       options: choices,
-      ...(option.category === "thought_level" ? { role: "reasoning" as const } : {}),
+      ...(option.category === "thought_level"
+        ? { role: "reasoning" as const }
+        : option.category === "mode"
+          ? { role: "mode" as const }
+          : {}),
       ...(currentValue && choices.some((choice) => choice.id === currentValue)
         ? { currentValue }
         : {}),
@@ -136,6 +141,7 @@ export function acpProviderOptionDescriptors(input: {
         ...(currentValue && choices.some((choice) => choice.id === currentValue)
           ? { currentValue }
           : {}),
+        role: "mode",
       });
     }
   }
