@@ -150,3 +150,8 @@ it("indexes the citation chip label instead of its link text", () => {
     "my note",
   ]);
 });
+
+it("projects carriage-return soft line breaks to a space outside code blocks", () => {
+  expect(assistantSegments("First\rsecond")).toEqual(["First second"]);
+  expect(assistantSegments("```text\nFirst\rsecond\n```")).toEqual(["First\rsecond\n"]);
+});
