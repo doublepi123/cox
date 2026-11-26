@@ -56,11 +56,18 @@ const withFakeSystemd = <A, E>(
   {
     oomPolicy = true,
     stopFails = false,
-  }: { readonly oomPolicy?: boolean; readonly stopFails?: boolean } = {},
+    noBinSh = false,
+    noScopes = false,
+  }: {
+    readonly oomPolicy?: boolean;
+    readonly stopFails?: boolean;
+    readonly noBinSh?: boolean;
+    readonly noScopes?: boolean;
+  } = {},
 ) =>
   Effect.gen(function* () {
     const bin = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "t3-agent-scope-"));
-    for (const name of ["systemd-run", "systemctl", "agent"]) {
+    for (const name of ["systemd-run", "systemctl", "agent", "sh"]) {
       NodeFS.writeFileSync(NodePath.join(bin, name), "", { mode: 0o755 });
     }
     const cgroupRoot = NodePath.join(bin, "cgroup");
@@ -106,9 +113,14 @@ const withFakeSystemd = <A, E>(
     const scope = yield* make.pipe(
       Effect.provideService(ProcessRunner.ProcessRunner, runner),
       Effect.provideService(HostProcess.Platform, "linux"),
-      Effect.provideService(HostProcess.Environment, { PATH: bin, XDG_RUNTIME_DIR: "/run/user/1" }),
+      Effect.provideService(
+        HostProcess.Environment,
+        noScopes ? { PATH: bin } : { PATH: bin, XDG_RUNTIME_DIR: "/run/user/1" },
+      ),
       Effect.provideService(FileSystem.FileSystem, {
         ...fileSystem,
+        exists: (target) =>
+          noBinSh && target === "/bin/sh" ? Effect.succeed(false) : fileSystem.exists(target),
         readFileString: (path, encoding) =>
           path === "/proc/meminfo"
             ? Effect.succeed("SwapTotal: 1048576 kB\n")
@@ -179,6 +191,29 @@ const launchCodex = (
   );
 
 describe("AgentScope service", () => {
+  it.effect("launches through sh from PATH when the host has no /bin/sh", () =>
+    Effect.gen(function* () {
+      const withScopes = yield* withFakeSystemd(({ scope }) =>
+        scope.wrap({ command: "agent", args: [], name: "t" }),
+      );
+      expect(withScopes.command).toBe("/bin/sh");
+      const scoped = yield* withFakeSystemd(
+        ({ scope }) => scope.wrap({ command: "agent", args: [], name: "t" }),
+        { noBinSh: true },
+      );
+      const unscoped = yield* withFakeSystemd(
+        ({ scope }) => scope.wrap({ command: "agent", args: [], name: "t" }),
+        { noBinSh: true, noScopes: true },
+      );
+      for (const launch of [scoped, unscoped]) {
+        expect(NodePath.basename(launch.command)).toBe("sh");
+        expect(launch.command).not.toBe("/bin/sh");
+        expect(NodePath.basename(String(launch.args.at(-1)))).toBe("agent");
+      }
+      expect(unscoped.args).not.toContain("--scope");
+    }),
+  );
+
   it.effect("labels a thread from its newest scope until its next session clears it", () =>
     withFakeSystemd(({ scope, units }) =>
       Effect.gen(function* () {
