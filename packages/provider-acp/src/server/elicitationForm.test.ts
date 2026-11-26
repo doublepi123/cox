@@ -3,6 +3,25 @@ import { assert, describe, it } from "@effect/vitest";
 import { parseElicitationForm } from "./elicitationForm.ts";
 
 describe("parseElicitationForm", () => {
+  it.each(["q0_other", "q0__other"])("routes a custom single-choice answer through %s", (id) => {
+    const form = parseElicitationForm(
+      {
+        type: "object",
+        properties: {
+          q0: { type: "string", enum: ["Postgres", "SQLite"] },
+          [id]: { type: "string", title: "Other" },
+        },
+      },
+      "Use Postgres for the new service?",
+    );
+    assert.deepStrictEqual(
+      form?.questions.map((question) => question.id),
+      ["q0"],
+    );
+    assert.deepStrictEqual(form?.content({ q0: "Only on Fridays" }), { [id]: "Only on Fridays" });
+    assert.deepStrictEqual(form?.content({ q0: "Postgres" }), { q0: "Postgres" });
+  });
+
   for (const type of ["string", "array"] as const) {
     it.each([
       { values: [" padded ", "", "plain"], labels: ["padded", '""', "plain"] },

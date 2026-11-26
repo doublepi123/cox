@@ -174,22 +174,41 @@ export function parseElicitationForm(
       : [],
   );
   const fields = new Map<string, Field>();
-  const questions: OrchestrationV2UserInputQuestion[] = [];
+  const parsedFields: Array<{
+    readonly id: string;
+    readonly property: Record<string, unknown>;
+    readonly field: Field;
+    readonly options: Option[];
+  }> = [];
   for (const [id, value] of Object.entries(unknownRecord(schema?.properties) ?? {})) {
     const property = unknownRecord(value);
     const parsed = property === undefined ? undefined : parseField(property);
     if (property === undefined || parsed === undefined || text(id) !== id) return undefined;
     fields.set(id, parsed.field);
+    parsedFields.push({ id, property, ...parsed });
+  }
+  const companions = new Map<string, string>();
+  for (const [id, field] of fields) {
+    if (field.kind !== "choice" || required.has(id)) continue;
+    const companionId = [`${id}__other`, `${id}_other`].find(
+      (candidate) => fields.get(candidate)?.kind === "text" && !required.has(candidate),
+    );
+    if (companionId !== undefined) companions.set(id, companionId);
+  }
+  const folded = new Set(companions.values());
+  const questions: OrchestrationV2UserInputQuestion[] = [];
+  for (const { id, property, field, options } of parsedFields) {
+    if (folded.has(id)) continue;
     questions.push({
       id,
       header: text(property.title) ?? `Question ${questions.length + 1}`,
       question: text(property.description) ?? message,
-      options: parsed.options,
-      ...(parsed.field.kind === "text" || parsed.field.kind === "number"
+      options,
+      ...(field.kind === "text" || field.kind === "number" || companions.has(id)
         ? {}
         : { allowCustomAnswer: false }),
-      ...(parsed.field.kind === "multiChoice" ? { multiSelect: true } : {}),
-      ...(parsed.field.kind === "multiChoice" && parsed.field.minItems > 0 && required.has(id)
+      ...(field.kind === "multiChoice" ? { multiSelect: true } : {}),
+      ...(field.kind === "multiChoice" && field.minItems > 0 && required.has(id)
         ? { required: true }
         : {}),
     });
@@ -199,8 +218,13 @@ export function parseElicitationForm(
     content: (answers) => {
       const entries: Array<[string, EffectAcpSchema.ElicitationContentValue]> = [];
       for (const [id, field] of fields) {
-        const typed = Object.hasOwn(answers, id) ? typedAnswer(field, answers[id]) : undefined;
+        if (folded.has(id)) continue;
+        const answer = Object.hasOwn(answers, id) ? answers[id] : undefined;
+        const typed = typedAnswer(field, answer);
+        const companionId = companions.get(id);
         if (typed !== undefined) entries.push([id, typed]);
+        else if (companionId !== undefined && typeof answer === "string")
+          entries.push([companionId, answer]);
         else if (required.has(id)) return undefined;
       }
       return Object.fromEntries(entries);
