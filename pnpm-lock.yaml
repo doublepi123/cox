@@ -291,7 +291,7 @@ patchedDependencies:
   '@ff-labs/fff-node@0.11.0': d95aebb9decfcf967ff214cf1a0cd2aa20f9a7c248255119cc90d811eefc3f16
   '@legendapp/list@3.3.5': 091ec09d2670ba0b96920e9459f21e544350ab41e4a35da8cf958208263c34cf
   '@muse-code/sdk@1.4.6': 7b495b607fc5d76b444c7c4d58821e839726a30e6f3c53564f0d59f2d5b42101
-  '@pierre/diffs@1.6.1': 4b12b1083375704002d15b2de0944ece236509580959d257dd52043060bbbba7
+  '@pierre/diffs@1.6.1': 21f521f6a1b8cf29901269f6ce5f4e6ef2db16672cf2660f4924bee8797af578
   effect@4.1.5: e53a13f2079eefc06c6e31baed952c6121603c215e40c4fed2b3288e8eed883a
   html-to-image@1.11.13: ce4fdfcdc7b06b80ddfe5aa98b9b9584871c224625cc46272d0120d9f811fc0b
   mdast-util-math@3.0.0: afe6b2c89e1eaddfd3c90cf2723f12c9a17d513e65beff51653781486013251c
@@ -631,7 +631,7 @@ importers:
         version: 1.8.0
       '@pierre/diffs':
         specifier: 1.6.1
-        version: 1.6.1(patch_hash=4b12b1083375704002d15b2de0944ece236509580959d257dd52043060bbbba7)(@shikijs/themes@4.5.0)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
+        version: 1.6.1(patch_hash=21f521f6a1b8cf29901269f6ce5f4e6ef2db16672cf2660f4924bee8797af578)(@shikijs/themes@4.5.0)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
       '@pierre/trees':
         specifier: 1.0.0-beta.6
         version: 1.0.0-beta.6(@pierre/theme@2.0.0)(@shikijs/themes@4.5.0)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)(shiki@4.5.0)
@@ -915,7 +915,7 @@ importers:
     dependencies:
       '@pierre/diffs':
         specifier: 1.6.1
-        version: 1.6.1(patch_hash=4b12b1083375704002d15b2de0944ece236509580959d257dd52043060bbbba7)(@shikijs/themes@4.5.0)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
+        version: 1.6.1(patch_hash=21f521f6a1b8cf29901269f6ce5f4e6ef2db16672cf2660f4924bee8797af578)(@shikijs/themes@4.5.0)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
       '@t3tools/contracts':
         specifier: workspace:*
         version: link:../contracts
@@ -7878,7 +7878,7 @@ snapshots:
       tslib: 2.8.1
       webcrypto-core: 1.9.2
 
-  '@pierre/diffs@1.6.1(patch_hash=4b12b1083375704002d15b2de0944ece236509580959d257dd52043060bbbba7)(@shikijs/themes@4.5.0)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)':
+  '@pierre/diffs@1.6.1(patch_hash=21f521f6a1b8cf29901269f6ce5f4e6ef2db16672cf2660f4924bee8797af578)(@shikijs/themes@4.5.0)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)':
     dependencies:
       '@pierre/highlights': 0.5.1
       '@pierre/theme': 2.0.0

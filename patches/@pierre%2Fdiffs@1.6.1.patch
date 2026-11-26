@@ -744,10 +744,28 @@ index 12f4f8949f3a1907ac9877f83937b53a966c9411..e33a5ed31920c858ce8be37fbf6a4bcb
  			} catch (error) {
  				if (disableErrorHandling) throw error;
 diff --git a/dist/components/VirtualizedFile.d.ts b/dist/components/VirtualizedFile.d.ts
-index 90ef575932174c3bc73e5051d2d75c3353631b75..0fd262cbb7e02aac1cf54954a9ef2438a86ba136 100644
+index 90ef575932174c3bc73e5051d2d75c3353631b75..6caa2310d0fd9b8f4c4fb602f3e396a90a8572f1 100644
 --- a/dist/components/VirtualizedFile.d.ts
 +++ b/dist/components/VirtualizedFile.d.ts
-@@ -50,7 +50,7 @@ declare class VirtualizedFile<LAnnotation = undefined, Caret = undefined> extend
+@@ -3,7 +3,7 @@ import { TextDocument } from "../editor/textDocument.js";
+ import { WorkerPoolManager } from "../worker/WorkerPoolManager.js";
+ import "../worker/index.js";
+ import { File, FileOptions, FileRenderProps } from "./File.js";
+-import { Virtualizer } from "./Virtualizer.js";
++import { Virtualizer, VirtualizerSpanScrollAlign, VirtualizerSpanScrollResult } from "./Virtualizer.js";
+ import { CodeView } from "./CodeView.js";
+ //#region src/components/VirtualizedFile.d.ts
+ declare class VirtualizedFile<LAnnotation = undefined, Caret = undefined> extends File<LAnnotation, Caret> {
+@@ -41,6 +41,8 @@ declare class VirtualizedFile<LAnnotation = undefined, Caret = undefined> extend
+     height: number;
+   } | undefined;
+   getEditorViewport(): HTMLElement | Document | undefined;
++  scrollToLine(lineNumber: number, align: VirtualizerSpanScrollAlign, onDone: (result: VirtualizerSpanScrollResult) => void): boolean;
++  cancelScroll(onDone?: (result: VirtualizerSpanScrollResult) => void): void;
+   getNumericScrollAnchor(localViewportTop: number): NumericScrollLineAnchor | undefined;
+   getVirtualizedHeight(): number;
+   getAdvancedStickySpecs(windowSpecs?: RenderWindow): StickySpecs | undefined;
+@@ -50,7 +52,7 @@ declare class VirtualizedFile<LAnnotation = undefined, Caret = undefined> extend
    rerender(): void;
    protected get isComponentManaged(): boolean;
    syncGhostTextRows(): void;
@@ -757,7 +775,7 @@ index 90ef575932174c3bc73e5051d2d75c3353631b75..0fd262cbb7e02aac1cf54954a9ef2438
    protected finalizeRender(): void;
    private updatePendingRender;
 diff --git a/dist/components/VirtualizedFile.js b/dist/components/VirtualizedFile.js
-index 95d4ca8fdf9e176e23d354094a11022eefdb2321..24a980672d06bfce2d49bf6938ec3782158c8d29 100644
+index 95d4ca8fdf9e176e23d354094a11022eefdb2321..c4f05c59a02d43f3b8ae59a8c30170fcebe5df31 100644
 --- a/dist/components/VirtualizedFile.js
 +++ b/dist/components/VirtualizedFile.js
 @@ -23,6 +23,7 @@ var VirtualizedFile = class extends File {
@@ -807,7 +825,33 @@ index 95d4ca8fdf9e176e23d354094a11022eefdb2321..24a980672d06bfce2d49bf6938ec3782
  		if (this.renderRange != null && shouldRenderFileAnnotations(this.renderRange)) {
  			const nextFileAnnotationHeight = measureFileAnnotationHeight(content) ?? 0;
  			if (nextFileAnnotationHeight !== this.cache.fileAnnotationHeight) {
-@@ -366,12 +378,12 @@ var VirtualizedFile = class extends File {
+@@ -230,6 +242,25 @@ var VirtualizedFile = class extends File {
+ 	getEditorViewport() {
+ 		return this.virtualizer.type === "simple" ? this.virtualizer.getRoot() : this.virtualizer.getContainerElement();
+ 	}
++	scrollToLine(lineNumber, align, onDone) {
++		const simpleVirtualizer = this.getSimpleVirtualizer();
++		if (simpleVirtualizer == null) return false;
++		simpleVirtualizer.scrollSpanIntoView({
++			align,
++			onDone,
++			resolveSpan: () => {
++				const position = this.getLinePosition(lineNumber);
++				return position != null ? {
++					top: this.getVirtualizedTop() + position.top,
++					height: position.height
++				} : void 0;
++			}
++		});
++		return true;
++	}
++	cancelScroll(onDone) {
++		this.getSimpleVirtualizer()?.cancelScroll(onDone);
++	}
+ 	getNumericScrollAnchor(localViewportTop) {
+ 		const file = this.getLayoutFile();
+ 		if (file == null || this.renderRange == null) return;
+@@ -366,12 +397,12 @@ var VirtualizedFile = class extends File {
  			codeView.instanceChanged(this, true);
  		} else this.getSimpleVirtualizer()?.requestHeightReconcile(this);
  	}
@@ -844,6 +888,213 @@ index eb34dd4a774cb06add3280fe6abd5f0dc292505e..821bb0ab114f52ec41eab54505a1eb08
  		this.pendingRender = {
  			workingDiff,
  			diff: pendingRenderDiff
+diff --git a/dist/components/Virtualizer.d.ts b/dist/components/Virtualizer.d.ts
+index 815eb91136b6615939c7ae69561b9b252dc4e3d8..35c24703f063f397595da118c6c3f499921ea48a 100644
+--- a/dist/components/Virtualizer.d.ts
++++ b/dist/components/Virtualizer.d.ts
+@@ -17,6 +17,16 @@ interface VirtualizerScrollOptions {
+   top: number;
+   behavior?: ScrollBehavior;
+ }
++type VirtualizerSpanScrollAlign = 'start' | 'center' | 'end' | 'nearest';
++type VirtualizerSpanScrollResult = 'settled' | 'cancelled';
++interface VirtualizerSpanScrollRequest {
++  align: VirtualizerSpanScrollAlign;
++  resolveSpan(): {
++    top: number;
++    height: number;
++  } | undefined;
++  onDone(result: VirtualizerSpanScrollResult): void;
++}
+ declare class Virtualizer {
+   static __STOP: boolean;
+   static __lastScrollPosition: number;
+@@ -41,6 +51,7 @@ declare class Virtualizer {
+   private scrollHeightDirty;
+   private renderedObservers;
+   private connectQueue;
++  private spanScrollRequest;
+   constructor(config?: Partial<VirtualizerConfig>);
+   setup(root: HTMLElement | Document, contentContainer?: Element): void;
+   instanceChanged(instance: SubscribedInstance, domDirty: boolean): void;
+@@ -66,7 +77,14 @@ declare class Virtualizer {
+   /** Return the logical vertical position for the scroll container */
+   getScrollTop(): number;
+   /** Scroll to a logical vertical position and queue the normal render pass. */
+-  scrollTo({ top, behavior }: VirtualizerScrollOptions): void;
++  scrollTo(options: VirtualizerScrollOptions): void;
++  private writeScrollTop;
++  /** Scroll a span into view, re-resolving it each render pass until layout settles. A newer request or user scroll input cancels it. */
++  scrollSpanIntoView(request: VirtualizerSpanScrollRequest): void;
++  private advanceSpanScroll;
++  private handleUserScrollInput;
++  cancelScroll(onDone?: (result: VirtualizerSpanScrollResult) => void): void;
++  private finishSpanScroll;
+   private clampScrollTop;
+   private getScrollHeight;
+   private getHeight;
+@@ -74,5 +92,5 @@ declare class Virtualizer {
+   private getScrollContainerElement;
+ }
+ //#endregion
+-export { Virtualizer, VirtualizerConfig, VirtualizerScrollOptions };
++export { Virtualizer, VirtualizerConfig, VirtualizerScrollOptions, VirtualizerSpanScrollAlign, VirtualizerSpanScrollRequest, VirtualizerSpanScrollResult };
+ //# sourceMappingURL=Virtualizer.d.ts.map
+\ No newline at end of file
+diff --git a/dist/components/Virtualizer.js b/dist/components/Virtualizer.js
+index 4063b992bf7c4958c0d8a305977280ea9a3a7330..29ed301d1fb0d4a01ce94e6cfde386a6f855f74f 100644
+--- a/dist/components/Virtualizer.js
++++ b/dist/components/Virtualizer.js
+@@ -2,6 +2,28 @@ import { dequeueRender, queueRender } from "../managers/UniversalRenderingManage
+ import { createWindowFromScrollPosition } from "../utils/createWindowFromScrollPosition.js";
+ import { areVirtualWindowSpecsEqual } from "../utils/areVirtualWindowSpecsEqual.js";
+ //#region src/components/Virtualizer.ts
++const USER_SCROLL_EVENTS = [
++	"wheel",
++	"touchstart",
++	"pointerdown",
++	"keydown"
++];
++const USER_SCROLL_KEYS = /* @__PURE__ */ new Set([
++	"ArrowUp",
++	"ArrowDown",
++	"ArrowLeft",
++	"ArrowRight",
++	"PageUp",
++	"PageDown",
++	"Home",
++	"End",
++	" "
++]);
++function isUserScrollInput(event) {
++	if (event.defaultPrevented) return false;
++	if (event.type !== "keydown") return true;
++	return "key" in event && typeof event.key === "string" && USER_SCROLL_KEYS.has(event.key);
++}
+ const DEFAULT_OVERSCROLL_SIZE = 1e3;
+ const INTERSECTION_OBSERVER_MARGIN = DEFAULT_OVERSCROLL_SIZE * 4;
+ const INTERSECTION_OBSERVER_THRESHOLD = [
+@@ -44,6 +66,7 @@ var Virtualizer = class Virtualizer {
+ 	scrollHeightDirty = true;
+ 	renderedObservers = 0;
+ 	connectQueue = /* @__PURE__ */ new Map();
++	spanScrollRequest;
+ 	constructor(config) {
+ 		this.config = {
+ 			...DEFAULT_VIRTUALIZER_CONFIG,
+@@ -61,6 +84,8 @@ var Virtualizer = class Virtualizer {
+ 		});
+ 		if (root instanceof Document) this.setupWindow();
+ 		else this.setupElement(contentContainer);
++		const inputTarget = root instanceof Document ? window : root;
++		for (const type of USER_SCROLL_EVENTS) inputTarget.addEventListener(type, this.handleUserScrollInput, { passive: true });
+ 		window.__INSTANCE = this;
+ 		window.__TOGGLE = () => {
+ 			if (Virtualizer.__STOP) {
+@@ -160,6 +185,9 @@ var Virtualizer = class Virtualizer {
+ 	}
+ 	cleanUp() {
+ 		dequeueRender(this.computeRenderRangeAndEmit);
++		const inputTarget = this.root instanceof Document ? window : this.root;
++		for (const type of USER_SCROLL_EVENTS) inputTarget?.removeEventListener(type, this.handleUserScrollInput);
++		this.finishSpanScroll("cancelled");
+ 		this.resizeObserver?.disconnect();
+ 		this.resizeObserver = void 0;
+ 		this.intersectionObserver?.disconnect();
+@@ -239,12 +267,15 @@ var Virtualizer = class Virtualizer {
+ 				scrollHeight: this.getScrollHeight(),
+ 				overscrollSize: this.config.overscrollSize
+ 			});
+-			if (!wrapperDirty && areVirtualWindowSpecsEqual(this.windowSpecs, windowSpecs) && this.renderedObservers === this.observers.size && !this.visibleInstancesDirty && this.reconcileQueue.size === 0) return;
++			if (!wrapperDirty && areVirtualWindowSpecsEqual(this.windowSpecs, windowSpecs) && this.renderedObservers === this.observers.size && !this.visibleInstancesDirty && this.reconcileQueue.size === 0) {
++				this.advanceSpanScroll(true);
++				return;
++			}
+ 			this.windowSpecs = windowSpecs;
+ 		}
+ 		this.visibleInstancesDirty = false;
+ 		this.renderedObservers = this.observers.size;
+-		const anchor = this.getScrollAnchor(this.height);
++		const anchor = this.spanScrollRequest == null ? this.getScrollAnchor(this.height) : void 0;
+ 		const updatedInstances = /* @__PURE__ */ new Set();
+ 		for (const instance of wrapperDirty ? this.observers.values() : this.visibleInstances.values()) if (instance.onRender(wrapperDirty)) updatedInstances.add(instance);
+ 		for (const instance of this.instancesChanged) {
+@@ -259,6 +290,7 @@ var Virtualizer = class Virtualizer {
+ 		for (const instance of this.reconcileQueue) if (instance.reconcileHeights()) instancesHaveChanged = true;
+ 		this.reconcileQueue.clear();
+ 		instancesHaveChanged ||= this.instancesChanged.size > 0;
++		this.advanceSpanScroll(!instancesHaveChanged && !wrapperDirty);
+ 		if (instancesHaveChanged) this.markDOMDirty();
+ 		if (instancesHaveChanged || wrapperDirty) queueRender(this.computeRenderRangeAndEmit);
+ 		updatedInstances.clear();
+@@ -375,7 +407,13 @@ var Virtualizer = class Virtualizer {
+ 		return scrollTop;
+ 	}
+ 	/** Scroll to a logical vertical position and queue the normal render pass. */
+-	scrollTo({ top, behavior = "auto" }) {
++	scrollTo(options) {
++		const { spanScrollRequest: replaced } = this;
++		this.spanScrollRequest = void 0;
++		this.writeScrollTop(options);
++		replaced?.onDone("cancelled");
++	}
++	writeScrollTop({ top, behavior = "auto" }) {
+ 		const { root } = this;
+ 		if (root == null) return;
+ 		const scrollTop = this.clampScrollTop(top);
+@@ -390,6 +428,52 @@ var Virtualizer = class Virtualizer {
+ 		this.scrollDirty = true;
+ 		queueRender(this.computeRenderRangeAndEmit);
+ 	}
++	/** Scroll a span into view, re-resolving it each render pass until layout settles. A newer request or user scroll input cancels it. */
++	scrollSpanIntoView(request) {
++		const { spanScrollRequest: replaced } = this;
++		this.spanScrollRequest = request;
++		queueRender(this.computeRenderRangeAndEmit);
++		replaced?.onDone("cancelled");
++	}
++	advanceSpanScroll(canSettle) {
++		const request = this.spanScrollRequest;
++		if (request == null) return;
++		const span = request.resolveSpan();
++		if (span == null) {
++			this.finishSpanScroll("cancelled");
++			return;
++		}
++		const scrollTop = this.getScrollTop();
++		const viewportBottom = scrollTop + this.getHeight();
++		const spanBottom = span.top + span.height;
++		let top = scrollTop;
++		if (request.align === "start") top = span.top;
++		else if (request.align === "end") top = spanBottom - this.getHeight();
++		else if (request.align === "center") top = span.top - (this.getHeight() - span.height) / 2;
++		else if (span.top < scrollTop && spanBottom < viewportBottom) top = span.top;
++		else if (span.top > scrollTop && spanBottom > viewportBottom) top = spanBottom - this.getHeight();
++		if (Math.abs(top - scrollTop) >= 1) {
++			this.writeScrollTop({
++				top,
++				behavior: "instant"
++			});
++			if (Math.abs(this.getScrollTop() - scrollTop) >= 1) return;
++		}
++		if (canSettle) this.finishSpanScroll("settled");
++	}
++	handleUserScrollInput = (event) => {
++		if (isUserScrollInput(event)) this.cancelScroll();
++	};
++	cancelScroll(onDone) {
++		if (onDone != null && this.spanScrollRequest?.onDone !== onDone) return;
++		this.finishSpanScroll("cancelled");
++	}
++	finishSpanScroll(result) {
++		const { spanScrollRequest } = this;
++		if (spanScrollRequest == null) return;
++		this.spanScrollRequest = void 0;
++		spanScrollRequest.onDone(result);
++	}
+ 	clampScrollTop(scrollTop) {
+ 		return Math.max(0, Math.min(scrollTop, this.getScrollHeight() - this.getHeight()));
+ 	}
 diff --git a/dist/components/web-components.js b/dist/components/web-components.js
 index 6e7b486a02a0f9f9d2c57ea3d9e95b706925e72a..5b7290f1814f4883e9fd13ffdf22b9bacad461c0 100644
 --- a/dist/components/web-components.js
@@ -879,7 +1130,7 @@ index 6e7b486a02a0f9f9d2c57ea3d9e95b706925e72a..5b7290f1814f4883e9fd13ffdf22b9ba
  		connectedCallback() {
  			const shadowRoot = this.shadowRoot ?? this.attachShadow({ mode: "open" });
 diff --git a/dist/editor/editor.js b/dist/editor/editor.js
-index bf17cea32f39ee60ff7520b17f44d99a8e7e98aa..cb306304d7a754b0a7026330c068724ce87e55db 100644
+index bf17cea32f39ee60ff7520b17f44d99a8e7e98aa..5278b74cb5803c4d5f1c2db09ced47c70c3cfd23 100644
 --- a/dist/editor/editor.js
 +++ b/dist/editor/editor.js
 @@ -133,6 +133,7 @@ var Editor = class {
@@ -890,7 +1141,15 @@ index bf17cea32f39ee60ff7520b17f44d99a8e7e98aa..cb306304d7a754b0a7026330c068724c
  	#deletedSelectionText = "";
  	#reservedSelections;
  	#initSelections;
-@@ -600,6 +601,7 @@ var Editor = class {
+@@ -142,6 +143,7 @@ var Editor = class {
+ 	#scrollingToLineChar;
+ 	#scrollingToLineFixed = false;
+ 	#scrollingToLineNoFocus = false;
++	#lineReveal;
+ 	#retainSearchPanelFocus = false;
+ 	#fontRemeasureScheduled = false;
+ 	#themeSelectionRefreshFrame;
+@@ -600,6 +602,7 @@ var Editor = class {
  	}
  	/** @internal */
  	__captureFocusForDOMReplacement() {
@@ -898,7 +1157,7 @@ index bf17cea32f39ee60ff7520b17f44d99a8e7e98aa..cb306304d7a754b0a7026330c068724c
  		const contentElement = this.#contentElement;
  		const shadowActiveElement = this.#fileContainer?.shadowRoot?.activeElement;
  		if (contentElement != null && (this.#contentHasFocus || shadowActiveElement === contentElement || shadowActiveElement != null && contentElement.contains(shadowActiveElement))) this.#replacementFocusRequest = {};
-@@ -778,6 +780,7 @@ var Editor = class {
+@@ -778,6 +781,7 @@ var Editor = class {
  				this.#initSelections = void 0;
  				this.#scrollToPrimaryCaret(false, "center");
  			} else if (this.#scrollingToLine !== void 0) this.#scrollToLine(this.#scrollingToLine, this.#scrollingToLineChar, this.#scrollingToLineNoFocus);
@@ -906,7 +1165,15 @@ index bf17cea32f39ee60ff7520b17f44d99a8e7e98aa..cb306304d7a754b0a7026330c068724c
  			else if (this.#replacementFocusRequest !== void 0) this.#restoreReplacementFocus();
  			else if (this.#selections !== void 0 && this.#selections.length > 0 && this.#contentHasFocus && !this.#retainSearchPanelFocus) this.focus({ preventScroll: true });
  			if (this.#retainSearchPanelFocus) this.#searchPanel?.focus();
-@@ -957,7 +960,11 @@ var Editor = class {
+@@ -881,6 +885,7 @@ var Editor = class {
+ 		if (!preserveCarets) this.#carets = void 0;
+ 		this.#selections = void 0;
+ 		this.#scrollingToLine = void 0;
++		this.#cancelLineReveal();
+ 		this.#markerRenderer?.cleanup();
+ 		this.#markerRenderer = void 0;
+ 		this.#searchPanel?.cleanup();
+@@ -957,7 +962,11 @@ var Editor = class {
  		const finishMouseSelection = (event) => {
  			if (event.pointerType !== "mouse") return;
  			const refocusEditor = this.#isGutterMouseDown;
@@ -918,7 +1185,7 @@ index bf17cea32f39ee60ff7520b17f44d99a8e7e98aa..cb306304d7a754b0a7026330c068724c
  			if (refocusEditor) this.#focus();
  			if (this.#options.enabledSelectionAction === true && this.#selections !== void 0 && this.#selections.length > 0 && !isCollapsedSelection(this.#selections.at(-1))) this.#updateSelections(this.#selections);
  		};
-@@ -981,15 +988,17 @@ var Editor = class {
+@@ -981,15 +990,17 @@ var Editor = class {
  				if (typeof selectionRaw.getComposedRanges === "function") composedRange = selectionRaw.getComposedRanges({ shadowRoots: [shadowRoot] })?.[0];
  				else composedRange = getShadowRootRange(shadowRoot);
  				if (composedRange === void 0 || !this.#rangeBelongsToEditor(composedRange)) return;
@@ -939,7 +1206,7 @@ index bf17cea32f39ee60ff7520b17f44d99a8e7e98aa..cb306304d7a754b0a7026330c068724c
  				else if (this.#selections !== void 0 && this.#selections.length === 1) {
  					const previous = this.#selections[0];
  					if (comparePosition(previous.start, selection.start) === 0 && comparePosition(previous.end, selection.end) === 0) selection.direction = previous.direction;
-@@ -1024,8 +1033,50 @@ var Editor = class {
+@@ -1024,8 +1035,50 @@ var Editor = class {
  		this.#altColumnDrag = void 0;
  		this.#shiftKeyPressed = false;
  		this.#selectionStart = void 0;
@@ -990,7 +1257,7 @@ index bf17cea32f39ee60ff7520b17f44d99a8e7e98aa..cb306304d7a754b0a7026330c068724c
  	#replaceSelectEventListeners(disposes) {
  		this.#selectEventDisposes?.forEach((dispose) => dispose());
  		this.#selectEventDisposes = disposes;
-@@ -1081,6 +1132,7 @@ var Editor = class {
+@@ -1081,6 +1134,7 @@ var Editor = class {
  				this.#isContentMouseDown = true;
  				const isAltColumnDrag = e.button === 0 && e.altKey && !e.ctrlKey && !e.metaKey && !e.shiftKey;
  				this.#selectionStart = void 0;
@@ -998,7 +1265,7 @@ index bf17cea32f39ee60ff7520b17f44d99a8e7e98aa..cb306304d7a754b0a7026330c068724c
  				if (isAltColumnDrag) {
  					this.#altColumnDrag = {
  						pointerId: e.pointerId,
-@@ -1903,7 +1955,11 @@ var Editor = class {
+@@ -1903,7 +1957,11 @@ var Editor = class {
  			changedDocumentLines: this.#isDiff && !didLineCountChange ? getChangedDocumentLines(textDocument, change) : void 0,
  			documentLineCount: textDocument.lineCount
  		});
@@ -1011,6 +1278,60 @@ index bf17cea32f39ee60ff7520b17f44d99a8e7e98aa..cb306304d7a754b0a7026330c068724c
  		if (didLineCountChange || this.#isDiff && this.#diffSyle === "unified") this.#resetCache();
  		if (newLineAnnotations != null) {
  			this.#lineAnnotations = newLineAnnotations;
+@@ -2081,6 +2139,7 @@ var Editor = class {
+ 		if (primarySelection === void 0) return;
+ 		const primaryCaretElement = this.#primaryCaretElement;
+ 		if (primaryCaretElement !== void 0) {
++			this.#cancelLineReveal();
+ 			primaryCaretElement.scrollIntoView({
+ 				block: scrollPosition,
+ 				inline: "nearest"
+@@ -2100,6 +2159,17 @@ var Editor = class {
+ 		const start = this.#getGutterWidth() + this.#metrics.ch;
+ 		return `${top}px ${this.#metrics.ch}px 0 ${start}px`;
+ 	}
++	#cancelLineReveal() {
++		if (this.#lineReveal === void 0) return;
++		this.#lineReveal = void 0;
++		this.#virtualizedInstance?.cancelScroll?.(this.#handleLineRevealDone);
++	}
++	#handleLineRevealDone = (result) => {
++		const target = this.#lineReveal;
++		if (result !== "settled" || target === void 0) return;
++		this.#lineReveal = void 0;
++		if (this.#getLineElement(target.line) !== void 0) this.#scrollToLine(target.line, target.char, target.noFocus);
++	};
+ 	#scrollToLine(line, char = 0, noFocus = false) {
+ 		this.__postponeBgTokenizeToNextFrame();
+ 		const virtualCaret = h("div", { style: {
+@@ -2110,6 +2180,7 @@ var Editor = class {
+ 			scrollMargin: this.#getScrollMargin()
+ 		} });
+ 		if (this.#getLineElement(line) !== void 0) {
++			this.#cancelLineReveal();
+ 			const [left, wrapLine] = this.#getCharX(line, char);
+ 			const lineY = this.#getLineY(line) + wrapLine * this.#metrics.lineHeight;
+ 			virtualCaret.style.top = lineY + "px";
+@@ -2132,6 +2203,19 @@ var Editor = class {
+ 			this.#scrollingToLineFixed = false;
+ 			this.#scrollingToLineNoFocus = false;
+ 		} else {
++			this.#lineReveal = {
++				line,
++				char,
++				noFocus
++			};
++			if (this.#virtualizedInstance?.scrollToLine?.(line + 1, "center", this.#handleLineRevealDone) === true) {
++				this.#scrollingToLine = void 0;
++				this.#scrollingToLineChar = void 0;
++				this.#scrollingToLineFixed = false;
++				this.#scrollingToLineNoFocus = false;
++				return;
++			}
++			this.#lineReveal = void 0;
+ 			const modelLinePosition = this.#virtualizedInstance?.getLinePosition?.(line + 1);
+ 			if (modelLinePosition !== void 0) {
+ 				virtualCaret.style.top = modelLinePosition.top + "px";
 diff --git a/dist/editor/searchPanel.d.ts b/dist/editor/searchPanel.d.ts
 index 9542849786b98a7b11f98894847a2f53a9aac113..1c1a51f56da381105113d9b731e0573296edd9be 100644
 --- a/dist/editor/searchPanel.d.ts
