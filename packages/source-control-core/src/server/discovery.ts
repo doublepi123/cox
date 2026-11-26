@@ -193,6 +193,15 @@ function isCliRemoteRefinementSpec(
   return spec.type === "cli" && spec.refineUnknownRemote !== undefined;
 }
 
+/** Checked before a probe spawns, so a CLI that is not installed records no failed process span. */
+export const isExecutableOnPath = Effect.fnUntraced(function* (executable: string) {
+  const resolveExecutable = yield* SpawnExecutableResolution;
+  const platform = yield* HostProcess.Platform;
+  const env = yield* HostProcess.Environment;
+  const path = yield* Effect.promise(async () => resolveExecutable(executable, platform, env));
+  return path !== undefined;
+});
+
 function probeCli(input: {
   readonly spec: SourceControlCliDiscoverySpec;
   readonly process: SourceControlHost.SourceControlHost["Service"]["process"];
@@ -275,55 +284,55 @@ export function probeSourceControlProvider(input: {
 
   const spec = input.spec;
 
-  // The auth check does not depend on the version output, so both spawn at once.
-  return Effect.all(
-    [
-      probeCli({
-        spec,
-        process: input.process,
-        cwd: input.cwd,
-      }),
-      Effect.gen(function* () {
-        const environment = yield* HostProcess.Environment;
-        const run = (args: ReadonlyArray<string>) =>
-          input.process
-            .run({
-              operation: "source-control.discovery.auth",
-              command: spec.executable,
-              args,
-              cwd: input.cwd,
-              ...(spec.probeEnv ? { env: spec.probeEnv(args, environment) } : {}),
-              allowNonZeroExit: true,
-              timeoutMs: probeTimeoutMs(spec),
-              maxOutputBytes: 8_000,
-              appendTruncationMarker: true,
-            })
-            .pipe(
-              Effect.map(spec.parseAuth),
-              Effect.catch((cause) =>
-                Effect.succeed(unknownAuth(Option.getOrUndefined(detailFromCause(cause)))),
-              ),
-            );
-        const first = yield* run(spec.authArgs);
-        if (first.status !== "unauthenticated") return first;
-        for (const args of spec.authRetryArgs?.(environment) ?? []) {
-          const result = yield* run(args);
-          if (result.status === "authenticated") return result;
-        }
-        return first;
-      }),
-    ],
-    { concurrency: "unbounded" },
-  ).pipe(
-    Effect.map(
-      ([item, auth]) =>
-        ({
-          ...item,
-          auth:
-            item.status === "available"
-              ? auth
-              : unknownAuth("Hosting integration command was not found on the server PATH."),
-        }) satisfies SourceControlProviderDiscoveryItem,
+  const auth = Effect.gen(function* () {
+    const environment = yield* HostProcess.Environment;
+    const run = (args: ReadonlyArray<string>) =>
+      input.process
+        .run({
+          operation: "source-control.discovery.auth",
+          command: spec.executable,
+          args,
+          cwd: input.cwd,
+          ...(spec.probeEnv ? { env: spec.probeEnv(args, environment) } : {}),
+          allowNonZeroExit: true,
+          timeoutMs: probeTimeoutMs(spec),
+          maxOutputBytes: 8_000,
+          appendTruncationMarker: true,
+        })
+        .pipe(
+          Effect.map(spec.parseAuth),
+          Effect.catch((cause) =>
+            Effect.succeed(unknownAuth(Option.getOrUndefined(detailFromCause(cause)))),
+          ),
+        );
+    const first = yield* run(spec.authArgs);
+    if (first.status !== "unauthenticated") return first;
+    for (const args of spec.authRetryArgs?.(environment) ?? []) {
+      const result = yield* run(args);
+      if (result.status === "authenticated") return result;
+    }
+    return first;
+  });
+
+  // A CLI that is not installed is never spawned, and auth waits until the version probe answers.
+  return isExecutableOnPath(spec.executable).pipe(
+    Effect.flatMap((found): Effect.Effect<DiscoveryProbeResult> =>
+      found
+        ? probeCli({ spec, process: input.process, cwd: input.cwd })
+        : Effect.succeed({
+            kind: spec.kind,
+            label: spec.label,
+            executable: spec.executable,
+            status: "missing",
+            version: Option.none(),
+            installHint: spec.installHint,
+            detail: Option.none(),
+          }),
+    ),
+    Effect.flatMap((item): Effect.Effect<SourceControlProviderDiscoveryItem> =>
+      item.status === "available"
+        ? Effect.map(auth, (auth) => ({ ...item, auth }))
+        : Effect.succeed({ ...item, auth: unknownAuth(item.installHint) }),
     ),
   );
 }

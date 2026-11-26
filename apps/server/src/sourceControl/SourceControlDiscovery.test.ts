@@ -59,6 +59,8 @@ const cliDiscovery = (name: string) => ({
     providerAuth({ status: "authenticated", account: /as (\S+)/.exec(stdout)?.[1] }),
 });
 
+const onPath = (command: string) => `/usr/local/bin/${command}`;
+
 const layerDiscovery = (runProcess = run) =>
   Layer.effect(
     SourceControlProviderRegistry.SourceControlProviderRegistry,
@@ -130,7 +132,10 @@ it.effect("reports every hosting integration in registry order with its sign-in"
         ["jj", "available"],
       ],
     );
-  }).pipe(Effect.provide(SourceControlDiscovery.layer.pipe(Layer.provide(layerDiscovery())))),
+  }).pipe(
+    Effect.provide(SourceControlDiscovery.layer.pipe(Layer.provide(layerDiscovery()))),
+    Effect.provideService(SpawnExecutableResolution, onPath),
+  ),
 );
 
 it.effect.each(["darwin", "linux"] as const)(
@@ -165,7 +170,7 @@ it.effect.each(["darwin", "linux"] as const)(
       }
     }).pipe(
       Effect.provide(SourceControlDiscovery.layer.pipe(Layer.provide(layerDiscovery(runProcess)))),
-      Effect.provideService(SpawnExecutableResolution, (command) => `/usr/local/bin/${command}`),
+      Effect.provideService(SpawnExecutableResolution, onPath),
       Effect.provideService(HostProcess.Platform, platform),
       Effect.provideService(HostProcess.Architecture, "arm64"),
     );

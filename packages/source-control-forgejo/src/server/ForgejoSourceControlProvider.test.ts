@@ -14,6 +14,7 @@ import * as TestClock from "effect/testing/TestClock";
 import { VcsProcessSpawnError } from "@t3tools/contracts";
 import { firstNonEmptyLine } from "@t3tools/source-control-core/server/discovery";
 import * as HostProcess from "@t3tools/shared/HostProcess";
+import { SpawnExecutableResolution } from "@t3tools/shared/shell";
 import * as TestSourceControlHost from "@t3tools/source-control-testing/TestSourceControlHost";
 
 import { userFacingSourceControlDetail } from "@t3tools/source-control-core/server/SourceControlProvider";
@@ -2163,6 +2164,7 @@ it.effect(
             ),
           ),
           Effect.provideService(HostProcess.HomeDirectory, "/home/maria"),
+          Effect.provideService(SpawnExecutableResolution, (command) => `/usr/bin/${command}`),
         );
       }
     }),

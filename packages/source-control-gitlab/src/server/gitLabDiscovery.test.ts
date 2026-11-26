@@ -9,11 +9,66 @@ import {
 import { processOutput } from "@t3tools/source-control-testing/TestSourceControlHost";
 import { assert, it } from "@effect/vitest";
 import * as HostProcess from "@t3tools/shared/HostProcess";
+import { SpawnExecutableResolution } from "@t3tools/shared/shell";
+import { VcsProcessSpawnError } from "@t3tools/contracts";
+import * as PlatformError from "effect/PlatformError";
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
 import { ChildProcessSpawner } from "effect/process";
 
 import * as GitLabSourceControlProvider from "./GitLabSourceControlProvider.ts";
+
+const onPath = (command: string) => `/usr/bin/${command}`;
+
+// Discovery sweeps every integration on a timer; a CLI that is not installed should cost one spawn.
+it.effect("does not run the auth command when glab is not installed", () =>
+  Effect.gen(function* () {
+    const spawned: Array<string> = [];
+    const item = yield* probeSourceControlProvider({
+      spec: GitLabSourceControlProvider.discovery,
+      cwd: "/repo",
+      process: {
+        run: ({ operation, command, args, cwd }) => {
+          spawned.push([command, ...args].join(" "));
+          return Effect.fail(
+            new VcsProcessSpawnError({
+              operation,
+              command,
+              cwd,
+              cause: PlatformError.systemError({
+                _tag: "NotFound",
+                module: "ChildProcess",
+                method: "spawn",
+                pathOrDescriptor: command,
+              }),
+            }),
+          );
+        },
+      },
+    });
+    assert.strictEqual(item.status, "missing");
+    assert.deepStrictEqual(spawned, ["glab --version"]);
+  }).pipe(Effect.provideService(SpawnExecutableResolution, onPath)),
+);
+
+it.effect("spawns nothing for a glab that is not on PATH", () =>
+  Effect.gen(function* () {
+    const spawned: Array<string> = [];
+    const item = yield* probeSourceControlProvider({
+      spec: GitLabSourceControlProvider.discovery,
+      cwd: "/repo",
+      process: {
+        run: ({ command, args }) => {
+          spawned.push([command, ...args].join(" "));
+          return Effect.succeed(processOutput("glab 1.124.0\n"));
+        },
+      },
+    });
+    assert.strictEqual(item.status, "missing");
+    assert.strictEqual(item.auth.status, "unknown");
+    assert.deepStrictEqual(spawned, []);
+  }).pipe(Effect.provideService(SpawnExecutableResolution, () => undefined)),
+);
 
 it("reads the account from glab output without status marks", () => {
   const auth = GitLabSourceControlProvider.discovery.parseAuth(
@@ -114,5 +169,8 @@ it.effect("sends the environment token only to glab's default host while probing
       ["auth status --hostname gitlab.com", {}],
       ["auth status --hostname self-hosted.example.test", withheld],
     ]);
-  }).pipe(Effect.provideService(HostProcess.Environment, { GITLAB_TOKEN: "default-host-token" })),
+  }).pipe(
+    Effect.provideService(HostProcess.Environment, { GITLAB_TOKEN: "default-host-token" }),
+    Effect.provideService(SpawnExecutableResolution, onPath),
+  ),
 );
