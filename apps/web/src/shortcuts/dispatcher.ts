@@ -74,6 +74,7 @@ function runScopes(scopes: readonly CommandScope[], event: KeyboardEvent): boole
   return false;
 }
 function dispatchCaptureKeyDown(event: KeyboardEvent): void {
+  if (event.target instanceof Element && event.target.closest("[data-keybinding-capture]")) return;
   runScopes(captureScopes, event);
 }
 function dispatchKeyDown(event: KeyboardEvent): void {
