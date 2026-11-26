@@ -15,6 +15,11 @@ export interface TerminalLinkMatch {
   text: string;
   start: number;
   end: number;
+  /**
+   * `text` cut after its `:line:col`. Only the filesystem can tell grep's `./a.js:1:function`
+   * from a name with colons in it, so this stands in when `text` as a whole is not a file.
+   */
+  fallback?: { text: string; end: number };
 }
 
 export interface TerminalBufferLineLike {
@@ -43,6 +48,8 @@ const FILE_PATH_PATTERN =
   /(?:~[\\/]|\.{1,2}[\\/]|\/|[A-Za-z]:[\\/]|\\\\)[^\s"'`<>]+|(?<![\p{L}\p{M}\p{N}._-])[\p{L}\p{M}\p{N}._-]+(?:[\\/](?:[\p{L}\p{M}\p{N}._$+@-]|\[{1,2}[\p{L}\p{M}\p{N}._-]+\]{1,2}|\([\p{L}\p{M}\p{N}._-]+\)(?=[\\/]))+)+(?::\d+){0,2}/gu;
 const QUOTED_FILE_PATH_PATTERN =
   /(["'`])(?<path>(?:~[\\/]|\.{1,2}[\\/]|\/|[A-Za-z]:[\\/]|\\\\|[\p{L}\p{M}\p{N}._ -]+[\\/])[^\r\n]*?|[\p{L}\p{M}\p{N}._ -]+\.[\p{L}\p{M}\p{N}_-]+(?::\d+){0,2})\1(?<position>(?::\d+){0,2})/gu;
+const POSITION_BEFORE_TEXT_PATTERN = /^.+?(?::\d+){1,2}(?=:)/u;
+const POSITIONS_ONLY_PATTERN = /^(?::\d+)+$/u;
 const TRAILING_PUNCTUATION_PATTERN = /[.,;!?]+$/;
 // Paths also drop a trailing colon: compilers end `file:line:col:` with one.
 const TRAILING_PATH_PUNCTUATION_PATTERN = /[.,;:!?]+$/;
@@ -99,12 +106,23 @@ function collectMatches(
     if (trimmed.length === 0) continue;
     if (kind === "path" && isTerminalUrl(trimmed)) continue;
 
+    const cut =
+      kind === "path" && quotedPath === undefined
+        ? POSITION_BEFORE_TEXT_PATTERN.exec(trimmed)?.[0]
+        : undefined;
+    const fallback =
+      cut !== undefined && !POSITIONS_ONLY_PATTERN.test(trimmed.slice(cut.length))
+        ? cut
+        : undefined;
     const candidate: TerminalLinkMatch = {
       kind,
       text: trimmed,
       start,
       // A position outside quotes spans the closing quote in the terminal buffer.
       end: start + trimmed.length + (rawMatch.groups?.position ? 1 : 0),
+      ...(fallback === undefined
+        ? {}
+        : { fallback: { text: fallback, end: start + fallback.length } }),
     };
 
     const collides = [...existing, ...matches].some((other) => overlaps(candidate, other));
