@@ -624,12 +624,12 @@ const makeHarness = Effect.fn("makeThreadSettlementHarness")(function* (options:
       ]);
       return yield* (
         options.pullRequestSummary?.(input, readOptions) ??
-          Effect.succeed(
-            makePullRequestSummary({
-              ...input,
-              state: "open",
-            }),
-          )
+        Effect.succeed(
+          makePullRequestSummary({
+            ...input,
+            state: "open",
+          }),
+        )
       );
     });
 
