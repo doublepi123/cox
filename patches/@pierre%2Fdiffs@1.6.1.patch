@@ -30,10 +30,9 @@ index 234ec4baa4a9364088917b24a64a6377d16583f8..274ff5e32b65379b30ac645f1f64bfdc
     * Returns the editor while this item is being edited. Partial diffs get an
     * editor after their files load; scrolling away or collapsing keeps it.
 diff --git a/dist/components/CodeView.js b/dist/components/CodeView.js
-index ee5c91c5ab44742994d900a81dbd8e9c508efb49..7d0a2901e48de0d356dd784896d7f8eb4c9ad0e8 100644
 --- a/dist/components/CodeView.js
 +++ b/dist/components/CodeView.js
-@@ -18,6 +18,7 @@ import { resolvePreferredHighlighter } from "../utils/resolvePreferredHighlighte
+@@ -18,6 +18,7 @@
  import { roundToDevicePixel } from "../utils/roundToDevicePixel.js";
  import { VirtualizedFile } from "./VirtualizedFile.js";
  import { VirtualizedFileDiff } from "./VirtualizedFileDiff.js";
@@ -41,7 +40,7 @@ index ee5c91c5ab44742994d900a81dbd8e9c508efb49..7d0a2901e48de0d356dd784896d7f8eb
  //#region src/components/CodeView.ts
  const CODE_VIEW_DIFF_OPTION_KEYS = [
  	"theme",
-@@ -116,6 +117,8 @@ function defineItemOption(target, key, get) {
+@@ -116,6 +117,8 @@
  }
  const DEFAULT_SCROLL_INTERACTION_RESTORE_DELAY_MS = 120;
  const SUB_PIXEL_TOLERANCE = 1;
@@ -50,7 +49,7 @@ index ee5c91c5ab44742994d900a81dbd8e9c508efb49..7d0a2901e48de0d356dd784896d7f8eb
  const SCROLLING_CODE_OVERFLOW_FIX_VARIABLE = "--diffs-overflow-override";
  function createScrollRebaseConfig(containerHeight, triggerTop, targetTop) {
  	return {
-@@ -213,6 +216,8 @@ var CodeView = class CodeView {
+@@ -213,6 +216,8 @@
  	isReadySubscription;
  	pendingHighlighterTheme;
  	isComponentManaged;
@@ -59,7 +58,7 @@ index ee5c91c5ab44742994d900a81dbd8e9c508efb49..7d0a2901e48de0d356dd784896d7f8eb
  	slotSnapshotStale = false;
  	constructor(options = { theme: DEFAULT_THEMES }, workerManager, isComponentManaged = false) {
  		this.options = options;
-@@ -395,6 +400,7 @@ var CodeView = class CodeView {
+@@ -395,6 +400,7 @@
  		this.root.addEventListener("touchstart", this.clearPendingScroll, { passive: true });
  		this.root.addEventListener("pointerdown", this.clearPendingScroll, { passive: true });
  		this.root.addEventListener("keydown", this.clearPendingScroll, { passive: true });
@@ -67,7 +66,7 @@ index ee5c91c5ab44742994d900a81dbd8e9c508efb49..7d0a2901e48de0d356dd784896d7f8eb
  		this.resizeObserver.observe(this.root);
  		this.render(true);
  		window.__INSTANCE = this;
-@@ -467,6 +473,7 @@ var CodeView = class CodeView {
+@@ -467,6 +473,7 @@
  		this.heightDirty = true;
  		this.resetRenderState();
  		if (!this.isComponentManaged) this.flushSlotCoordinator();
@@ -75,7 +74,7 @@ index ee5c91c5ab44742994d900a81dbd8e9c508efb49..7d0a2901e48de0d356dd784896d7f8eb
  		if (failed) throw failure;
  	}
  	cleanUp() {
-@@ -488,6 +495,8 @@ var CodeView = class CodeView {
+@@ -488,6 +495,8 @@
  		this.root?.removeEventListener("touchstart", this.clearPendingScroll);
  		this.root?.removeEventListener("pointerdown", this.clearPendingScroll);
  		this.root?.removeEventListener("keydown", this.clearPendingScroll);
@@ -84,7 +83,7 @@ index ee5c91c5ab44742994d900a81dbd8e9c508efb49..7d0a2901e48de0d356dd784896d7f8eb
  		this.root?.style.removeProperty("overflow-anchor");
  		this.container?.remove();
  		this.stickyOffset.remove();
-@@ -629,6 +638,137 @@ var CodeView = class CodeView {
+@@ -629,6 +638,142 @@
  	getItem(itemId) {
  		return this.idToItem.get(itemId)?.item;
  	}
@@ -120,7 +119,12 @@ index ee5c91c5ab44742994d900a81dbd8e9c508efb49..7d0a2901e48de0d356dd784896d7f8eb
 +	*/
 +	revealSearchMatch(match, afterUnfold = false) {
 +		const item = this.idToItem.get(match.id);
-+		if (item == null || item.type !== "diff") return;
++		if (item == null) return;
++		if (item.type === "file") {
++			const target = { type: "line", id: match.id, lineNumber: match.lineNumber, align: "center", offset: -SEARCH_PANEL_RESERVED_HEIGHT / 2 };
++			if (!this.isScrollTargetInView(target)) this.scrollTo(target);
++			return;
++		}
 +		if (item.item.collapsed === true) {
 +			if (this.options.onRevealSearchMatch == null) {
 +				this.scrollTo({
@@ -222,7 +226,7 @@ index ee5c91c5ab44742994d900a81dbd8e9c508efb49..7d0a2901e48de0d356dd784896d7f8eb
  	/**
  	* Returns the editor while this item is being edited. Partial diffs get an
  	* editor after their files load; scrolling away or collapsing keeps it.
-@@ -648,6 +788,7 @@ var CodeView = class CodeView {
+@@ -648,6 +793,7 @@
  		this.render();
  		this.syncItemEditors();
  		this.syncSelection();
@@ -230,7 +234,7 @@ index ee5c91c5ab44742994d900a81dbd8e9c508efb49..7d0a2901e48de0d356dd784896d7f8eb
  		return true;
  	}
  	updateItemId(oldId, newId) {
-@@ -681,6 +822,7 @@ var CodeView = class CodeView {
+@@ -681,6 +827,7 @@
  		this.renamePendingScrollTarget(oldId, newId);
  		this.renamePendingLayoutAnchor(oldId, newId);
  		this.render();
@@ -238,7 +242,7 @@ index ee5c91c5ab44742994d900a81dbd8e9c508efb49..7d0a2901e48de0d356dd784896d7f8eb
  		return true;
  	}
  	addItem(input) {
-@@ -690,6 +832,7 @@ var CodeView = class CodeView {
+@@ -690,6 +837,7 @@
  		this.appendItemsInternal(inputs);
  		this.syncItemEditors();
  		this.syncSelection();
@@ -246,7 +250,7 @@ index ee5c91c5ab44742994d900a81dbd8e9c508efb49..7d0a2901e48de0d356dd784896d7f8eb
  	}
  	removeItem(itemId) {
  		const item = this.idToItem.get(itemId);
-@@ -712,6 +855,7 @@ var CodeView = class CodeView {
+@@ -712,6 +860,7 @@
  			for (const removedItem of removedItemsById?.values() ?? []) removedItem.instance.cleanUp();
  		}
  		this.syncSelection();
@@ -254,7 +258,7 @@ index ee5c91c5ab44742994d900a81dbd8e9c508efb49..7d0a2901e48de0d356dd784896d7f8eb
  	}
  	/**
  	* Append new records to the viewer while preserving existing layout state.
-@@ -1334,6 +1478,10 @@ var CodeView = class CodeView {
+@@ -1334,6 +1483,10 @@
  		item.item = nextItem;
  		item.version = nextItem.version;
  		item.renderedOptionsRevision = -1;
@@ -265,7 +269,7 @@ index ee5c91c5ab44742994d900a81dbd8e9c508efb49..7d0a2901e48de0d356dd784896d7f8eb
  		return true;
  	}
  	getMaxScrollTopForHeight(scrollHeight) {
-@@ -1714,6 +1862,10 @@ var CodeView = class CodeView {
+@@ -1714,6 +1867,10 @@
  		this.updateStickyPositioning();
  		this.validateStickyContainerHeight();
  		this.fixContainerFocus();
@@ -276,7 +280,7 @@ index ee5c91c5ab44742994d900a81dbd8e9c508efb49..7d0a2901e48de0d356dd784896d7f8eb
  		if (fitPerfectly || this.scrollAnimation != null) this.render();
  	};
  	flushManagers(updatedItems) {
-@@ -1808,7 +1960,8 @@ var CodeView = class CodeView {
+@@ -1808,7 +1965,8 @@
  		this.notifyScroll();
  		this.render();
  	};
@@ -286,7 +290,7 @@ index ee5c91c5ab44742994d900a81dbd8e9c508efb49..7d0a2901e48de0d356dd784896d7f8eb
  		this.pendingScrollTarget = void 0;
  		this.pendingLayoutAnchor = void 0;
  		this.scrollAnimation = void 0;
-@@ -2071,7 +2224,12 @@ var CodeView = class CodeView {
+@@ -2071,7 +2229,12 @@
  			const item = this.items[index];
  			if (item == null) throw new Error("CodeView.recomputeLayout: invalid item index");
  			item.top = runningTop;
@@ -300,7 +304,7 @@ index ee5c91c5ab44742994d900a81dbd8e9c508efb49..7d0a2901e48de0d356dd784896d7f8eb
  			else item.height = item.instance.updateCodeViewLayout(item.item.file, runningTop, reset, item.item.annotations ?? []);
  			runningTop += item.height;
  			if (index < this.items.length - 1) runningTop += layout.gap;
-@@ -2091,6 +2249,27 @@ var CodeView = class CodeView {
+@@ -2091,6 +2254,27 @@
  		return this.getLayout().gap + this.itemMetricsCache.diffHeaderHeight;
  	}
  };
@@ -330,10 +334,9 @@ index ee5c91c5ab44742994d900a81dbd8e9c508efb49..7d0a2901e48de0d356dd784896d7f8eb
  	if (item.type === "diff") return item.instance.updateCodeViewLayout(item.item.fileDiff, item.top, void 0, item.item.annotations ?? []);
 diff --git a/dist/components/CodeViewSearch.js b/dist/components/CodeViewSearch.js
 new file mode 100644
-index 0000000000000000000000000000000000000000..29370adf88299d8f7572d4054334b6ce81bdaf9e
 --- /dev/null
 +++ b/dist/components/CodeViewSearch.js
-@@ -0,0 +1,360 @@
+@@ -0,0 +1,388 @@
 +import { isPrimaryModifier } from "../editor/platform.js";
 +import { resolveFindAgainShortcut } from "../editor/command.js";
 +import { SearchPanelWidget } from "../editor/searchPanel.js";
@@ -514,7 +517,7 @@ index 0000000000000000000000000000000000000000..29370adf88299d8f7572d4054334b6ce
 +	#search(params) {
 +		const previous = this.#current != null ? this.#entries[this.#current] : void 0;
 +		const items = this.#view.getSearchItems();
-+		this.#searchedDiffs = items.map((item) => [item.id, item.fileDiff]);
++		this.#searchedDiffs = items.map((item) => [item.id, item.type === "file" ? item.file : item.fileDiff]);
 +		this.#setEntries(collectMatches(items, params), previous);
 +		return this.#entries.map((entry) => entry.range);
 +	}
@@ -575,6 +578,34 @@ index 0000000000000000000000000000000000000000..29370adf88299d8f7572d4054334b6ce
 +	let offset = 0;
 +	for (let itemIndex = 0; itemIndex < items.length && entries.length < MAX_SEARCH_MATCHES; itemIndex++) {
 +		const item = items[itemIndex];
++		if (item.type === "file") {
++			for (const [index, text] of item.file.contents.split(/\r\n|\r|\n/).entries()) {
++				if (entries.length >= MAX_SEARCH_MATCHES) break;
++				pattern.lastIndex = 0;
++				let match;
++				while (entries.length < MAX_SEARCH_MATCHES && (match = pattern.exec(text)) !== null) {
++					const length = match[0].length;
++					if (length === 0) {
++						pattern.lastIndex++;
++						continue;
++					}
++					if (params.wholeWord && !isWholeWord(text, match.index, length)) continue;
++					entries.push({
++						id: item.id,
++						itemIndex,
++						side: "additions",
++						isContext: false,
++						lineNumber: index + 1,
++						unifiedLineIndex: index,
++						start: match.index,
++						end: match.index + length,
++						range: [offset + match.index, offset + match.index + length]
++					});
++				}
++				offset += text.length + 1;
++			}
++			continue;
++		}
 +		if (item.type !== "diff") continue;
 +		const { fileDiff } = item;
 +		iterateOverDiff({
@@ -614,7 +645,7 @@ index 0000000000000000000000000000000000000000..29370adf88299d8f7572d4054334b6ce
 +	return entries;
 +}
 +function haveSameDiffs(searched, items) {
-+	return searched.length === items.length && items.every((item, index) => item.id === searched[index][0] && item.fileDiff === searched[index][1]);
++	return searched.length === items.length && items.every((item, index) => item.id === searched[index][0] && (item.type === "file" ? item.file : item.fileDiff) === searched[index][1]);
 +}
 +function groupByItem(entries) {
 +	const byItem = /* @__PURE__ */ new Map();

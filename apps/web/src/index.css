@@ -2683,6 +2683,11 @@ code {
   --diffs-search-panel-font: var(--font-sans);
 }
 
+.diff-render-surface.file-preview-virtualizer {
+  --diffs-search-panel-inset-top: 0px;
+  --code-background: inherit;
+}
+
 /* Pierre's file renderer owns its own surface tokens. Keep the root of a file
    preview on the same themeable code surface as the diff panel. */
 .diff-render-surface diffs-container,
