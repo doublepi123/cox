@@ -272,14 +272,18 @@ export type TerminalAttachInput = typeof TerminalAttachInput.Type;
 
 /** Longest `data` one `terminal.write` carries, in UTF-16 code units. */
 export const TERMINAL_WRITE_MAX_LENGTH = 65_536;
+export const TERMINAL_BRACKETED_PASTE_START = "\x1b[200~";
+export const TERMINAL_BRACKETED_PASTE_END = "\x1b[201~";
 
 export const TerminalWriteInput = Schema.Struct({
   ...TerminalSessionInput.fields,
-  data: Schema.String.check(Schema.isNonEmpty()).check(
-    Schema.isMaxLength(TERMINAL_WRITE_MAX_LENGTH),
-  ),
+  data: Schema.String.check(Schema.isMaxLength(TERMINAL_WRITE_MAX_LENGTH)),
+  bracketedPaste: Schema.optionalKey(Schema.Literals(["start", "continue", "end", "abort"])),
+  plainWrite: Schema.optionalKey(Schema.Literals(["start", "continue", "end", "abort"])),
   expectedPid: Schema.optionalKey(Schema.Int.check(Schema.isGreaterThan(0))),
-});
+}).check(
+  Schema.makeFilter(({ data, plainWrite }) => (plainWrite === "abort") === (data.length === 0)),
+);
 export type TerminalWriteInput = Schema.Codec.Encoded<typeof TerminalWriteInput>;
 
 /** Splits input into writes that fit `TerminalWriteInput`, never between a surrogate pair. */
@@ -296,6 +300,11 @@ export function chunkTerminalWrite(data: string): ReadonlyArray<string> {
     start = end;
   }
   return chunks;
+}
+
+export function terminalWritePhase(index: number, count: number) {
+  if (count <= 1) return undefined;
+  return index === 0 ? "start" : index === count - 1 ? "end" : "continue";
 }
 
 export const TerminalResizeInput = Schema.Struct({

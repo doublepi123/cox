@@ -28,6 +28,7 @@ import {
   AuthOrchestrationOperateScope,
   AuthTerminalOperateScope,
   TerminalProcessChangedError,
+  type TerminalWriteInput,
   type ContextMenuItem,
   type ProviderInstanceId,
   type ResolvedKeybindingsConfig,
@@ -1049,15 +1050,13 @@ function TerminalSessionViewport({
       };
 
       const canWriteInput = () => readEnvironmentScope(environmentId, AuthTerminalOperateScope);
-      const writeInputChunk = (data: string, expectedPid?: number) =>
+      const writeInputChunk = (
+        data: string,
+        options?: Pick<TerminalWriteInput, "bracketedPaste" | "plainWrite" | "expectedPid">,
+      ) =>
         retainedTerminalWrite.current({
           environmentId,
-          input: {
-            threadId,
-            terminalId,
-            data,
-            ...(expectedPid === undefined ? {} : { expectedPid }),
-          },
+          input: { threadId, terminalId, data, ...options },
         });
       const sendTerminalInput = (data: string, fallbackError: string) => {
         // The server rejects input until the shell runs, and each rejection would print an error.
@@ -1077,7 +1076,7 @@ function TerminalSessionViewport({
         };
         return writeInput(
           data,
-          async (chunk, split) => {
+          async (chunk, framing) => {
             if (terminalRef.current !== terminal) return "not-dispatched";
             const currentSession = appAtomRegistry.get(terminalSessionAtom);
             if (
@@ -1087,9 +1086,12 @@ function TerminalSessionViewport({
               return "not-dispatched";
             }
             const expectedPid =
-              split && session.supportsConditionalWrites ? session.pid : undefined;
+              framing && session.supportsConditionalWrites ? session.pid : undefined;
             if (expectedPid === null) return "not-dispatched";
-            const result = await writeInputChunk(chunk, expectedPid);
+            const result = await writeInputChunk(
+              chunk,
+              expectedPid === undefined ? framing : { ...framing, expectedPid },
+            );
             if (result._tag === "Success") return true;
             const error = squashAtomCommandFailure(result);
             if (isTerminalProcessChanged(error)) return "not-dispatched";
@@ -1099,10 +1101,11 @@ function TerminalSessionViewport({
             return false;
           },
           // The attachment's PID stays with the paste even after the viewport detaches.
-          async () => {
+          async (bracketed) => {
             if (session.pid === null) return true;
             if (!canWriteInput()) return false;
             if (!session.supportsConditionalWrites) {
+              if (!bracketed) return true;
               const attached =
                 terminalRef.current === terminal ? appAtomRegistry.get(terminalSessionAtom) : null;
               if (attached && attached.version > 0) {
@@ -1125,10 +1128,10 @@ function TerminalSessionViewport({
               }
               if (current.status !== "running" || current.pid !== session.pid) return false;
             }
-            const result = await writeInputChunk(
-              "\x1b[201~",
-              session.supportsConditionalWrites ? session.pid : undefined,
-            );
+            const pidGuard = session.supportsConditionalWrites ? { expectedPid: session.pid } : {};
+            const result = bracketed
+              ? await writeInputChunk("\x1b[201~", { bracketedPaste: "abort", ...pidGuard })
+              : await writeInputChunk("", { plainWrite: "abort", ...pidGuard });
             if (result._tag === "Success") return true;
             const error = squashAtomCommandFailure(result);
             if (isTerminalProcessChanged(error)) return true;
