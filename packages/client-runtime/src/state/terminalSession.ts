@@ -189,7 +189,7 @@ export function applyTerminalAttachStreamEvent(
     case "cleared":
       return {
         ...current,
-        output: clearOutput(current.output, maxBufferBytes),
+        output: clearOutput(current.output, maxBufferBytes, event.pendingControlSequence),
         error: null,
         version: current.version + 1,
       };

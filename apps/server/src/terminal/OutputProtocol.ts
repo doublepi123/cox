@@ -122,14 +122,16 @@ const queuedSize = (event: TerminalEvent | TerminalAttachStreamEvent) =>
       ? byteLengthOf(event.message)
       : event.type === "activity"
         ? byteLengthOf(event.label)
-        : "snapshot" in event
-          ? byteLengthOf(event.snapshot.threadId) +
-            byteLengthOf(event.snapshot.terminalId) +
-            byteLengthOf(event.snapshot.history) +
-            byteLengthOf(event.snapshot.cwd) +
-            byteLengthOf(event.snapshot.worktreePath) +
-            byteLengthOf(event.snapshot.label)
-          : 0);
+        : event.type === "cleared"
+          ? byteLengthOf(event.pendingControlSequence)
+          : "snapshot" in event
+            ? byteLengthOf(event.snapshot.threadId) +
+              byteLengthOf(event.snapshot.terminalId) +
+              byteLengthOf(event.snapshot.history) +
+              byteLengthOf(event.snapshot.cwd) +
+              byteLengthOf(event.snapshot.worktreePath) +
+              byteLengthOf(event.snapshot.label)
+            : 0);
 
 const chunkSize = (values: ReadonlyArray<unknown>) =>
   values.reduce<number>(
