@@ -30,7 +30,10 @@ interface CatalogEntry {
   readonly price: ModelTokenPrice | undefined;
   readonly model: ModelServiceModel;
 }
-export type ModelsDevCatalog = ReadonlyMap<string, ReadonlyArray<CatalogEntry>>;
+export interface ModelsDevCatalog {
+  readonly models: ReadonlyMap<string, ReadonlyArray<CatalogEntry>>;
+  readonly canonical: ReadonlyMap<string, ReadonlyArray<CatalogEntry>>;
+}
 
 function parsePrice(value: unknown): ModelTokenPrice | undefined {
   const cost = record(value);
@@ -49,8 +52,15 @@ function parsePrice(value: unknown): ModelTokenPrice | undefined {
   };
 }
 
+const add = (index: Map<string, CatalogEntry[]>, key: string, entry: CatalogEntry) => {
+  const entries = index.get(key) ?? [];
+  entries.push(entry);
+  index.set(key, entries);
+};
+
 export function parseModelsDevCatalog(value: unknown): ModelsDevCatalog {
-  const index = new Map<string, CatalogEntry[]>();
+  const models = new Map<string, CatalogEntry[]>();
+  const canonical = new Map<string, CatalogEntry[]>();
   for (const [provider, rawProvider] of Object.entries(record(value))) {
     const info = record(rawProvider);
     let apiHost: string | undefined;
@@ -105,48 +115,84 @@ export function parseModelsDevCatalog(value: unknown): ModelsDevCatalog {
           ...(typeof raw.reasoning === "boolean" ? { supportsReasoning: raw.reasoning } : {}),
         },
       };
-      for (const alias of new Set([id, `${provider}/${id}`])) {
-        const entries = index.get(alias) ?? [];
-        entries.push(entry);
-        index.set(alias, entries);
-      }
+      for (const alias of new Set([id, `${provider}/${id}`])) add(models, alias, entry);
+      if (entry.canonicalId) add(canonical, entry.canonicalId, entry);
     }
   }
-  return index;
+  return { models, canonical };
 }
 
 const officialProviders: Readonly<Record<string, string>> = {
   "api.openai.com": "openai",
   "api.anthropic.com": "anthropic",
   "generativelanguage.googleapis.com": "google",
+  "api.deepseek.com": "deepseek",
 };
 
-function modelsDevCandidates(model: ModelServiceModel, catalog: ModelsDevCatalog, baseUrl: string) {
-  const candidates = catalog.get(model.id) ?? catalog.get(model.id.replace(/^models\//, "")) ?? [];
+const ownedByVendor = (entry: CatalogEntry) =>
+  entry.canonicalId?.startsWith(`${entry.provider}/`) === true;
+const usedMetadata = (entry: ModelServiceModel) =>
+  JSON.stringify([
+    entry.capabilities,
+    entry.maxOutputTokens,
+    entry.supportsTools,
+    entry.supportsReasoning,
+  ]);
+const consistent = (entries: ReadonlyArray<CatalogEntry>) =>
+  entries.every((entry) => usedMetadata(entry.model) === usedMetadata(entries[0]!.model));
+
+function modelsDevCandidates(
+  model: ModelServiceModel,
+  catalog: ModelsDevCatalog,
+  baseUrl: string,
+): {
+  readonly direct: ReadonlyArray<CatalogEntry>;
+  readonly entries: ReadonlyArray<CatalogEntry>;
+  readonly sameId: boolean;
+} {
+  const candidates =
+    catalog.models.get(model.id) ?? catalog.models.get(model.id.replace(/^models\//, "")) ?? [];
   const host = new URL(baseUrl).hostname;
   const hosted = candidates.filter((entry) => entry.apiHost === host);
+  const firstParty = candidates.filter((entry) => entry.provider === officialProviders[host]);
   const canonical = candidates.filter(
     (entry) => entry.canonicalId === `${entry.provider}/${entry.model.id}`,
   );
-  const firstParty = candidates.filter((entry) => entry.provider === officialProviders[host]);
-  return hosted.length
+  const direct = hosted.length
     ? hosted
     : firstParty.length
       ? firstParty
       : canonical.length === 1
         ? canonical
         : candidates;
+  if (direct !== candidates || consistent(candidates))
+    return { direct, entries: direct, sameId: true };
+  const vendor = candidates.filter(ownedByVendor);
+  if (vendor.length && consistent(vendor)) return { direct, entries: vendor, sameId: true };
+  const vendorCopies = [
+    ...new Set(
+      candidates.flatMap((entry) =>
+        entry.canonicalId ? (catalog.canonical.get(entry.canonicalId) ?? []) : [],
+      ),
+    ),
+  ].filter(ownedByVendor);
+  return vendorCopies.length && consistent(vendorCopies)
+    ? { direct, entries: vendorCopies, sameId: false }
+    : { direct, entries: candidates, sameId: true };
 }
+
+const agreedPrice = (entries: ReadonlyArray<CatalogEntry>) => {
+  const first = entries[0]?.price;
+  return first && entries.every((entry) => Equal.equals(first, entry.price)) ? first : undefined;
+};
 
 export function syncModelPriceFromModelsDev(
   model: ModelServiceModel,
   catalog: ModelsDevCatalog,
   baseUrl: string,
 ): ModelServiceModel {
-  const candidates = modelsDevCandidates(model, catalog, baseUrl);
-  const first = candidates[0]?.price;
-  const price =
-    first && candidates.every((entry) => Equal.equals(first, entry.price)) ? first : undefined;
+  const { direct, entries } = modelsDevCandidates(model, catalog, baseUrl);
+  const price = agreedPrice(direct) ?? agreedPrice(entries);
   if (Equal.equals(price, model.modelsDevPrice)) return model;
   const { modelsDevPrice: _previous, ...rest } = model;
   return price ? { ...rest, modelsDevPrice: price } : rest;
@@ -157,17 +203,13 @@ export function enrichModelFromModelsDev(
   catalog: ModelsDevCatalog,
   baseUrl: string,
 ): ModelServiceModel {
-  const pool = modelsDevCandidates(model, catalog, baseUrl);
+  const { entries: pool, sameId } = modelsDevCandidates(model, catalog, baseUrl);
   model = syncModelPriceFromModelsDev(model, catalog, baseUrl);
   const match = pool[0]?.model;
-  const used = (entry: ModelServiceModel) =>
-    JSON.stringify([
-      entry.capabilities,
-      entry.maxOutputTokens,
-      entry.supportsTools,
-      entry.supportsReasoning,
-    ]);
-  if (!match || (pool.length > 1 && pool.some((entry) => used(entry.model) !== used(match))))
+  if (
+    !match ||
+    (pool.length > 1 && pool.some((entry) => usedMetadata(entry.model) !== usedMetadata(match)))
+  )
     return model;
   const capabilities = {
     ...match.capabilities,
@@ -175,15 +217,17 @@ export function enrichModelFromModelsDev(
       Object.entries(model.capabilities ?? {}).filter(([, value]) => value !== undefined),
     ),
   };
+  const fallbackName = model.name ?? modelServiceDisplayName(model.id);
   return {
     ...match,
     ...model,
-    name:
-      model.source !== "manual" ||
-      !model.name ||
-      model.name === model.id ||
-      model.name === modelServiceDisplayName(model.id)
-        ? (match.name ?? model.name ?? modelServiceDisplayName(model.id))
+    name: !sameId
+      ? fallbackName
+      : model.source !== "manual" ||
+          !model.name ||
+          model.name === model.id ||
+          model.name === modelServiceDisplayName(model.id)
+        ? (match.name ?? fallbackName)
         : model.name,
     capabilities: Object.keys(capabilities).length ? capabilities : null,
   };
@@ -207,7 +251,7 @@ export const fetchModelsDevCatalog = Effect.gen(function* () {
       Effect.provideService(HttpIncomingMessage.MaxBodySize, ByteSize.bytes(20 * 1024 * 1024)),
     ),
   );
-  if (!catalog.size) return yield* new ModelServiceError({ detail: "Empty catalog" });
+  if (!catalog.models.size) return yield* new ModelServiceError({ detail: "Empty catalog" });
   catalogs.set(http, { at: now, catalog });
   return catalog;
 }).pipe(

@@ -230,6 +230,118 @@ describe("models.dev model metadata", () => {
         .capabilities?.contextWindow,
     ).toBe(128000);
   });
+  it("fills relayed vendor models from the vendor entry their canonical ID names", () => {
+    const vendor = {
+      name: "DeepSeek V4 Flash",
+      canonical_model_id: "deepseek/deepseek-v4.1-flash-1017",
+      limit: { context: 1048576, output: 393216 },
+      modalities: { input: ["text", "image"], output: ["text"] },
+      tool_call: true,
+      reasoning: true,
+      reasoning_options: [{ type: "effort", values: ["low", "high", "max"] }],
+      cost: { input: 0.15, output: 0.6, cache_read: 0.003 },
+    };
+    const relay = (context: number, output: number, input: number) => ({
+      id: "deepseek-v4.1-flash",
+      canonical_model_id: "deepseek/deepseek-v4.1-flash",
+      limit: { context, output },
+      cost: { input, output: input * 4 },
+    });
+    const index = parseModelsDevCatalog({
+      deepseek: {
+        api: "https://api.deepseek.com",
+        models: {
+          "deepseek-v4-flash": { ...vendor, id: "deepseek-v4-flash" },
+          "deepseek-flash": { ...vendor, id: "deepseek-flash", name: "DeepSeek V4.1 Flash 1017" },
+          "deepseek-v4-pro": {
+            ...vendor,
+            id: "deepseek-v4-pro",
+            name: "DeepSeek V4 Pro",
+            canonical_model_id: "deepseek/deepseek-v4-pro-0813",
+            modalities: { input: ["text"], output: ["text"] },
+            cost: { input: 0.66, output: 1.98 },
+          },
+        },
+      },
+      azure: { models: { "deepseek-v4.1-flash": relay(1000000, 128000, 0.3) } },
+      router: {
+        models: {
+          "deepseek-v4.1-flash": {
+            ...relay(1000000, 384000, 0.27),
+            canonical_model_id: "deepseek/deepseek-v4.1-flash-1017",
+          },
+          "deepseek-v4-pro": {
+            id: "deepseek-v4-pro",
+            canonical_model_id: "deepseek/deepseek-v4-pro",
+            limit: { context: 1000000, output: 65536 },
+          },
+          "deepseek-v4.1-flash-fast": {
+            ...relay(1000000, 128000, 0.5),
+            id: "deepseek-v4.1-flash-fast",
+            canonical_model_id: "deepseek/deepseek-v4.1-flash-1017",
+          },
+        },
+      },
+      mirror: {
+        models: {
+          "deepseek-v4.1-flash-fast": {
+            ...relay(1000000, 384000, 0.5),
+            id: "deepseek-v4.1-flash-fast",
+            canonical_model_id: "deepseek/deepseek-v4.1-flash-1017",
+          },
+        },
+      },
+    });
+    expect(
+      enrichModelFromModelsDev(
+        { id: "deepseek-v4.1-flash", source: "discovered", capabilities: null },
+        index,
+        "https://gateway.test/v1",
+      ),
+    ).toMatchObject({
+      id: "deepseek-v4.1-flash",
+      name: "DeepSeek V4.1 Flash",
+      maxOutputTokens: 393216,
+      supportsTools: true,
+      supportsReasoning: true,
+      capabilities: { contextWindow: 1048576, supportsImages: true },
+      modelsDevPrice: {
+        inputCostPerMillionTokens: 0.15,
+        outputCostPerMillionTokens: 0.6,
+        cacheReadCostPerMillionTokens: 0.003,
+      },
+    });
+    expect(
+      enrichModelFromModelsDev(
+        { id: "deepseek-v4-pro", capabilities: null },
+        index,
+        "https://gateway.test/v1",
+      ),
+    ).toMatchObject({
+      name: "DeepSeek V4 Pro",
+      maxOutputTokens: 393216,
+      capabilities: { contextWindow: 1048576, supportsImages: false },
+      modelsDevPrice: { inputCostPerMillionTokens: 0.66, outputCostPerMillionTokens: 1.98 },
+    });
+    expect(
+      enrichModelFromModelsDev(
+        { id: "deepseek-v4.1-flash", capabilities: null },
+        index,
+        "https://api.deepseek.com/anthropic",
+      ).capabilities?.contextWindow,
+    ).toBe(1048576);
+    expect(
+      enrichModelFromModelsDev(
+        { id: "deepseek-v4.1-flash-fast", capabilities: null },
+        index,
+        "https://gateway.test/v1",
+      ),
+    ).toMatchObject({
+      name: "DeepSeek V4.1 Flash Fast",
+      capabilities: { contextWindow: 1048576 },
+      modelsDevPrice: { inputCostPerMillionTokens: 0.5, outputCostPerMillionTokens: 2 },
+    });
+  });
   it("does not guess when exact IDs are ambiguous or metadata is malformed", () => {
     const index = parseModelsDevCatalog({
       a: { models: { common: { id: "common", limit: { context: 1000 } } } },
