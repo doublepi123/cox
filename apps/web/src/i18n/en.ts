@@ -56,6 +56,8 @@ export const en = {
     "{count} malformed or inconsistent usage records were skipped; usage may be incomplete.",
   "0 bytes": "0 bytes",
   "{count} matches": "{count} matches",
+  "Show {count} more image attachment": "Show {count} more image attachment",
+  "Show {count} more image attachments": "Show {count} more image attachments",
   "+{count} more in Pull requests": "+{count} more in Pull requests",
   "+{count} more": "+{count} more",
   "Stash is full": "Stash is full",

@@ -33,6 +33,8 @@ export const zh = {
     "已跳过 {count} 条格式错误或不一致的用量记录，用量可能不完整。",
   "0 bytes": "0 字节",
   "{count} matches": "{count} 处匹配",
+  "Show {count} more image attachment": "再显示 {count} 个图片附件",
+  "Show {count} more image attachments": "再显示 {count} 个图片附件",
   "+{count} more in Pull requests": "拉取请求中还有 {count} 项",
   "+{count} more": "还有 {count} 项",
   "Stash is full": "暂存已满",

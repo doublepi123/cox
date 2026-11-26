@@ -1,3 +1,5 @@
+import { ChatAttachmentId } from "@t3tools/contracts";
+import { ComposerRestingImagePreviews } from "./ComposerAttachmentStrip";
 import { expect, it, vi } from "vite-plus/test";
 
 import { act, render, stubGlobal } from "../../../test/render";
@@ -102,4 +104,27 @@ it("loads the local image before the generated thumbnail is ready", async () => 
     resolveThumbnail(bitmap);
     await createComposerImageThumbnail(file);
   }
+});
+
+it.each([1, 2])("announces %s hidden image attachments", async (count) => {
+  const images = Array.from({ length: 3 + count }, (_, index) => ({
+    type: "image" as const,
+    id: ChatAttachmentId.make(`img-${index}`),
+    name: `image-${index}.png`,
+    mimeType: "image/png",
+    sizeBytes: 0,
+    previewUrl: "",
+    file: new File([], `image-${index}.png`),
+  }));
+  await using screen = await render(
+    <ComposerRestingImagePreviews
+      images={images}
+      allImages={images}
+      resolvedTheme="light"
+      onExpandImage={() => {}}
+      onShowMore={() => {}}
+    />,
+  );
+  const label = count === 1 ? "Show 1 more image attachment" : "Show 2 more image attachments";
+  await expect.element(screen.getByRole("button", { name: label, exact: true })).toBeVisible();
 });
