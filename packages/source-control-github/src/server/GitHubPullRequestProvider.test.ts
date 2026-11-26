@@ -380,6 +380,7 @@ describe("gitHubViewerPermissions", () => {
           listWorkflowRunsRequiringApproval: () =>
             Effect.succeed([
               {
+                pullRequestNumbers: [7],
                 id: 123,
                 name: "contributor tests",
                 url: "https://github.com/acme/web/actions/runs/123",
@@ -449,8 +450,54 @@ it.effect("does not classify same-repository gates as fork workflow approvals", 
       Layer.mock(GitHubPullRequestApi.GitHubPullRequestApi)({
         revalidateChecks: (_input, read) => read,
         getPullRequestDetail: () => Effect.succeed({ ...openDetail, isCrossRepository: false }),
+        listWorkflowRunsRequiringApproval: () => Effect.succeed([]),
+        getViewerAccess: () =>
+          Effect.succeed({
+            canWrite: true,
+            canTriage: true,
+            canUpdate: true,
+            didAuthor: false,
+            mergeCapabilities: { merge: true, squash: true, rebase: true },
+            autoMergeAllowed: true,
+          }),
+      }),
+    ),
+  ),
+);
+
+it.effect("discovers workflow approval for a same-repository bot pull request", () =>
+  Effect.gen(function* () {
+    const provider = yield* make;
+    const detail = yield* provider.getChangeRequest({
+      cwd: "/w",
+      repository: "acme/web",
+      host: "github.com",
+      number: 7,
+    });
+
+    expect(detail.workflowApprovalsRequired).toBe(1);
+    expect(detail.checks).toEqual([
+      {
+        name: "bot tests",
+        status: "action-required",
+        description: "A maintainer must approve this workflow before it can run.",
+        url: "https://github.com/acme/web/actions/runs/123",
+      },
+    ]);
+  }).pipe(
+    Effect.provide(
+      Layer.mock(GitHubPullRequestApi.GitHubPullRequestApi)({
+        revalidateChecks: (_input, read) => read,
+        getPullRequestDetail: () => Effect.succeed({ ...openDetail, isCrossRepository: false }),
         listWorkflowRunsRequiringApproval: () =>
-          Effect.die("same-repository pull requests must not probe fork workflow approvals"),
+          Effect.succeed([
+            {
+              pullRequestNumbers: [7],
+              id: 123,
+              name: "bot tests",
+              url: "https://github.com/acme/web/actions/runs/123",
+            },
+          ]),
         getViewerAccess: () =>
           Effect.succeed({
             canWrite: true,
