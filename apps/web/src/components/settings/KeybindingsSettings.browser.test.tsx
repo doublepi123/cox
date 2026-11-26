@@ -1,3 +1,4 @@
+import { compileResolvedKeybindingsConfig } from "@t3tools/shared/keybindings";
 import { RegistryProvider } from "@effect/atom-react";
 import { page, userEvent, type Locator } from "vite-plus/test/browser";
 import { describe, expect, it, vi } from "vite-plus/test";
@@ -8,13 +9,26 @@ vi.mock(import("../../state/use-atom-command"), async (original) => ({
   ...(await original()),
   useAtomCommand: (() => vi.fn()) as never,
 }));
+const platformFixture = vi.hoisted(() => ({ enabled: false }));
+
 vi.mock(import("./SettingsScopeContext"), async (original) => ({
   ...(await original()),
   useSettingsScope: (() => {
     const environment = {
       environmentId: "env",
       label: "Build workstation",
-      serverConfig: { keybindings: [], keybindingsConfigPath: null, availableEditors: [] },
+      serverConfig: {
+        keybindings: platformFixture.enabled
+          ? compileResolvedKeybindingsConfig([
+              { command: "terminal.toggle", key: "shift+meta+[" },
+              { command: "terminal.toggle", key: "ctrl+alt+[" },
+              { command: "thread.editQueuedMessage", key: "alt+up" },
+              { command: "workspace.focusNext", key: "f6" },
+            ])
+          : [],
+        keybindingsConfigPath: null,
+        availableEditors: [],
+      },
     };
     return {
       scope: { kind: "environment" },
@@ -241,3 +255,62 @@ it("filters actions and allows additional shortcuts for assigned commands", asyn
     .element(screen.getByRole("combobox", { name: "Command", exact: true }))
     .toHaveTextContent("Composer: Cycle Host");
 });
+
+it.each([
+  {
+    name: "macOS",
+    platform: "MacIntel",
+    terminalPreviousMac: {
+      ariaLabel: "Edit shortcut for Terminal: Toggle: ⇧⌘[",
+      keys: ["⇧", "⌘", "["],
+    },
+    terminalPreviousCtrl: {
+      ariaLabel: "Edit shortcut for Terminal: Toggle: ⌃⌥[",
+      keys: ["⌃", "⌥", "["],
+    },
+    editQueued: {
+      ariaLabel: "Edit shortcut for Queue: Edit Last Queued Message: ⌥Up",
+      keys: ["⌥", "Up"],
+    },
+    focusNext: { ariaLabel: "Edit shortcut for Focus Next Workspace Area: F6", keys: ["F6"] },
+  },
+  {
+    name: "Linux",
+    platform: "Linux x86_64",
+    terminalPreviousMac: {
+      ariaLabel: "Edit shortcut for Terminal: Toggle: Shift+Meta+[",
+      keys: ["Shift", "Meta", "["],
+    },
+    terminalPreviousCtrl: {
+      ariaLabel: "Edit shortcut for Terminal: Toggle: Ctrl+Alt+[",
+      keys: ["Ctrl", "Alt", "["],
+    },
+    editQueued: {
+      ariaLabel: "Edit shortcut for Queue: Edit Last Queued Message: Alt+Up",
+      keys: ["Alt", "Up"],
+    },
+    focusNext: { ariaLabel: "Edit shortcut for Focus Next Workspace Area: F6", keys: ["F6"] },
+  },
+])(
+  "renders platform modifier symbols and formatted key labels in shortcut pills on $name",
+  async ({ platform, terminalPreviousMac, terminalPreviousCtrl, editQueued, focusNext }) => {
+    using _platform = vi.spyOn(navigator, "platform", "get").mockReturnValue(platform);
+    platformFixture.enabled = true;
+    using _fixture = {
+      [Symbol.dispose]: () => {
+        platformFixture.enabled = false;
+      },
+    };
+    await using screen = await render(<KeybindingsSettingsPanel />);
+
+    for (const expected of [terminalPreviousMac, terminalPreviousCtrl, editQueued, focusNext]) {
+      const button = screen.getByRole("button", { name: expected.ariaLabel, exact: true });
+      await expect.element(button).toBeVisible();
+      const kbdTexts = Array.from(
+        button.element().querySelectorAll('[data-slot="kbd"]'),
+        (el) => el.textContent,
+      );
+      expect(kbdTexts).toEqual(expected.keys);
+    }
+  },
+);
