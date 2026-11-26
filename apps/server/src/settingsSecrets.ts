@@ -3,6 +3,9 @@ import {
   ClaudeSettings,
   CodexSettings,
   type ServerSettings,
+  type ProviderInstanceId,
+  type ModelServiceId,
+  type UsageLimitSourceId,
   SettingsSecretValue,
   type ProviderInstanceEnvironment,
   UsageLimitSourceConfig,
@@ -10,6 +13,7 @@ import {
   isSecretReference,
   secretSettingsFields,
 } from "@t3tools/contracts";
+import * as Predicate from "effect/Predicate";
 import * as Schema from "effect/Schema";
 import { acpRegistryClient } from "@t3tools/provider-acp-registry/client";
 import { cursorClient } from "@t3tools/provider-cursor/client";
@@ -261,5 +265,83 @@ export function withoutRemovedSecretProviderReferences(
           : instance,
       ]),
     ),
+  };
+}
+
+/** A URL in the form two spellings of one address share: `URL` normalization, no trailing slash on the path. */
+const destination = (url: unknown) => {
+  if (typeof url !== "string" || !URL.canParse(url)) return url;
+  const parsed = new URL(url);
+  parsed.pathname = parsed.pathname.replace(/\/+$/, "");
+  return parsed.href;
+};
+
+/** Per provider driver, the config field holding a secret and the one naming where it is sent. */
+const providerSecretDestinations = new Map<string, readonly [secret: string, url: string]>([
+  [openCodeClient.driverKind, ["serverPassword", "serverUrl"]],
+]);
+
+/**
+ * `next` with a kept secret cleared when the address it is sent to changed: a saved secret goes
+ * only to the address it was saved for. A newly entered secret stays.
+ */
+export function withoutRedirectedSecrets(
+  current: ServerSettings,
+  next: ServerSettings,
+): ServerSettings {
+  const kept = (secret: unknown, saved: unknown) =>
+    secret === SECRET_REDACTED ||
+    (isSecretReference(secret) &&
+      isSecretReference(saved) &&
+      secret.provider === saved.provider &&
+      secret.reference === saved.reference);
+  const rebound = <T extends object>(
+    entry: T,
+    previous: object | null | undefined,
+    secret: string,
+    url: string,
+  ): T => {
+    if (previous === null || previous === undefined) return entry;
+    const fields = entry as Readonly<Record<string, unknown>>;
+    const saved = previous as Readonly<Record<string, unknown>>;
+    return destination(saved[url]) !== destination(fields[url]) &&
+      kept(fields[secret], saved[secret])
+      ? { ...entry, [secret]: "" }
+      : entry;
+  };
+  return {
+    ...next,
+    providerInstances: Object.fromEntries(
+      Object.entries(next.providerInstances).map(([instanceId, instance]) => {
+        const fields = providerSecretDestinations.get(instance.driver);
+        const previous = current.providerInstances[instanceId as ProviderInstanceId];
+        return [
+          instanceId,
+          fields !== undefined &&
+          previous?.driver === instance.driver &&
+          Predicate.isObject(instance.config) &&
+          Predicate.isObject(previous.config)
+            ? { ...instance, config: rebound(instance.config, previous.config, ...fields) }
+            : instance,
+        ];
+      }),
+    ) as ServerSettings["providerInstances"],
+    usageLimitSources: Object.fromEntries(
+      Object.entries(next.usageLimitSources).map(([id, source]) => [
+        id,
+        rebound(
+          source,
+          current.usageLimitSources[id as UsageLimitSourceId],
+          "managementKey",
+          "url",
+        ),
+      ]),
+    ) as ServerSettings["usageLimitSources"],
+    modelServices: Object.fromEntries(
+      Object.entries(next.modelServices).map(([id, generator]) => [
+        id,
+        rebound(generator, current.modelServices[id as ModelServiceId], "apiKey", "baseUrl"),
+      ]),
+    ) as ServerSettings["modelServices"],
   };
 }

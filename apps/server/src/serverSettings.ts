@@ -65,6 +65,7 @@ import {
   mapSettingsSecrets,
   mapSettingsSecretValues,
   withoutRemovedSecretProviderReferences,
+  withoutRedirectedSecrets,
   SECRET_REDACTED,
   type SettingsSecret,
 } from "./settingsSecrets.ts";
@@ -1270,7 +1271,10 @@ const make = Effect.gen(function* () {
             cause: parseFailure.value,
           });
         }
-        const updated = withEchoedSecretReferences(current, yield* update(current));
+        const updated = withEchoedSecretReferences(
+          current,
+          withoutRedirectedSecrets(current, yield* update(current)),
+        );
         const persisted = yield* persistSettingsSecrets(
           current,
           withoutRemovedSecretProviderReferences(current, updated),

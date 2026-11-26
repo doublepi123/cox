@@ -1,3 +1,4 @@
+import { SECRET_REDACTED } from "./settingsSecrets.ts";
 import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import {
@@ -12,6 +13,7 @@ import {
   ProviderInstanceId,
   resolveProviderInstanceEnabled,
   SecretProviderId,
+  type SettingsSecretValue,
   SecretProviderKind,
   ServerSettings,
   ServerSettingsPatch,
@@ -2054,11 +2056,11 @@ it.layer(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))("server settings"
         instanceId: opencode,
         instance: {
           ...client.providerInstances[opencode]!,
-          config: { ...clientConfig, serverUrl: "http://127.0.0.1:4097" },
+          config: { ...clientConfig, binaryPath: "/opt/opencode" },
         },
       });
       assert.deepInclude(edited.providerInstances[opencode]?.config, {
-        serverUrl: "http://127.0.0.1:4097",
+        binaryPath: "/opt/opencode",
         serverPassword: "legacy-password",
       });
     }).pipe(Effect.provide(layerServerSettings())),
@@ -2640,5 +2642,140 @@ it.layer(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))("server settings"
 
       assert.equal(yield* fileSystem.readFileString(serverConfig.settingsPath), broken);
     }).pipe(Effect.provide(layerServerSettings())),
+  );
+  it.effect("a kept secret is dropped when the address it is sent to changes", () =>
+    Effect.gen(function* () {
+      const service = yield* ServerSettingsModule.ServerSettingsService;
+      const openCode = ProviderInstanceId.make("opencode");
+      const hub = UsageLimitSourceId.make("hub");
+      const router = ModelServiceId.make("openrouter");
+      const reference = {
+        provider: SecretProviderId.make("personal"),
+        reference: "op://Private/Hub/key",
+      };
+      const patch = (input: {
+        readonly serverUrl: string;
+        readonly hubUrl: string;
+        readonly baseUrl: string;
+        readonly secret: SettingsSecretValue;
+      }) => ({
+        providerInstances: {
+          [openCode]: {
+            driver: ProviderDriverKind.make("opencode"),
+            config: { serverUrl: input.serverUrl, serverPassword: input.secret },
+          },
+        },
+        usageLimitSources: {
+          [hub]: {
+            kind: "cliproxy" as const,
+            url: input.hubUrl,
+            managementKey: typeof input.secret === "string" ? input.secret : "",
+            enabled: true,
+          },
+        },
+        modelServices: {
+          [router]: decodeModelService({
+            name: "Router",
+            baseUrl: input.baseUrl,
+            apiKey: typeof input.secret === "string" ? input.secret : "",
+            protocols: ["openai-chat"],
+          }),
+        },
+      });
+      const save = Effect.fnUntraced(function* (input: Parameters<typeof patch>[0]) {
+        const current = (yield* service.getSettings).modelServices[router];
+        const changes = patch(input);
+        return yield* service.updateSettings({
+          ...changes,
+          modelServices: {
+            [router]: { ...changes.modelServices[router]!, revision: current?.revision ?? 0 },
+          },
+        });
+      });
+      const saved = {
+        serverUrl: "http://127.0.0.1:4096",
+        hubUrl: "https://hub.test",
+        baseUrl: "https://router.test/v1",
+      };
+      const elsewhere = {
+        serverUrl: "http://elsewhere.test:4096",
+        hubUrl: "https://elsewhere.test",
+        baseUrl: "https://elsewhere.test/v1",
+      };
+      const secrets = (settings: ServerSettings) => [
+        (settings.providerInstances[openCode]?.config as { serverPassword?: unknown } | undefined)
+          ?.serverPassword,
+        settings.usageLimitSources[hub]?.managementKey,
+        settings.modelServices[router]?.apiKey,
+      ];
+      const kept = (secret: SettingsSecretValue) => [secret, secret, secret];
+      yield* decodeServerSettingsPatch({
+        secretProviders: {
+          personal: { kind: "one_password", label: "Personal", config: { account: "my" } },
+        },
+      }).pipe(Effect.flatMap(service.updateSettings));
+
+      yield* save({ ...saved, secret: "saved-fixture" });
+      assert.deepEqual(
+        secrets(yield* save({ ...saved, secret: SECRET_REDACTED })),
+        kept("saved-fixture"),
+      );
+      assert.deepEqual(secrets(yield* save({ ...elsewhere, secret: SECRET_REDACTED })), kept(""));
+      assert.deepEqual(
+        secrets(yield* save({ ...saved, secret: "typed-fixture" })),
+        kept("typed-fixture"),
+      );
+
+      yield* save({ ...saved, secret: reference });
+      assert.deepEqual(secrets(yield* save({ ...elsewhere, secret: reference })), kept(""));
+
+      const sameAddress = [
+        {
+          serverUrl: "http://127.0.0.1:4096/",
+          hubUrl: "https://hub.test//",
+          baseUrl: "https://router.test/v1/",
+        },
+        {
+          serverUrl: "HTTP://127.0.0.1:4096",
+          hubUrl: "https://HUB.test:443",
+          baseUrl: "https://Router.test/v1//",
+        },
+      ];
+      const otherAddress = [
+        {
+          serverUrl: "http://127.0.0.1:4097",
+          hubUrl: "https://hub.test:8443",
+          baseUrl: "https://router.test:8443/v1",
+        },
+        {
+          serverUrl: "https://127.0.0.1:4096",
+          hubUrl: "http://hub.test",
+          baseUrl: "http://router.test/v1",
+        },
+        {
+          serverUrl: "http://127.0.0.1:4096/api",
+          hubUrl: "https://hub.test/api/",
+          baseUrl: "https://router.test/V1",
+        },
+        {
+          serverUrl: "http://127.0.0.1:4096/?team=a",
+          hubUrl: "https://hub.test?team=a",
+          baseUrl: "https://router.test/v1/v1/",
+        },
+      ];
+      for (const [addresses, expected] of [
+        [sameAddress, kept("saved-fixture")],
+        [otherAddress, kept("")],
+      ] as const) {
+        for (const address of addresses) {
+          yield* save({ ...saved, secret: "saved-fixture" });
+          assert.deepEqual(
+            secrets(yield* save({ ...address, secret: SECRET_REDACTED })),
+            expected,
+            JSON.stringify(address),
+          );
+        }
+      }
+    }).pipe(Effect.provide(layerServerSettingsWithSecrets())),
   );
 });
