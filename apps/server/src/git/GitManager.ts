@@ -491,7 +491,10 @@ function truncateText(
   if (!value) return undefined;
   if (value.length <= maxLength) return value;
   if (maxLength <= 3) return "...".slice(0, maxLength);
-  return `${value.slice(0, Math.max(0, maxLength - 3)).trimEnd()}...`;
+  return `${value
+    .slice(0, Math.max(0, maxLength - 3))
+    .replace(/[\uD800-\uDBFF]$/u, "")
+    .trimEnd()}...`;
 }
 
 function withDescription(title: string, description: string | undefined) {
@@ -542,7 +545,11 @@ function sanitizeCommitMessage(generated: {
 } {
   const rawSubject = generated.subject.trim().split(/\r?\n/g)[0]?.trim() ?? "";
   const subject = rawSubject.replace(/[.]+$/g, "").trim();
-  const safeSubject = subject.length > 0 ? subject.slice(0, 72).trimEnd() : "Update project files";
+  const safeSubject =
+    subject
+      .slice(0, 72)
+      .replace(/[\uD800-\uDBFF]$/u, "")
+      .trimEnd() || "Update project files";
   return {
     subject: safeSubject,
     body: generated.body.trim(),
@@ -558,7 +565,10 @@ function sanitizeProgressText(value: string): string | null {
   if (trimmed.length <= MAX_PROGRESS_TEXT_LENGTH) {
     return trimmed;
   }
-  return trimmed.slice(0, MAX_PROGRESS_TEXT_LENGTH).trimEnd();
+  return trimmed
+    .slice(0, MAX_PROGRESS_TEXT_LENGTH)
+    .replace(/[\uD800-\uDBFF]$/u, "")
+    .trimEnd();
 }
 
 interface CommitAndBranchSuggestion {
