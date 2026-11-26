@@ -567,7 +567,7 @@ function* notebook(source: string): Generator<string, void> {
     const kind = "cell_type" in cell && cell.cell_type === "code" ? "code" : "markdown";
     yield `## Cell ${index + 1} (${kind})\n`;
     if ("source" in cell) yield* lines(cell.source);
-    if ("outputs" in cell && Array.isArray(cell.outputs)) {
+    if ("outputs" in cell && Array.isArray(cell.outputs) && cell.outputs.length > 0) {
       yield "\nOutput:\n";
       for (const output of cell.outputs) {
         if (!output || typeof output !== "object") continue;

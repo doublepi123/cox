@@ -529,6 +529,7 @@ describe("question answer paths", () => {
               },
             ],
           },
+          { cell_type: "code", source: "total = 42", execution_count: null, outputs: [] },
         ],
       });
       NodeFS.writeFileSync(path, notebook);
@@ -552,6 +553,7 @@ describe("question answer paths", () => {
       expect(extracted).not.toContain("*Markdown summary*");
       expect(extracted).not.toContain("iVBORw0KGgo");
       expect(extracted).not.toContain("<script>");
+      expect(extracted).toMatch(/## Cell 3 \(code\)\ntotal = 42$/u);
       expect(extracted).toContain(
         "ZeroDivisionError: division by zero\nCell In[1], line 1\n----> 1 1 / 0\nZeroDivisionError: division by zero",
       );
