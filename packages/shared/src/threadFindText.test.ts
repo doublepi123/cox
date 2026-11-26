@@ -96,6 +96,21 @@ it("keeps fence paths literal and indexes file-chip labels in user messages", ()
   ).toEqual(["file.ts · L42"]);
 });
 
+it("keeps insight line breaks for backticked openers on their own line, not in prose", () => {
+  expect(assistantSegments("`★ Insight ─────`\nfirst line\nsecond line\n`─────`")).toEqual([
+    "★ Insight ─────",
+    " first line",
+    " second line",
+    " ─────",
+  ]);
+  expect(assistantSegments("`★ Insight ─────` opens a callout.\nfirst line\nsecond line")).toEqual([
+    "★ Insight ───── opens a callout. first line second line",
+  ]);
+  expect(
+    assistantSegments("`★ Insight ─────`\u2028opens a callout.\nfirst line\nsecond line"),
+  ).toEqual(["★ Insight ─────\u2028opens a callout. first line second line"]);
+});
+
 it("indexes nested disclosure summaries and bodies in rendered order", () => {
   expect(
     assistantSegments(

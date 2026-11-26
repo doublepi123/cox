@@ -644,9 +644,7 @@ function remarkNormalizeLinksAndTagInlineCode() {
   };
 }
 
-export function shouldPreserveAssistantLineBreaks(text: string): boolean {
-  return /^★ Insight(?:\s|─)/mu.test(text);
-}
+export { shouldPreserveAssistantLineBreaks } from "./assistantInsights.ts";
 
 const imageSourceProcessor = unified()
   .use(remarkParse)
