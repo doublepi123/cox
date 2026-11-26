@@ -150,10 +150,10 @@ function KeybindingsSearchInput({
           value={query}
           onChange={(event) => onChange(event.currentTarget.value)}
           onKeyDown={(event) => {
-            if (event.key !== "Escape" || event.nativeEvent.isComposing || event.keyCode === 229)
+            if (!isBareEscape(event) || event.nativeEvent.isComposing || event.keyCode === 229)
               return;
             event.preventDefault();
-            if (query.length > 0) {
+            if (query.length > 0 || event.repeat) {
               event.stopPropagation();
               onChange("");
             } else event.currentTarget.blur();
