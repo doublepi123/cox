@@ -14,6 +14,7 @@ import type {
   PullRequestRef,
   PullRequestReviewPosition,
   PullRequestReviewThread,
+  ScopedThreadRef,
   PullRequestThreadCommentsResult,
 } from "@t3tools/contracts";
 import {
@@ -363,6 +364,7 @@ export interface PullRequestAgentSelectionInput {
 function PullRequestCodeTab({
   scrollerRef,
   environmentId,
+  threadRef = null,
   reference,
   detail,
   selectedCommitOid,
@@ -379,6 +381,7 @@ function PullRequestCodeTab({
 }: {
   scrollerRef: (node: HTMLDivElement | null) => void;
   environmentId: EnvironmentId;
+  threadRef?: ScopedThreadRef | null;
   reference: PullRequestRef;
   detail: PullRequestDetailView;
   selectedCommitOid: string | null;
@@ -1525,6 +1528,7 @@ function PullRequestCodeTab({
         error={diffQuery.error}
         provider={detail.provider}
         url={detail.url}
+        threadRef={threadRef}
         onRetry={() => diffQuery.refresh()}
       />,
     );
