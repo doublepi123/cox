@@ -83,11 +83,15 @@ import {
   embeddedTerminalIdsFromSessionUpdate,
   extractMcpToolCallIdentity,
   findModelConfigOption,
+  makeAcpUnreadToolCalls,
   mergeToolCallState,
   parsePermissionRequest,
   parseSessionUpdateEvent,
   sessionUpdateIsReplay,
   toolCallVisibleOutputChanged,
+  unreadToolCallUpdate,
+  withTrackedChangedPaths,
+  withUnknownChangedPaths,
   withTrackedPermissionToolCall,
   type AcpPlanUpdate,
   type AcpAgentTerminalState,
@@ -97,7 +101,9 @@ import {
 import {
   acpClientExecuteDisposition,
   acpMcpToolApprovalElicitationDisposition,
+  acpChangedPathsOfToolCall,
   acpPermissionDisposition,
+  mergeAcpChangedPaths,
   type AcpPermissionDisposition,
   makeAcpClientPolicyGrants,
   unknownRecord,
@@ -215,6 +221,7 @@ export interface AcpAdapterV2RuntimeInput {
   readonly onOutgoingResponseFailure?: AcpSessionRuntime.AcpSessionRuntimeOptions["onOutgoingResponseFailure"];
   readonly onOutgoingResponse?: AcpSessionRuntime.AcpSessionRuntimeOptions["onOutgoingResponse"];
   readonly onIncomingRequest?: AcpSessionRuntime.AcpSessionRuntimeOptions["onIncomingRequest"];
+  readonly onUndecodableNotification?: AcpSessionRuntime.AcpSessionRuntimeOptions["onUndecodableNotification"];
 }
 
 export type AcpAdapterV2NativeLogging = Pick<
@@ -1891,6 +1898,7 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
             : flavor.extractSubagentUpdate?.(tool);
         let turnAttached = yield* Deferred.make<boolean>();
         const activeSessionId = yield* Ref.make<string | null>(null);
+        const unreadToolCalls = makeAcpUnreadToolCalls();
         const loadingSessionId = yield* Ref.make<string | null>(null);
         const contextUsageBySessionId = yield* Ref.make(
           new Map<string, ThreadTokenUsageSnapshot>(),
@@ -2459,6 +2467,21 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
                 );
             }),
           ).pipe(Effect.asVoid);
+        // A tool-call notification that was dropped may have named a path, so the calls it
+        // could describe are recorded before the next message is read.
+        const noteUndecodableNotification = Effect.fn("AcpAdapterV2.noteUndecodableNotification")(
+          function* (method: string, payload: unknown) {
+            const unread = unreadToolCallUpdate(method, payload);
+            if (unread === undefined) return;
+            const fromRootSession =
+              unread.sessionId === undefined ||
+              unread.sessionId === (yield* Ref.get(activeSessionId));
+            unreadToolCalls.add(
+              unread,
+              fromRootSession ? ((yield* Ref.get(activeTurn))?.tools.keys() ?? []) : [],
+            );
+          },
+        );
         const makeRuntimeInput = (
           runtimeGeneration: number,
           agentRequests: Set<string>,
@@ -2501,6 +2524,7 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
                       agentRequests.add(requestId);
                     }),
                 }),
+            onUndecodableNotification: noteUndecodableNotification,
             onOutgoingResponseFailure: (requestId, error) =>
               Ref.modify(nativeResponseAcknowledgements, (current) => {
                 const entry = current.get(requestId);
@@ -5672,29 +5696,40 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
                       ? update.content.patch?.text
                       : update.content.newText
                     : undefined;
-              if (text !== undefined) {
-                const previous = context.tools.get(update.toolCallId) ?? {
+              // A diff chunk names files the call changes; the tracked call keeps them for policy.
+              const chunkPaths = acpChangedPathsOfToolCall({ content: [update.content] });
+              const namesPaths = chunkPaths === "unknown" || chunkPaths.length > 0;
+              if (text !== undefined || namesPaths) {
+                const stored: AcpToolCallState = context.tools.get(update.toolCallId) ?? {
                   toolCallId: update.toolCallId,
                   status: "inProgress" as const,
                   data: { toolCallId: update.toolCallId },
                 };
+                const previous = namesPaths
+                  ? {
+                      ...stored,
+                      changedPaths: mergeAcpChangedPaths(stored.changedPaths, chunkPaths),
+                    }
+                  : stored;
                 // Text chunks extend the content list so a later content replacement still shows.
                 yield* emitTool(
                   context,
-                  update.content.type === "content" && previous.data.rawOutput === undefined
-                    ? {
-                        ...previous,
-                        data: {
-                          ...previous.data,
-                          content: appendToolContentText(previous.data.content, text),
-                        },
-                      }
-                    : previous.data.rawOutput === undefined
-                      ? setToolOutputText(
-                          previous,
-                          `${textFromUnknown(previous.data.content) ?? ""}${text}`,
-                        )
-                      : appendToolOutputText(previous, text),
+                  text === undefined
+                    ? previous
+                    : update.content.type === "content" && previous.data.rawOutput === undefined
+                      ? {
+                          ...previous,
+                          data: {
+                            ...previous.data,
+                            content: appendToolContentText(previous.data.content, text),
+                          },
+                        }
+                      : previous.data.rawOutput === undefined
+                        ? setToolOutputText(
+                            previous,
+                            `${textFromUnknown(previous.data.content) ?? ""}${text}`,
+                          )
+                        : appendToolOutputText(previous, text),
                 );
               }
               break;
@@ -6755,9 +6790,31 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
                 flavor.answerablePermissionOptions === undefined
                   ? params
                   : { ...params, options: flavor.answerablePermissionOptions(params) };
-              const dispositionFor = (policy: ProviderAdapter.ProviderAdapterV2RuntimePolicy) =>
-                (flavor.permissionDisposition ?? acpPermissionDisposition)(policy, params);
-              if (followsAgentWorkState && dispositionFor(latestRuntimePolicy) === "ask") {
+              const policyRequest = (knownTool: AcpToolCallState | undefined) =>
+                withTrackedChangedPaths(
+                  params.toolCall.kind == null && knownTool?.kind !== undefined
+                    ? { ...params, toolCall: { ...params.toolCall, kind: knownTool.kind } }
+                    : params,
+                  unreadToolCalls.has(params.sessionId, params.toolCall.toolCallId)
+                    ? withUnknownChangedPaths(knownTool, params.toolCall.toolCallId)
+                    : knownTool,
+                );
+              const dispositionFor = (
+                policy: ProviderAdapter.ProviderAdapterV2RuntimePolicy,
+                knownTool: AcpToolCallState | undefined,
+              ) =>
+                (flavor.permissionDisposition ?? acpPermissionDisposition)(
+                  policy,
+                  policyRequest(knownTool),
+                );
+              const arrivalTool =
+                params.sessionId === (yield* Ref.get(activeSessionId))
+                  ? trackedTurn?.tools.get(params.toolCall.toolCallId)
+                  : undefined;
+              if (
+                followsAgentWorkState &&
+                dispositionFor(latestRuntimePolicy, arrivalTool) === "ask"
+              ) {
                 if (!(yield* awaitRequestTurn(handlerGeneration)))
                   return { outcome: { outcome: "cancelled" } } as const;
               }
@@ -6769,6 +6826,9 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
                     : yield* activeContext;
                   const disposition = dispositionFor(
                     context?.input.runtimePolicy ?? latestRuntimePolicy,
+                    params.sessionId === (yield* Ref.get(activeSessionId))
+                      ? context?.tools.get(params.toolCall.toolCallId)
+                      : undefined,
                   );
                   if (disposition === "allow") {
                     const optionId = selectAutoApprovedPermissionOption(answerableParams);
