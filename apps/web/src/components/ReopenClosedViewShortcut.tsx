@@ -47,6 +47,7 @@ import {
   resolveThreadRouteTarget,
 } from "../threadRoutes";
 import { toastManager } from "./ui/toast";
+import { readPullRequestListPreferences } from "./pullRequest/pullRequestListPreferences";
 const isGlobalPullRequests = (ref: ScopedThreadRef) =>
   scopedThreadKey(ref) === scopedThreadKey(PULL_REQUESTS_PANEL_REF);
 export function ReopenClosedViewShortcut() {
@@ -127,7 +128,7 @@ export function ReopenClosedViewShortcut() {
       );
       destination = linkOptions({
         to: "/pull-requests",
-        search: (previous) => pullRequestsSearchForRestore(previous, selected),
+        search: pullRequestsSearchForRestore(readPullRequestListPreferences(), selected),
       });
     } else {
       const draftId = thread === null ? drafts.getDraftIdByRef(ref) : null;
