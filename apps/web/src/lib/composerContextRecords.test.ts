@@ -225,6 +225,11 @@ describe("composerContextRecords", () => {
       comment: `${"a".repeat(46)}😀 and make the button bigger`,
     });
     expect(record.label).toBe(`${"a".repeat(46)}…`);
+    const betweenWords = previewAnnotationContextRecord({
+      ...annotation,
+      comment: `${"a".repeat(46)} make the button bigger`,
+    });
+    expect(betweenWords.label).toBe(`${"a".repeat(46)}…`);
   });
 
   it("restores multiple edits on one target without parsing display strings", () => {
