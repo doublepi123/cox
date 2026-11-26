@@ -286,7 +286,7 @@ function PullRequestBadge({
           className={cn("contents font-normal text-xs tabular-nums", presentation.toneClassName)}
         >
           <presentation.Icon aria-hidden className="size-3 shrink-0" />
-          <span>{presentation.text}</span>
+          <span className="max-w-16 truncate">{presentation.text}</span>
         </span>
       </TooltipTrigger>
       <TooltipPopup
@@ -296,6 +296,7 @@ function PullRequestBadge({
         width="card"
         textFormat="left"
         interactive
+        onContextMenu={(event) => event.stopPropagation()}
       >
         <div className="-mx-1 max-h-[calc(var(--available-height)-0.5rem-2px)] overflow-y-auto overscroll-contain">
           {visibleThreadPullRequests(pullRequests).length > 0 ? (

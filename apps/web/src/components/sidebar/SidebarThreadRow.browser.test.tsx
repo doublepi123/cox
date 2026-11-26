@@ -8,6 +8,8 @@ import type { ComponentProps } from "react";
 import "~/index.css";
 import { render } from "../../../test/render";
 import { makeThreadFixture } from "../../test-fixtures";
+import { ThreadPullRequestBadgeControl } from "../ThreadStatusIndicators";
+import { InlineButton } from "../ui/button";
 import { SortableThreadRow } from "./SidebarThreadRow";
 
 const access = vi.hoisted(() => ({ canOperate: true }));
@@ -113,6 +115,26 @@ it.each(["card", "folder-multiline"] as const)(
     await expect.element(screen.getByText("feature", { exact: true })).not.toBeInTheDocument();
   },
 );
+
+it("renders the pull request number in the compact tabular badge", async () => {
+  const url = "https://github.com/acme/demo/pull/124";
+  await using screen = await render(
+    <ThreadPullRequestBadgeControl
+      render={<InlineButton />}
+      badge={null}
+      pullRequests={[]}
+      number={124}
+      url={url}
+      status={null}
+      onOpenList={vi.fn()}
+      onOpenPullRequest={vi.fn()}
+    />,
+  );
+  const badge = screen.getByRole("link", { name: "PR #124, status pending" });
+  await expect.element(badge).toHaveTextContent("124");
+  expect(badge.element().querySelector("span")).toHaveClass("contents", "text-xs", "tabular-nums");
+  expect(badge.element().querySelector("span span")).toHaveClass("max-w-16", "truncate");
+});
 
 describe("pinned sidebar thread actions", () => {
   it.each(["card", "slim", "folder", "folder-multiline"] as const)(
