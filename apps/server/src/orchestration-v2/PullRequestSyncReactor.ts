@@ -16,7 +16,10 @@ import {
   threadPullRequestKeysEqual,
   visibleThreadPullRequests,
 } from "../sourceControl/threadPullRequests.ts";
-import { sourceControlDefinitions } from "../sourceControl/sourceControlDefinitions.ts";
+import {
+  changeRequestsClosedBy,
+  sourceControlDefinitions,
+} from "../sourceControl/sourceControlDefinitions.ts";
 import * as Cause from "effect/Cause";
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
@@ -653,13 +656,18 @@ export const make = Effect.gen(function* () {
 
   // Threads that ran a close command this run, with the commands already read for.
   const closeCommands = new Map<ThreadId, Set<string>>();
-  const refreshUnmergedLinks = (threadId: ThreadId) =>
+  const refreshUnmergedLinks = (
+    threadId: ThreadId,
+    selected: ReadonlySet<number> | "any" = "any",
+  ) =>
     projections.getThreadsWithPullRequests(threadId).pipe(
       Effect.flatMap((threads) =>
         Effect.forEach(
           threads.flatMap((thread) =>
             visibleThreadPullRequests(thread.pullRequests ?? []).filter(
-              (link) => link.snapshot?.state === "open" || link.snapshot?.state === "closed",
+              (link) =>
+                (selected === "any" || selected.has(link.number)) &&
+                (link.snapshot?.state === "open" || link.snapshot?.state === "closed"),
             ),
           ),
           requestSync,
@@ -736,7 +744,10 @@ export const make = Effect.gen(function* () {
             closeCommands.set(event.threadId, ended);
             if (isOrchestrationV2WorkActive(item.status) || ended.has(item.id)) return linked;
             ended.add(item.id);
-            return Effect.andThen(linked, refreshUnmergedLinks(event.threadId));
+            return Effect.andThen(
+              linked,
+              refreshUnmergedLinks(event.threadId, changeRequestsClosedBy(item.input)),
+            );
           }
           case "run.updated":
             return isTerminalRunStatus(event.payload.status) && closeCommands.delete(event.threadId)
