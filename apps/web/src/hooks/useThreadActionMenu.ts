@@ -64,7 +64,7 @@ function failureToast(title: string, error: unknown) {
 export function useThreadActionMenu(input: {
   readonly threadRef: ScopedThreadRef | null;
   readonly projectCwd: string | null;
-  readonly onStartRename: () => void;
+  readonly onStartRename?: (() => void) | undefined;
   readonly onFind?: ((threadRef: ScopedThreadRef) => void) | undefined;
 }) {
   const { threadRef, projectCwd, onStartRename, onFind } = input;
@@ -117,56 +117,53 @@ export function useThreadActionMenu(input: {
     onError: (error) => failureToast("Failed to copy thread ID", error),
   });
 
-  const openMenu = (position: { x: number; y: number }, source?: ContextMenuSource) => {
-    if (threadRef === null) return;
-    void (async () => {
+  const readMenu = () => {
+    if (threadRef === null) return null;
+    const thread = readThreadShell(threadRef);
+    if (!thread) return null;
+    const now = new Date();
+    const configLoaded = readEnvironmentServerConfigLoaded(threadRef.environmentId);
+    const supports = {
+      settlement: configLoaded,
+      autoSettleOptOut: readEnvironmentSupportsAutoSettleOptOut(threadRef.environmentId),
+      snooze: configLoaded,
+      pinning: configLoaded,
+      titleRegeneration: configLoaded,
+    };
+    const isRegeneratingTitle = thread.titleRegeneration != null;
+    const snoozePresets = resolveSnoozePresets(now, timestampFormat, threadRef.environmentId);
+    const items = buildThreadActionMenuItems(
+      {
+        canOperate: readEnvironmentScope(threadRef.environmentId, AuthOrchestrationOperateScope),
+        canTriage: threadTriagePermitted(threadRef.environmentId),
+        canFind: onFind !== undefined,
+        branch: thread.branch ?? null,
+        projectFilter: null,
+        isPinned: thread.pinnedAt != null,
+        isSettled: supports.settlement && thread.settledOverride === "settled",
+        autoSettleEnabled: thread.autoSettleDisabledAt == null,
+        isSnoozed: supports.snooze && effectiveSnoozed(thread, { now: now.toISOString() }),
+        canSnoozeNow: canSnooze(thread, { now: now.toISOString() }),
+        isRegeneratingTitle,
+        isRunning: !threadRuntimeCanArchive(thread.runtime),
+        hasCompletedRun: thread.latestRun?.completedAt != null,
+        supports,
+        snoozePresets,
+        canTurnIntoProject: canTurnThreadIntoProject(threadRef),
+        canMoveToProject:
+          readEnvironmentSupportsProjectMove(threadRef.environmentId) &&
+          projects.some(
+            (project) =>
+              project.environmentId === thread.environmentId &&
+              project.id !== thread.projectId &&
+              !project.isScratch,
+          ),
+      },
+      getLanguage(),
+    );
+    const run = async (action: ThreadActionMenuId) => {
       const api = readLocalApi();
       if (!api) return;
-      const thread = readThreadShell(threadRef);
-      if (!thread) return;
-      const now = new Date();
-      const configLoaded = readEnvironmentServerConfigLoaded(threadRef.environmentId);
-      const supports = {
-        settlement: configLoaded,
-        autoSettleOptOut: readEnvironmentSupportsAutoSettleOptOut(threadRef.environmentId),
-        snooze: configLoaded,
-        pinning: configLoaded,
-        titleRegeneration: configLoaded,
-      };
-      const isRegeneratingTitle = thread.titleRegeneration != null;
-      const snoozePresets = resolveSnoozePresets(now, timestampFormat, threadRef.environmentId);
-      const items = buildThreadActionMenuItems(
-        {
-          canOperate: readEnvironmentScope(threadRef.environmentId, AuthOrchestrationOperateScope),
-          canTriage: threadTriagePermitted(threadRef.environmentId),
-          canFind: onFind !== undefined,
-          branch: thread.branch ?? null,
-          projectFilter: null,
-          isPinned: thread.pinnedAt != null,
-          isSettled: supports.settlement && thread.settledOverride === "settled",
-          autoSettleEnabled: thread.autoSettleDisabledAt == null,
-          isSnoozed: supports.snooze && effectiveSnoozed(thread, { now: now.toISOString() }),
-          canSnoozeNow: canSnooze(thread, { now: now.toISOString() }),
-          isRegeneratingTitle,
-          isRunning: !threadRuntimeCanArchive(thread.runtime),
-          hasCompletedRun: thread.latestRun?.completedAt != null,
-          supports,
-          snoozePresets,
-          canTurnIntoProject: canTurnThreadIntoProject(threadRef),
-          canMoveToProject:
-            readEnvironmentSupportsProjectMove(threadRef.environmentId) &&
-            projects.some(
-              (project) =>
-                project.environmentId === thread.environmentId &&
-                project.id !== thread.projectId &&
-                !project.isScratch,
-            ),
-        },
-        getLanguage(),
-      );
-      const clicked = await settlePromise(() => api.contextMenu.show(items, position, source));
-      if (clicked._tag === "Failure" || clicked.value === null) return;
-      const action: ThreadActionMenuId = clicked.value;
       if (
         threadActionRequiresOperate(action) &&
         !(isThreadTriageAction(action)
@@ -261,7 +258,7 @@ export function useThreadActionMenu(input: {
           );
           return;
         case "rename":
-          onStartRename();
+          onStartRename?.();
           return;
         case "move-to-project":
           openThreadProjectMoveDialog(threadRef);
@@ -365,6 +362,18 @@ export function useThreadActionMenu(input: {
         default:
           return;
       }
+    };
+    return { items, run };
+  };
+
+  const openMenu = (position: { x: number; y: number }, source?: ContextMenuSource) => {
+    const api = readLocalApi();
+    if (!api) return;
+    const menu = readMenu();
+    if (!menu) return;
+    void (async () => {
+      const clicked = await settlePromise(() => api.contextMenu.show(menu.items, position, source));
+      if (clicked._tag === "Success" && clicked.value !== null) await menu.run(clicked.value);
     })();
   };
 
@@ -372,5 +381,5 @@ export function useThreadActionMenu(input: {
     void readLocalApi()?.contextMenu.close();
   };
 
-  return { openMenu, closeMenu };
+  return { openMenu, closeMenu, readMenu };
 }
