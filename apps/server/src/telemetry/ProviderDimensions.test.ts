@@ -6,6 +6,7 @@ import {
   agentToolProperties,
   handoffSettings,
   providerDimensions,
+  toolOutcome,
 } from "./ProviderDimensions.ts";
 
 const provider = (
@@ -122,4 +123,21 @@ it("records the binding the saved scheduled task resolved to, and none for failu
       { _tag: "OrchestratorMcpFailure", code: "invalid_request", message: "Different project." },
     ),
   ).toEqual({});
+});
+
+it("reports only identifier-shaped failure codes and known delivery values", () => {
+  expect(toolOutcome({ isError: true, structuredContent: { code: "thread_not_found" } })).toEqual({
+    outcome: "error",
+    errorCode: "thread_not_found",
+  });
+  expect(
+    toolOutcome({
+      isError: true,
+      structuredContent: { code: "ENOENT: no such file '/Users/julius/secret'" },
+    }),
+  ).toEqual({ outcome: "error", errorCode: "unknown" });
+  expect(handoffSettings("cox_thread_send", {}, { delivery: "queued" })).toEqual({
+    delivery: "queued",
+  });
+  expect(handoffSettings("cox_thread_send", {}, { delivery: "/Users/julius" })).toEqual({});
 });
