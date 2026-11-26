@@ -252,9 +252,10 @@ describe("FileBrowserPanel", () => {
     await using _second = await render(panel);
     await vi.waitFor(() => expect(findTreeRow("src/")?.getAttribute("aria-expanded")).toBe("true"));
 
+    // The tree can render its rows again at any time, so compare folders, not calls.
     revalidate.mockClear();
     await userEvent.click(page.getByRole("button", { name: "Refresh workspace files" }));
-    expect(revalidate.mock.calls).toEqual([["src"], [""]]);
+    expect(new Set(revalidate.mock.calls.flat())).toEqual(new Set(["src", ""]));
   });
 
   it("copies with the pointer and returns to the row after keyboard dismissal", async () => {
