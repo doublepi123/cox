@@ -2691,6 +2691,7 @@ export const zh = {
   "Sending...": "正在发送…",
   Refine: "完善计划",
   "{count} sessions": "{count} 个会话",
+  "{count} session": "{count} 个会话",
   "{count} queued": "{count} 条排队消息",
   "{count}% left": "剩余 {count}%",
   "{count}% of the window left": "窗口时间剩余 {count}%",

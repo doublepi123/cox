@@ -2882,6 +2882,7 @@ export const en = {
   "Sending...": "Sending...",
   Refine: "Refine",
   "{count} sessions": "{count} sessions",
+  "{count} session": "{count} session",
   "{count} queued": "{count} queued",
   "{count}% left": "{count}% left",
   "{count}% of the window left": "{count}% of the window left",

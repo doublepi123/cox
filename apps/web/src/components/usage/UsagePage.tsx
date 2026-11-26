@@ -697,7 +697,9 @@ function UsageOverview({
             <p className="inline-flex items-center gap-1 text-xs text-muted-foreground">
               <span>
                 <span className={figureClass(loadingPartial)}>
-                  {t("{count} sessions", { count: formatCount(merged.sessions) })}
+                  {t(merged.sessions === 1 ? "{count} session" : "{count} sessions", {
+                    count: formatCount(merged.sessions),
+                  })}
                 </span>
                 {metric === "cost" && ` · ${t("API estimate")}`}
               </span>
@@ -731,9 +733,12 @@ function UsageOverview({
             const totals = merged.providers.find((entry) => entry.provider === provider);
             const share = metric === "cost" ? (totals?.costShare ?? 0) : (totals?.tokenShare ?? 0);
             const providerSessions = totals?.sessions ?? 0;
-            const sessionLabel = `${formatCount(providerSessions)} ${
-              providerSessions === 1 ? "session" : "sessions"
-            }`;
+            const sessionLabel = t(
+              providerSessions === 1 ? "{count} session" : "{count} sessions",
+              {
+                count: formatCount(providerSessions),
+              },
+            );
             const providerLoading = loadingProviders.has(provider);
             const awaitingData = providerLoading && !providersWithData.has(provider);
             return (
