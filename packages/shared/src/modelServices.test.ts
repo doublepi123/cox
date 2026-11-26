@@ -5,6 +5,7 @@ import { applyServerSettingsPatch } from "./serverSettings.ts";
 import {
   boundModelServiceModels,
   modelServiceAgentCapabilities,
+  modelServiceCandidateProtocols,
   modelServiceDisplayName,
   modelServiceProviderModels,
   modelServiceModelSlug,
@@ -254,6 +255,32 @@ describe("central model settings", () => {
         (model) => [model.id, modelServiceUpstreamProtocol(multiProtocolService, model)],
       ),
     ).toEqual([["gpt-6.1-sol", "openai-chat"]]);
+  });
+
+  it("routes every model of a single-protocol service through its configured protocol", () => {
+    const responsesService = decodeModelServiceConfig({
+      name: "Responses",
+      baseUrl: "https://api.test",
+      protocol: "openai-responses",
+      models: [
+        { id: "deepseek-v4.1-flash", protocols: [], capabilities: null },
+        { id: "chat-declared", protocols: ["openai-chat"], capabilities: null },
+        { id: "undeclared", capabilities: null },
+      ],
+    });
+    expect(
+      boundModelServiceModels(responsesService, { serviceId: id, modelIds: [] }).map((model) => [
+        model.id,
+        modelServiceCandidateProtocols(responsesService, model),
+      ]),
+    ).toEqual([
+      ["deepseek-v4.1-flash", ["openai-responses"]],
+      ["chat-declared", ["openai-responses"]],
+      ["undeclared", ["openai-responses"]],
+    ]);
+    expect(
+      modelServiceCandidateProtocols(responsesService, responsesService.models[0]!, "gemini"),
+    ).toEqual(["openai-responses"]);
   });
 
   it("maps reported reasoning controls and adds Codex Ultra when max is supported", () => {

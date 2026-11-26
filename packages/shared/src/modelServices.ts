@@ -89,11 +89,10 @@ export function modelServiceCandidateProtocols(
 ): ReadonlyArray<ModelServiceProtocol> {
   if (service.protocol !== undefined) {
     const protocol = service.protocol;
-    return (!model.protocols || model.protocols.includes(protocol)) &&
-      (incoming === undefined ||
-        incoming === protocol ||
-        (CONVERTIBLE_MODEL_SERVICE_PROTOCOLS.has(incoming) &&
-          CONVERTIBLE_MODEL_SERVICE_PROTOCOLS.has(protocol)))
+    return incoming === undefined ||
+      incoming === protocol ||
+      (CONVERTIBLE_MODEL_SERVICE_PROTOCOLS.has(incoming) &&
+        CONVERTIBLE_MODEL_SERVICE_PROTOCOLS.has(protocol))
       ? [protocol]
       : [];
   }

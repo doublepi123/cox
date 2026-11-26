@@ -409,7 +409,7 @@ describe("model service discovery", () => {
       expect(result.models[0]).toMatchObject({ id: "gpt-5", name: "GPT-5", capabilities: null });
     }).pipe(Effect.provide(ServerSettingsService.layerTest({ modelServices: { [id]: config() } }))),
   );
-  it("preserves exact model IDs, declared protocols and explicit capabilities", () => {
+  it("preserves exact model IDs and explicit capabilities while ignoring declared protocols", () => {
     const found = parseModelServiceModel(
       {
         id: "Vendor/Model-X",
@@ -425,7 +425,6 @@ describe("model service discovery", () => {
     );
     expect(found).toMatchObject({
       id: "Vendor/Model-X",
-      protocols: ["openai-responses", "anthropic-messages"],
       capabilities: { contextWindow: 64000, supportsImages: true },
       supportsTools: true,
       inputModalities: ["text", "image"],
@@ -433,75 +432,37 @@ describe("model service discovery", () => {
       supportsReasoning: false,
       maxOutputTokens: 8192,
     });
+    expect(found).not.toHaveProperty("protocols");
     expect(parseModelServiceModel({ id: "unknown" }, ["openai-chat"])).toMatchObject({
       capabilities: null,
     });
-    expect(
-      parseModelServiceModel({ id: "declared-unsupported", protocols: ["unknown"] }, [
-        "openai-chat",
-      ])?.protocols,
-    ).toEqual([]);
+    for (const declared of [["unknown"], [], ["openai"], ["chat-completions"], ["anthropic"]]) {
+      expect(
+        parseModelServiceModel({ id: "deepseek-v4.1-flash", supported_endpoint_types: declared }, [
+          "openai-responses",
+        ]),
+      ).not.toHaveProperty("protocols");
+    }
     const threeProtocols = ["openai-chat", "openai-responses", "anthropic-messages"] as const;
     expect(
       parseModelServiceModel(
         { id: "gpt-6.1-sol", supported_endpoint_types: ["openai"] },
         threeProtocols,
       )?.protocols,
-    ).toEqual(["openai-responses", "openai-chat"]);
+    ).toEqual(["openai-responses", "openai-chat", "anthropic-messages"]);
     expect(
       parseModelServiceModel(
         { id: "deepseek-flash", supported_endpoint_types: ["openai"] },
         threeProtocols,
       )?.protocols,
-    ).toEqual(["openai-chat", "openai-responses"]);
+    ).toEqual(["anthropic-messages", "openai-chat", "openai-responses"]);
     expect(
-      parseModelServiceModel(
-        { id: "kimi-k3.1-pro", supported_endpoint_types: ["openai"] },
-        threeProtocols,
-      )?.protocols,
-    ).toEqual(["openai-chat", "openai-responses"]);
-    expect(
-      parseModelServiceModel(
-        { id: "gpt-6", supported_endpoint_types: ["OpenAI_Responses", "Anthropic_Messages"] },
-        threeProtocols,
-      )?.protocols,
-    ).toEqual(["openai-responses", "anthropic-messages"]);
-    expect(
-      parseModelServiceModel(
-        { id: "gpt-6.2-sol", object: "model", supported_endpoint_types: ["openai"] },
-        ["openai-responses"],
-      )?.protocols,
-    ).toEqual(["openai-responses"]);
-    expect(
-      parseModelServiceModel({ id: "gpt-6.2-sol", supported_endpoint_types: ["openai"] }, [
-        "openai-chat",
-      ])?.protocols,
-    ).toEqual(["openai-chat"]);
-    expect(
-      parseModelServiceModel(
-        { id: "gpt-6.2-sol", supported_endpoint_types: ["chat-completions"] },
-        ["openai-responses"],
-      )?.protocols,
-    ).toEqual(["openai-chat"]);
-    expect(
-      parseModelServiceModel({ id: "gpt-6.2-sol", supported_endpoint_types: ["openai-chat"] }, [
-        "openai-responses",
-      ])?.protocols,
-    ).toEqual(["openai-chat"]);
-    expect(
-      parseModelServiceModel({ id: "gpt-6.2-sol", supported_endpoint_types: ["responses"] }, [
-        "openai-chat",
-      ])?.protocols,
-    ).toEqual(["openai-responses"]);
-    expect(
-      parseModelServiceModel(
-        { id: "gpt-6.2-sol", supported_endpoint_types: ["openai-responses"] },
-        ["openai-chat"],
-      )?.protocols,
-    ).toEqual(["openai-responses"]);
+      parseModelServiceModel({ id: "kimi-k3.1-pro", protocols: ["unknown"] }, threeProtocols)
+        ?.protocols,
+    ).toEqual(["openai-chat", "anthropic-messages", "openai-responses"]);
   });
   it.effect(
-    "refreshes a generic openai marker onto the Responses connection used by OMO and Codex",
+    "routes discovered models through the configured protocol whatever the upstream declares",
     () =>
       Effect.gen(function* () {
         const settings = yield* ServerSettingsService;
@@ -524,8 +485,8 @@ describe("model service discovery", () => {
                           supported_endpoint_types: ["chat-completions"],
                         },
                         {
-                          id: "responses-only",
-                          supported_endpoint_types: ["responses"],
+                          id: "deepseek-v4.1-flash",
+                          supported_endpoint_types: ["unknown-endpoint"],
                         },
                       ],
                     },
@@ -539,27 +500,22 @@ describe("model service discovery", () => {
         const saved = (yield* settings.getSettings).modelServices[id]!;
         const model = (modelId: string) => saved.models.find((entry) => entry.id === modelId)!;
         expect(result.models.find((entry) => entry.id === "gpt-6.2-sol")).toMatchObject({
-          protocols: ["openai-responses"],
           available: true,
         });
-        expect(model("gpt-6.2-sol").protocols).toEqual(["openai-responses"]);
-        expect(model("chat-only").protocols).toEqual(["openai-chat"]);
-        expect(model("responses-only").protocols).toEqual(["openai-responses"]);
+        for (const entry of saved.models) expect(entry).not.toHaveProperty("protocols");
         const binding = { serviceId: id, modelIds: [] as string[] };
         const available = modelServiceTargets({ [id]: saved }, binding)
           .filter(isModelServiceTargetAvailable)
           .map((target) => target.model.id);
         expect(available).toEqual(boundModelServiceModels(saved, binding).map((entry) => entry.id));
-        expect(available).toEqual(["gpt-6.2-sol", "responses-only"]);
+        expect(available).toEqual(["gpt-6.2-sol", "chat-only", "deepseek-v4.1-flash"]);
         for (const driver of ["codex", "omo"] as const) {
           expect(modelServiceUpstreamProtocol(saved, model("gpt-6.2-sol"))).toBe(
             modelServiceAgentProtocol(driver, saved),
           );
-          expect(modelServiceUpstreamProtocol(saved, model("gpt-6.2-sol"))).toBe(
-            "openai-responses",
-          );
         }
-        expect(modelServiceUpstreamProtocol(saved, model("chat-only"))).toBeUndefined();
+        for (const modelId of available)
+          expect(modelServiceUpstreamProtocol(saved, model(modelId))).toBe("openai-responses");
       }).pipe(
         Effect.provide(
           ServerSettingsService.layerTest({

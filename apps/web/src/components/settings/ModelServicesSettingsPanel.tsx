@@ -1285,7 +1285,7 @@ function ModelServiceEditor({
                               (protocol) => !serviceProtocols.includes(protocol),
                             ),
                           ]
-                        : (model.protocols ?? serviceProtocols)
+                        : serviceProtocols
                       )
                         .map((protocol) => MODEL_SERVICE_PROTOCOL_LABELS[protocol])
                         .join(" / ")}
@@ -1805,7 +1805,7 @@ function ModelEditor({
             : {}),
           id: id.trim(),
           name: name.trim() || modelServiceDisplayName(id.trim()),
-          ...(defaults.length > 1 || model?.protocols ? { protocols: selected } : {}),
+          ...(defaults.length > 1 ? { protocols: selected } : {}),
           capabilities: {
             ...model?.capabilities,
             ...(reasoningDescriptor || levels.length || serviceTier || tiers.length
