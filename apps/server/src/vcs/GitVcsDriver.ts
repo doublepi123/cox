@@ -1181,14 +1181,12 @@ export const makeVcsDriverShape = Effect.fn("makeGitVcsDriverShape")(function* (
       const configured = yield* execute({
         operation,
         cwd: input.cwd,
-        args: ["config", "--get", "lfs.storage"],
+        args: ["config", "--null", "--get", "lfs.storage"],
         allowNonZeroExit: true,
       });
       // git-lfs resolves a relative lfs.storage against the common Git directory.
-      const storage = path.resolve(
-        gitCommonDir,
-        configured.stdout.replace(/^[\t\n\v\f\r ]+|[\t\n\v\f\r ]+$/g, "") || "lfs",
-      );
+      const configuredStorage = configured.stdout.split("\0", 1)[0];
+      const storage = path.resolve(gitCommonDir, configuredStorage || "lfs");
       yield* Effect.forEach(
         objects,
         (entry) =>
