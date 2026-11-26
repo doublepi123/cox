@@ -7,7 +7,6 @@ import {
   type ServerProvider,
   type ServerProviderModel,
   type ServerProviderSlashCommand,
-  type ServerProviderUsageLimits,
 } from "@t3tools/contracts";
 import { createModelCapabilities } from "@t3tools/shared/model";
 import * as DateTime from "effect/DateTime";
@@ -33,7 +32,6 @@ import {
   isCommandMissingCause,
   type ServerProviderDraft,
 } from "@t3tools/provider-core/server/snapshotProbe";
-import { resolveUsageLimitsAfterProbe } from "@t3tools/provider-core/server/usageLimits";
 
 import { antigravityThinkingConfig } from "./acp/AntigravityAcpSupport.ts";
 
@@ -152,8 +150,6 @@ interface AntigravityProviderOptions {
     EffectAcpErrors.AcpError | ProviderSetupError
   >;
   readonly supportsTextGeneration: Effect.Effect<boolean>;
-  readonly probeUsage?: Effect.Effect<ServerProviderUsageLimits>;
-  readonly clearUsage?: Effect.Effect<void>;
   readonly maintenanceCapabilities?: ProviderMaintenanceCapabilities;
   readonly auth?: { readonly type: string; readonly label: string };
   readonly rememberedRuntimeModes?: ReadonlyArray<RuntimeMode>;
@@ -252,8 +248,6 @@ export const makeAntigravityProvider = Effect.fn("makeAntigravityProvider")(func
               : `Antigravity did not respond to its local health check within ${HEALTH_CHECK_TIMEOUT}.`;
     const supportsTextGeneration =
       initialized !== undefined ? yield* options.supportsTextGeneration : false;
-    const usageLimits =
-      initialized !== undefined && options.probeUsage ? yield* options.probeUsage : undefined;
     const updatedAt = DateTime.formatIso(yield* DateTime.now);
     const next = yield* SubscriptionRef.updateAndGet(metadata, (state) => {
       if (state.authRevision !== before.authRevision) return state;
@@ -275,12 +269,6 @@ export const makeAntigravityProvider = Effect.fn("makeAntigravityProvider")(func
           version: version === "unknown" ? draft.version : version || draft.version,
           status: errorMessage ? "error" : authenticated ? "ready" : "warning",
           checkedAt: updatedAt,
-          usageLimits: missingInstallation
-            ? undefined
-            : resolveUsageLimitsAfterProbe({
-                published: draft.usageLimits,
-                probed: usageLimits ?? draft.usageLimits,
-              }),
           ...(missingInstallation
             ? {
                 models: [],
@@ -332,10 +320,6 @@ export const makeAntigravityProvider = Effect.fn("makeAntigravityProvider")(func
     observeThinkingLevels(started.sessionSetupResult.configOptions);
     const before = yield* SubscriptionRef.get(metadata);
     const supportsTextGeneration = yield* options.supportsTextGeneration;
-    const usageLimits =
-      options.probeUsage && (!before.draft.usageLimits || before.draft.usageLimits.unavailable)
-        ? yield* options.probeUsage
-        : before.draft.usageLimits;
     const updatedAt = DateTime.formatIso(yield* DateTime.now);
     const supportedRuntimeModes = antigravityRuntimeModes(started.sessionSetupResult);
     const previousModes = yield* SubscriptionRef.modify(metadata, (state) => {
@@ -361,10 +345,6 @@ export const makeAntigravityProvider = Effect.fn("makeAntigravityProvider")(func
             label: options.auth?.label ?? "Google account",
           },
           checkedAt: updatedAt,
-          usageLimits: resolveUsageLimitsAfterProbe({
-            published: draft.usageLimits,
-            probed: usageLimits ?? draft.usageLimits,
-          }),
           models: buildAntigravityModelsFromSession(started.sessionSetupResult, thinkingLevels),
           supportedRuntimeModes,
           supportsTextGeneration,
@@ -437,7 +417,6 @@ export const makeAntigravityProvider = Effect.fn("makeAntigravityProvider")(func
   });
 
   const clearAccountMetadata = Effect.fn("AntigravityProvider.clearAccountMetadata")(function* () {
-    if (options.clearUsage) yield* options.clearUsage;
     if (!settings.enabled) return;
     const updatedAt = DateTime.formatIso(yield* DateTime.now);
     const previousModes = yield* SubscriptionRef.modify(metadata, (state) => [
@@ -456,7 +435,6 @@ export const makeAntigravityProvider = Effect.fn("makeAntigravityProvider")(func
           workspaceSnapshots: [],
           supportedRuntimeModes: RUNTIME_MODES_WITHOUT_AUTO,
           supportsTextGeneration: false,
-          usageLimits: undefined,
         },
       } satisfies AntigravityProviderState,
     ]);

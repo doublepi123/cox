@@ -260,12 +260,6 @@ const layerDeps = ServerConfig.layerTest(process.cwd(), {
   prefix: "t3-antigravity-driver-config-",
 }).pipe(
   Layer.provideMerge(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer)),
-  Layer.provideMerge(
-    Layer.succeed(
-      HttpClient.HttpClient,
-      HttpClient.make(() => Effect.die("Unexpected quota request")),
-    ),
-  ),
   Layer.provideMerge(ServerSettings.layerTest()),
   Layer.provideMerge(
     Layer.mock(BackgroundPolicy.BackgroundPolicy)({

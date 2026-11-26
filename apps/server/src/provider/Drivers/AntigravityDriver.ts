@@ -25,7 +25,6 @@ import * as Schema from "effect/Schema";
 import * as Scope from "effect/Scope";
 import * as Stream from "effect/Stream";
 import * as ChildProcessSpawner from "effect/process/ChildProcessSpawner";
-import { HttpClient } from "effect/http";
 import * as AcpErrors from "effect-acp/errors";
 
 import * as ProviderHost from "@t3tools/provider-core/server/ProviderHost";
@@ -65,7 +64,6 @@ import { makeAntigravityAdapterV2 } from "../../orchestration-v2/Adapters/Antigr
 import { makeAcpNativeLoggerFactory } from "@t3tools/provider-acp/server/nativeLogging";
 import { ProviderDriverError } from "../Errors.ts";
 import { makeAntigravityProvider } from "../AntigravityProvider.ts";
-import { makeAntigravityUsageProbe } from "../antigravityUsageLimits.ts";
 import * as ProviderEventLoggers from "@t3tools/provider-core/server/ProviderEventLoggers";
 import * as ModelCatalog from "@t3tools/provider-core/server/ModelCatalog";
 import {
@@ -107,7 +105,6 @@ export type AntigravityDriverEnv =
   | Digest.Digest
   | SecureRandom.SecureRandom
   | FileSystem.FileSystem
-  | HttpClient.HttpClient
   | IdAllocator.IdAllocatorV2
   | McpProviderSessions.McpProviderSessions
   | ModelCatalog.ModelCatalog
@@ -135,7 +132,6 @@ export const AntigravityDriver: ProviderDriver<
     const digest = yield* Digest.Digest;
     const random = yield* SecureRandom.SecureRandom;
     const fileSystem = yield* FileSystem.FileSystem;
-    const httpClient = yield* HttpClient.HttpClient;
     const path = yield* Path.Path;
     const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
     const host = yield* ProviderHost.ProviderHost;
@@ -443,20 +439,9 @@ export const AntigravityDriver: ProviderDriver<
       };
     });
 
-    const usage = yield* makeAntigravityUsageProbe({
-      profileDirectory,
-      authMethod: auth.authMethod,
-    }).pipe(
-      Effect.provideService(FileSystem.FileSystem, fileSystem),
-      Effect.provideService(Path.Path, path),
-      Effect.provideService(Digest.Digest, digest),
-      Effect.provideService(HttpClient.HttpClient, httpClient),
-    );
     const provider = yield* makeAntigravityProvider(settings, {
       stampIdentity: classifyModels,
       probe,
-      probeUsage: usage.probe,
-      clearUsage: usage.clear,
       auth: { type: auth.authMethod, label: antigravityAuthLabel(auth.authMethod) },
       ...(rememberedRuntimeModes ? { rememberedRuntimeModes } : {}),
       rememberRuntimeModes: (modes) =>
