@@ -26,6 +26,7 @@ export const zh = {
   "Could not approve the worktree layout command.": "无法批准工作树布局命令。",
   "This project sets up worktrees with its own command, which nobody has approved as it is written now. This connection cannot approve it: approve it from a client that can use the terminal.":
     "此项目使用自定义命令设置工作树。当前命令文本尚未获批，请通过有终端访问权限的客户端批准。",
+  "Verify Google account": "验证 Google 账号",
   ", or ask an agent to.": "，也可以让智能体编写。",
   "Line {line}:": "第 {line} 行：",
   "Leave without saving? Your changes to this file are lost.":

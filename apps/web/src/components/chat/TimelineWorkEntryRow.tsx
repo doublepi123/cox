@@ -35,7 +35,13 @@ import ChatMarkdown from "../ChatMarkdown";
 import { ChatMarkdownAssetImage } from "./ChatMarkdownMedia";
 import { McpSignInAction } from "./McpSignInAction";
 import * as DateTime from "effect/DateTime";
-import { ChevronRightIcon, CircleAlertIcon, XIcon, RotateCcwIcon } from "lucide-react";
+import {
+  ChevronRightIcon,
+  CircleAlertIcon,
+  ExternalLinkIcon,
+  XIcon,
+  RotateCcwIcon,
+} from "lucide-react";
 import { Button, InlineButton } from "../ui/button";
 import { useAssetUrls } from "../../assets/assetUrls";
 import { observeResize } from "../../lib/observeResize";
@@ -260,6 +266,7 @@ function WorkEntryLogRow(props: WorkEntryRowProps) {
   if (failureItem?.type === "error" && failureItem.status === "failed") {
     const warning = failureItem.failure.class === "usage_limit";
     const resetAt = failureItem.failure.resetAt;
+    const verificationUrl = failureItem.failure.verificationUrl;
     const resetTime = resetAt ? formatUpcomingTimestamp(resetAt, timestampFormat) : null;
     const label = warning
       ? `Usage limit reached.${resetTime ? ` Retry after ${resetTime}.` : ""}`
@@ -299,6 +306,18 @@ function WorkEntryLogRow(props: WorkEntryRowProps) {
           <p className="ms-7 whitespace-pre-wrap break-words py-1 text-sm leading-relaxed text-foreground/80">
             {failureItem.failure.message}
           </p>
+        ) : null}
+        {verificationUrl !== undefined ? (
+          <div className="ms-7 pb-1">
+            <Button
+              size="xs"
+              variant="outline"
+              render={<a href={verificationUrl} target="_blank" rel="noopener noreferrer" />}
+            >
+              {t("Verify Google account")}
+              <ExternalLinkIcon aria-hidden />
+            </Button>
+          </div>
         ) : null}
         {retryRunId !== null && onRetryWorkspacePreparation ? (
           <div className="ms-7 pb-1">
