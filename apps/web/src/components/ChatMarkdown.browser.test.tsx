@@ -334,6 +334,26 @@ describe("ChatMarkdown streaming", () => {
     }
   });
 
+  it("toggles a task whose checkbox starts on the next line", async () => {
+    setup();
+    const text = "-\n  [ ] Same\n\n```txt\nx\n```\n\n- [ ] Same";
+    let edited: string | undefined;
+    await using screen = await render(
+      <ChatMarkdown
+        cwd="/workspace/repo"
+        text={text}
+        onTaskListChange={({ markerOffset, checked }) => {
+          edited = setMarkdownTaskChecked(text, markerOffset, checked);
+        }}
+      />,
+    );
+    const checkboxes =
+      screen.container.querySelectorAll<HTMLInputElement>('input[type="checkbox"]');
+    expect(checkboxes).toHaveLength(2);
+    await act(async () => checkboxes[0]!.click());
+    expect(edited).toBe(text.replace("[ ] Same", "[x] Same"));
+  });
+
   it("edits the current task text and marker after reusing a renderer", async () => {
     setup();
     let editedText: string | undefined;
