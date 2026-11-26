@@ -24,10 +24,12 @@ import { assert, describe, it } from "@effect/vitest";
 import {
   CheckpointId,
   EnvironmentId,
+  MessageId,
   type ModelSelection,
   ProviderDriverKind,
   ProviderInstanceId,
   ProviderSessionId,
+  RunId,
   ThreadId,
   type OrchestrationV2ProviderThread,
   type OrchestrationV2TurnItem,
@@ -476,6 +478,7 @@ const makePromptInactivityHarness = Effect.fnUntraced(function* (input: {
   readonly cancelled?: Deferred.Deferred<void>;
   readonly watchdog?: boolean;
   readonly extractSubagentUpdate?: AcpAdapterV2Flavor["extractSubagentUpdate"];
+  readonly steerActiveTurn?: AcpAdapterV2Flavor["steerActiveTurn"];
 }) {
   const childProcessSpawner = yield* ChildProcessSpawner.ChildProcessSpawner;
   const path = yield* Path.Path;
@@ -519,6 +522,7 @@ const makePromptInactivityHarness = Effect.fnUntraced(function* (input: {
       ...(input.extractSubagentUpdate
         ? { extractSubagentUpdate: input.extractSubagentUpdate }
         : {}),
+      ...(input.steerActiveTurn ? { steerActiveTurn: input.steerActiveTurn } : {}),
       makeRuntime: (runtimeInput) => {
         runtimeInputs.push(runtimeInput);
         return makeRuntime(runtimeInput);
@@ -4937,6 +4941,55 @@ describe("AcpAdapterV2", () => {
       assert.equal(silent?.status, "failed");
       assert.deepEqual(silent?.failure, badGateway);
     }).pipe(Effect.provide(layerTest), Effect.scoped),
+  );
+
+  it.effect(
+    "steers the running turn through the flavor and reports a turn it could not reach",
+    () =>
+      Effect.gen(function* () {
+        const steered: Array<{ readonly sessionId: string; readonly text: string }> = [];
+        let injected = true;
+        const harness = yield* makePromptInactivityHarness({
+          watchdog: false,
+          environment: () => ({ T3_ACP_HANG_PROMPT_FOREVER: "1" }),
+          steerActiveTurn: ({ sessionId, text }) =>
+            Effect.sync(() => {
+              steered.push({ sessionId, text });
+              return injected;
+            }),
+        });
+        yield* harness.startTurn(1);
+        const started = yield* harness.runtime.events.pipe(
+          Stream.filter(
+            (event) =>
+              event.type === "provider_turn.updated" && event.providerTurn.status === "running",
+          ),
+          Stream.runHead,
+          Effect.map(Option.getOrThrow),
+        );
+        if (started.type !== "provider_turn.updated") throw new Error("Expected a provider turn");
+        const steer = (text: string) =>
+          harness.runtime.steerTurn({
+            threadId: ThreadId.make("thread-acp-prompt-inactivity"),
+            runId: RunId.make("run:steer"),
+            providerThread: harness.providerThread,
+            providerTurnId: started.providerTurn.id,
+            message: {
+              createdBy: "user",
+              creationSource: "web",
+              messageId: MessageId.make(`message:${text}`),
+              text,
+              attachments: [],
+            },
+          });
+        yield* steer("also cover the edge case");
+        assert.deepEqual(steered, [
+          { sessionId: "mock-session-1", text: "also cover the edge case" },
+        ]);
+        injected = false;
+        const declined = yield* steer("too late").pipe(Effect.flip);
+        assert.equal(declined._tag, "ProviderAdapterSteerRunError");
+      }).pipe(Effect.provide(layerTest), Effect.scoped),
   );
 
   it.effect("retires a silent prompt whose outcome check dies", () =>

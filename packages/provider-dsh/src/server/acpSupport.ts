@@ -119,6 +119,17 @@ export function dshProposedPlanMarkdown(toolCall: {
   return typeof plan === "string" && plan.trim().length > 0 ? plan : undefined;
 }
 
+export const DSH_STEERING_METHOD = "_session/steering";
+
+export function dshSteeringInjected(response: unknown): boolean {
+  return (
+    typeof response === "object" &&
+    response !== null &&
+    "outcome" in response &&
+    response.outcome === "injected"
+  );
+}
+
 export interface DshRuntimeLaunch {
   readonly executablePath: string;
   readonly overlayPath: string;

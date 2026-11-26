@@ -460,6 +460,12 @@ export interface AcpAdapterV2Flavor {
   readonly registerExtensions?: (
     context: AcpAdapterV2ExtensionContext,
   ) => Effect.Effect<void, EffectAcpErrors.AcpError>;
+  /** Injects text into the running turn; false means the agent had no running turn to steer. */
+  readonly steerActiveTurn?: (input: {
+    readonly runtime: AcpSessionRuntime.AcpSessionRuntime["Service"];
+    readonly sessionId: string;
+    readonly text: string;
+  }) => Effect.Effect<boolean, EffectAcpErrors.AcpError>;
   readonly extractSubagentSessionEvent?: (
     notification: EffectAcpSchema.SessionNotification,
   ) => AcpSubagentSessionEvent | undefined;
@@ -8984,13 +8990,53 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
                   }),
               }
             : {}),
-          steerTurn: (turnInput) =>
-            Effect.fail(
-              new ProviderAdapter.ProviderAdapterSteerRunUnsupportedError({
+          steerTurn: (turnInput) => {
+            const steerActiveTurn = flavor.steerActiveTurn;
+            if (steerActiveTurn === undefined) {
+              return Effect.fail(
+                new ProviderAdapter.ProviderAdapterSteerRunUnsupportedError({
+                  driver,
+                  providerThreadId: turnInput.providerThread.id,
+                }),
+              );
+            }
+            const steerError = (cause: unknown) =>
+              new ProviderAdapter.ProviderAdapterSteerRunError({
                 driver,
                 providerThreadId: turnInput.providerThread.id,
-              }),
-            ),
+                providerTurnId: turnInput.providerTurnId,
+                cause,
+              });
+            return Effect.gen(function* () {
+              const context = yield* Ref.get(activeTurn);
+              if (
+                context === null ||
+                context.finalized ||
+                context.providerTurnId !== turnInput.providerTurnId
+              ) {
+                return yield* steerError(
+                  new Error(`Provider turn ${turnInput.providerTurnId} is not active.`),
+                );
+              }
+              const text = yield* providerMessageTextWithAttachmentPaths({
+                text: turnInput.message.text,
+                attachments: turnInput.message.attachments,
+                resolveAttachmentPath: host.resolveAttachmentPath,
+                resolveExtractedTextPath: host.resolveExtractedTextPath,
+              });
+              if (text.trim().length === 0) {
+                return yield* steerError(new Error("Steering requires non-empty text."));
+              }
+              const injected = yield* steerActiveTurn({
+                runtime,
+                sessionId: context.nativeThreadId,
+                text,
+              }).pipe(Effect.mapError(steerError));
+              if (!injected) {
+                return yield* steerError(new Error("The agent had no running turn to steer."));
+              }
+            });
+          },
           interruptTurn: Effect.fn("AcpAdapterV2.interruptTurn")(
             function* (turnInput: ProviderAdapter.ProviderAdapterV2InterruptInput) {
               return yield* Effect.uninterruptibleMask((restore) =>

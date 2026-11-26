@@ -24,6 +24,7 @@ import {
   dshAcpPlusOverlay,
   dshModelSlug,
   dshPermissionMode,
+  dshSteeringInjected,
   dshProposedPlanMarkdown,
   resolveDshModelValue,
   withDshModelServicePatch,
@@ -142,6 +143,16 @@ describe("DeepSeek Harness launch", () => {
   it("leaves an unset model to the session default", () => {
     assert.strictEqual(resolveDshModelValue(undefined), undefined);
     assert.strictEqual(resolveDshModelValue("  "), undefined);
+  });
+});
+
+describe("DeepSeek Harness steering", () => {
+  it.each([
+    [{ outcome: "injected" }, true],
+    [{ outcome: "promptRequired", reason: "noRunningTurn" }, false],
+    [null, false],
+  ])("treats bridge response %j as injected=%s", (response, injected) => {
+    assert.strictEqual(dshSteeringInjected(response), injected);
   });
 });
 

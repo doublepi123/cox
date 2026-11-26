@@ -38,6 +38,8 @@ import {
 } from "@t3tools/provider-cursor/server/skills";
 import {
   DSH_DRIVER_KIND,
+  DSH_STEERING_METHOD,
+  dshSteeringInjected,
   dshPermissionMode,
   dshProposedPlanMarkdown,
   dshRuntimeLaunch,
@@ -54,6 +56,10 @@ export const DshProviderCapabilitiesV2 = {
   sessions: {
     ...AcpProviderCapabilitiesV2.sessions,
     supportsModelSwitchInSession: true,
+  },
+  turns: {
+    ...AcpProviderCapabilitiesV2.turns,
+    supportsActiveSteering: true,
   },
   tools: {
     ...AcpProviderCapabilitiesV2.tools,
@@ -119,6 +125,10 @@ export function makeDshAcpAdapterFlavor(
           )
         : Effect.succeed(text),
     extractElicitationForm: extractDshElicitationForm,
+    steerActiveTurn: ({ runtime, sessionId, text }) =>
+      runtime
+        .request(DSH_STEERING_METHOD, { sessionId, prompt: [{ type: "text", text }] })
+        .pipe(Effect.map(dshSteeringInjected)),
     registerExtensions: ({ runtime, captureProposedPlan }) =>
       runtime.handleSessionUpdate(({ update }) => {
         if (update.sessionUpdate !== "tool_call" && update.sessionUpdate !== "tool_call_update") {
