@@ -50,6 +50,7 @@ export const en = {
   "This project sets up worktrees with its own command, which nobody has approved as it is written now. This connection cannot approve it: approve it from a client that can use the terminal.":
     "This project sets up worktrees with its own command, which nobody has approved as it is written now. This connection cannot approve it: approve it from a client that can use the terminal.",
   "Verify Google account": "Verify Google account",
+  "0 bytes": "0 bytes",
   "{count} matches": "{count} matches",
   ", or ask an agent to.": ", or ask an agent to.",
   "Line {line}:": "Line {line}:",
