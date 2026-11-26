@@ -29,6 +29,8 @@ import { readAntigravityClientTextFile } from "../../provider/acp/AntigravityCli
 import { watchAntigravityPromptOutcome } from "../../provider/acp/AntigravityTurnOutcome.ts";
 import {
   antigravityApprovalOptions,
+  antigravitySwarmAddChildSessionId,
+  antigravitySwarmAddModel,
   antigravitySubagentOutput,
   classifyAntigravitySubagentToolCall,
   extractAntigravityUserInputQuestion,
@@ -86,7 +88,6 @@ export interface AntigravityAdapterV2Options {
   readonly continuationRequests?: Parameters<typeof makeAcpAdapterV2>[0]["continuationRequests"];
 }
 
-/** Native subagent tools report no child session ids. */
 const extractAntigravitySubagentUpdate: NonNullable<AcpAdapterV2Flavor["extractSubagentUpdate"]> = (
   toolCall,
 ) => {
@@ -95,6 +96,7 @@ const extractAntigravitySubagentUpdate: NonNullable<AcpAdapterV2Flavor["extractS
   }
   const status =
     toolCall.status === "failed" ? "failed" : toolCall.status === "pending" ? "pending" : "running";
+  const childSessionId = antigravitySwarmAddChildSessionId(toolCall);
   return {
     nativeTaskId: toolCall.toolCallId,
     prompt:
@@ -102,10 +104,10 @@ const extractAntigravitySubagentUpdate: NonNullable<AcpAdapterV2Flavor["extractS
       toolCall.detail ??
       toolCall.title ??
       "Antigravity subagent batch",
-    title: "Antigravity subagent batch",
-    model: null,
+    title: toolCall.title?.startsWith("Add ") ? toolCall.title : "Antigravity subagent batch",
+    model: antigravitySwarmAddModel(toolCall),
     status,
-    childSessionId: null,
+    childSessionId,
     result: status === "failed" ? (antigravitySubagentOutput(toolCall) ?? null) : null,
   };
 };
