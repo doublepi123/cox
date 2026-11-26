@@ -40,4 +40,10 @@ describe("pull requests route search", () => {
     expect(matchedSearch("/pull-requests?q=fix")?.q).toBe("fix");
     expect(matchedSearch("/pull-requests?q=%224089%22")?.q).toBe("4089");
   });
+
+  it("cuts a long search before an emoji the limit would split", () => {
+    const kept = "a".repeat(199);
+    const query = new URLSearchParams({ q: `${kept}😀 rest` });
+    expect(matchedSearch(`/pull-requests?${query}`)?.q).toBe(kept);
+  });
 });
