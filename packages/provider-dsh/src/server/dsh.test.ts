@@ -33,6 +33,7 @@ import { extractDshElicitationForm } from "./elicitation.ts";
 import { dshUsageDirectories } from "./usage.ts";
 import { discoverDshSkills } from "./skills.ts";
 import { listDshSessions } from "./sessions.ts";
+import { extractDshSubagentUpdate } from "./subagents.ts";
 import * as HostProcess from "@t3tools/shared/HostProcess";
 import {
   dshRuntimeManifest,
@@ -154,6 +155,58 @@ describe("DeepSeek Harness steering", () => {
     [null, false],
   ])("treats bridge response %j as injected=%s", (response, injected) => {
     assert.strictEqual(dshSteeringInjected(response), injected);
+  });
+});
+
+describe("DeepSeek Harness subagents", () => {
+  const spawn = (update: Partial<Parameters<typeof extractDshSubagentUpdate>[0]>) =>
+    extractDshSubagentUpdate({
+      toolCallId: "call_1",
+      title: "subagent",
+      data: {
+        rawInput: {
+          description: "Review the parser",
+          prompt: "Read src/parser.ts and report bugs.",
+        },
+      },
+      ...update,
+    });
+  const output = (value: string) => [{ type: "content", content: { type: "text", text: value } }];
+
+  it("keeps a started subagent running until the turn settles it", () => {
+    assert.deepStrictEqual(spawn({ status: "inProgress" }), {
+      nativeTaskId: "call_1",
+      prompt: "Read src/parser.ts and report bugs.",
+      title: "Review the parser",
+      model: null,
+      status: "running",
+      childSessionId: null,
+      result: null,
+      suppressNormalTool: true,
+    });
+    const started = spawn({
+      status: "completed",
+      data: {
+        rawInput: { description: "Review the parser", prompt: "Read src/parser.ts" },
+        content: output("started subagent agent-1"),
+      },
+    });
+    assert.strictEqual(started?.status, "running");
+    assert.isNull(started?.result);
+  });
+
+  it("reports a spawn failure with its error text", () => {
+    const failed = spawn({
+      status: "failed",
+      data: { rawInput: {}, content: output("subagent depth limit reached") },
+    });
+    assert.strictEqual(failed?.status, "failed");
+    assert.strictEqual(failed?.result, "subagent depth limit reached");
+    assert.strictEqual(failed?.prompt, "");
+  });
+
+  it("leaves other tools alone", () => {
+    assert.isUndefined(spawn({ title: "wait_agent" }));
   });
 });
 

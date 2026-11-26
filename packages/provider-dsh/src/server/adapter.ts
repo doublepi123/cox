@@ -31,6 +31,7 @@ import {
 } from "@t3tools/provider-acp/server/adapter";
 import { DshSettings } from "../settings.ts";
 import { extractDshElicitationForm } from "./elicitation.ts";
+import { extractDshSubagentUpdate } from "./subagents.ts";
 import { discoverDshSkills } from "./skills.ts";
 import {
   hasCursorSkillMention,
@@ -60,6 +61,10 @@ export const DshProviderCapabilitiesV2 = {
   turns: {
     ...AcpProviderCapabilitiesV2.turns,
     supportsActiveSteering: true,
+  },
+  subagents: {
+    ...AcpProviderCapabilitiesV2.subagents,
+    supportsSubagents: true,
   },
   tools: {
     ...AcpProviderCapabilitiesV2.tools,
@@ -125,6 +130,8 @@ export function makeDshAcpAdapterFlavor(
           )
         : Effect.succeed(text),
     extractElicitationForm: extractDshElicitationForm,
+    extractSubagentUpdate: extractDshSubagentUpdate,
+    subagentsIdleOnTurnCompletion: true,
     steerActiveTurn: ({ runtime, sessionId, text }) =>
       runtime
         .request(DSH_STEERING_METHOD, { sessionId, prompt: [{ type: "text", text }] })
