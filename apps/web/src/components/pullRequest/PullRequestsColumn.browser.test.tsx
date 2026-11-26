@@ -57,8 +57,8 @@ describe("PullRequestsColumn find shortcut", () => {
     await screen.rerender(createColumn(false, scrollRef));
     expect(dispatchFindShortcut().defaultPrevented).toBe(true);
     await expect
-      .element(screen.locator.locator('input[aria-label="Search pull requests"]:focus'))
-      .toBeInTheDocument();
+      .poll(() => screen.container.querySelector('input[aria-label="Search pull requests"]:focus'))
+      .not.toBeNull();
   });
 });
 

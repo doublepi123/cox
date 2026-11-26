@@ -337,7 +337,7 @@ async function openOnBrowserRouter() {
     routerKey: window.history.state?.__TSR_key as string,
   };
   const trigger = page.getByRole("button", { name: "Choose model" });
-  const sheet = page.elementLocator(document.body).locator("[data-model-picker-sheet]");
+  const sheet = () => document.querySelector("[data-model-picker-sheet]");
   const entry = () => window.history.state?.coxBackDismiss;
   const waitForEntry = async (previous: unknown) => {
     await expect.poll(() => typeof entry() === "string" && entry() !== previous).toBe(true);
@@ -350,7 +350,7 @@ async function openOnBrowserRouter() {
     expect(window.history.length).toBe(settled.length + 1);
   };
   const closed = async () => {
-    await expect.element(sheet).not.toBeInTheDocument();
+    await expect.poll(sheet).toBeNull();
     await expect.poll(entry).toBeUndefined();
     expect(window.location.href).toBe(startUrl);
     expect(window.history.state?.__TSR_key).toBe(settled.routerKey);

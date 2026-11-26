@@ -61,7 +61,7 @@ function FullTextPreview(props: Parameters<typeof LargeFilePreview>[0]) {
         <SourceFilePreview
           name={props.name}
           text={file.text}
-          onPostRender={props.onPostRender}
+          {...(props.onPostRender ? { onPostRender: props.onPostRender } : {})}
           wordWrap={props.wordWrap}
           tokenizeMaxLength={highlight ? Number.POSITIVE_INFINITY : 0}
         />

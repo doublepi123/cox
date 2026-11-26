@@ -456,16 +456,17 @@ it("hands panel focus from the loading diff to the diff once the diff workers st
   );
   const focus = createWorkspaceFocusController(document);
   using _focus = { [Symbol.dispose]: focus.dispose };
-  const loading = screen.locator.locator("[data-workspace-focus-default]");
-  await expect.element(loading).toHaveTextContent("Loading pull request diff...");
+  await expect.element(screen.getByText("Loading pull request diff...")).toBeVisible();
+  const loading = container.querySelector("[data-workspace-focus-default]");
+  expect(loading).not.toBeNull();
   expect(initialize).toHaveBeenCalled();
   expect(focus.focus("panel")).toBe(true);
-  expect(document.activeElement).toBe(loading.element());
+  expect(document.activeElement).toBe(loading);
 
   await act(async () => {
     ready = true;
     start();
     await started;
   });
-  await expect.element(screen.locator.locator(".diff-render-surface")).toHaveFocus();
+  await expect.poll(() => container.querySelector(".diff-render-surface:focus")).not.toBeNull();
 });
