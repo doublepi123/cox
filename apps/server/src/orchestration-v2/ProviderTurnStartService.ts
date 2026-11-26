@@ -858,10 +858,12 @@ export const layer: Layer.Layer<
       if (
         cutTurn !== undefined &&
         session.nativeTurnKept !== undefined &&
-        !(yield* session
-          .nativeTurnKept({ providerThread, nativeTurnId: cutTurn.nativeTurnId })
-          // As when the turn ends: an unknown answer resends the request rather than losing it.
-          .pipe(Effect.orElseSucceed(() => false)))
+        !(yield* (
+          session
+            .nativeTurnKept({ providerThread, nativeTurnId: cutTurn.nativeTurnId })
+            // As when the turn ends: an unknown answer resends the request rather than losing it.
+            .pipe(Effect.orElseSucceed(() => false))
+        ))
       ) {
         // Settle it as a Stop would: mark the request dropped and take back its inline context, so
         // this turn resends both. Starting again reads the settled state.
