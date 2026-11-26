@@ -306,6 +306,8 @@ import {
   ServerRemoveKeybindingInput,
   ServerRemoveKeybindingResult,
   ServerProviderUpdatedPayload,
+  ProviderRuntimeModeLimitsInput,
+  ProviderRuntimeModeLimitsResult,
   ServerTraceDiagnosticsResult,
   ServerProcessDiagnosticsResult,
   ServerProcessResourceHistoryInput,
@@ -490,6 +492,7 @@ export const WS_METHODS = {
   serverProbe: "server.probe",
   serverGetConfig: "server.getConfig",
   serverRefreshProviders: "server.refreshProviders",
+  serverGetProviderRuntimeModeLimits: "server.getProviderRuntimeModeLimits",
   serverUpdateProvider: "server.updateProvider",
   serverUpsertKeybinding: "server.upsertKeybinding",
   serverRemoveKeybinding: "server.removeKeybinding",
@@ -667,6 +670,15 @@ export const WsServerRefreshProvidersRpc = Rpc.make(WS_METHODS.serverRefreshProv
   success: ServerProviderUpdatedPayload,
   error: Schema.Union([EnvironmentAuthorizationError, ProviderSetupError]),
 });
+
+const WsServerGetProviderRuntimeModeLimitsRpc = Rpc.make(
+  WS_METHODS.serverGetProviderRuntimeModeLimits,
+  {
+    payload: ProviderRuntimeModeLimitsInput,
+    success: ProviderRuntimeModeLimitsResult,
+    error: EnvironmentAuthorizationError,
+  },
+);
 
 const WsServerUpdateProviderRpc = Rpc.make(WS_METHODS.serverUpdateProvider, {
   payload: ServerProviderUpdateInput,
@@ -2009,6 +2021,7 @@ export const WsRpcGroup = RpcGroup.make(
   WsServerImportAcpRegistrySessionRpc,
   WsServerDeleteAcpRegistrySessionRpc,
   WsServerListAcpRegistryProvidersRpc,
+  WsServerGetProviderRuntimeModeLimitsRpc,
   WsServerSetAcpRegistryProviderRpc,
   WsServerDisableAcpRegistryProviderRpc,
   WsServerLogoutAcpRegistryRpc,

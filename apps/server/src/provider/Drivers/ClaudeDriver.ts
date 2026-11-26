@@ -22,6 +22,7 @@ import { expandHomePath } from "@t3tools/provider-core/server/pathExpansion";
 import * as ProviderEventLoggers from "@t3tools/provider-core/server/ProviderEventLoggers";
 import {
   createClaudeAdapterV2,
+  resolveClaudeModeAvailability,
   type ClaudeAdapterV2DriverEnv,
 } from "../../orchestration-v2/Adapters/ClaudeAdapterV2.ts";
 import { ProviderDriverError } from "../Errors.ts";
@@ -220,6 +221,11 @@ export const ClaudeDriver: ProviderDriver<ClaudeSettings, ClaudeDriverEnv, Path.
     );
     const continuationGroupKey = yield* makeClaudeContinuationGroupKey(effectiveConfig, processEnv);
     const configDir = yield* resolveClaudeHomePath(effectiveConfig, processEnv);
+    const homeDirectory = yield* HostProcess.HomeDirectory;
+    const hostEnvironment = yield* HostProcess.Environment;
+    const customHome =
+      effectiveConfig.homePath.trim().length > 0 ||
+      processEnv.CLAUDE_CONFIG_DIR !== hostEnvironment.CLAUDE_CONFIG_DIR;
     const accountConfigPath = yield* ClaudeResetCredits.claudeAccountConfigPath(
       effectiveConfig.homePath.trim() || processEnv.CLAUDE_CONFIG_DIR?.trim()
         ? configDir
@@ -493,6 +499,24 @@ export const ClaudeDriver: ProviderDriver<ClaudeSettings, ClaudeDriverEnv, Path.
       enabled,
       snapshot,
       invalidateCaches: Cache.invalidateAll(capabilitiesProbeCache),
+      // Unreadable settings report no limit; the thread's own notice covers a refused mode.
+      runtimeModeLimitsForCwd: (cwd: string) =>
+        resolveClaudeModeAvailability({
+          settings: effectiveConfig,
+          homePath: configDir,
+          customHome,
+          cwd,
+          fileSystem,
+          path,
+        }).pipe(
+          Effect.map((availability) =>
+            availability.autoDisabledBy === undefined
+              ? []
+              : [{ mode: "auto" as const, reason: availability.autoDisabledBy }],
+          ),
+          Effect.orElseSucceed(() => []),
+          Effect.provideService(HostProcess.HomeDirectory, homeDirectory),
+        ),
       snapshotForCwd: (cwd: string) =>
         snapshot.getSnapshot.pipe(
           Effect.flatMap((machineSnapshot) =>

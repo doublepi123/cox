@@ -7,7 +7,7 @@ import type {
 } from "@t3tools/contracts";
 import { createModelSelection } from "@t3tools/shared/model";
 import { BotIcon, PencilRulerIcon } from "lucide-react";
-import { type ComponentProps, memo, useId, useRef, useState } from "react";
+import { type ComponentProps, memo, use, useId, useRef, useState } from "react";
 
 import type { ContextWindowSnapshot } from "../../lib/contextWindow";
 import { Menu as MenuPrimitive } from "@base-ui/react/menu";
@@ -21,9 +21,16 @@ import { resolveModelPickerSelectedModel } from "./ModelPickerContent";
 import { ProviderModelPicker } from "./ProviderModelPicker";
 import { runtimeModeConfig } from "./runtimeModeConfig";
 import { useComposerMenuState } from "./useComposerMenuState";
+import {
+  RuntimeModeLimitsTargetContext,
+  useProviderRuntimeModeLimits,
+} from "../../state/runtimeModeLimits";
 
-export type RuntimeModeOption = { mode: RuntimeMode } & (typeof runtimeModeConfig)[RuntimeMode];
-const supervisedRuntimeModeOption = {
+export type RuntimeModeOption = {
+  mode: RuntimeMode;
+  disabledReason?: string;
+} & (typeof runtimeModeConfig)[RuntimeMode];
+const supervisedRuntimeModeOption: RuntimeModeOption = {
   mode: "approval-required" as const,
   ...runtimeModeConfig["approval-required"],
 };
@@ -163,9 +170,7 @@ export const ComposerFooterModeControls = memo(function ComposerFooterModeContro
  */
 export function ComposerPermissionsSection(props: {
   runtimeMode: RuntimeMode;
-  runtimeModeOptions: ReadonlyArray<
-    { mode: RuntimeMode } & (typeof runtimeModeConfig)[RuntimeMode]
-  >;
+  runtimeModeOptions: ReadonlyArray<RuntimeModeOption>;
   onRuntimeModeChange: (mode: RuntimeMode) => void;
 }) {
   const { t } = useTranslation();
@@ -176,6 +181,8 @@ export function ComposerPermissionsSection(props: {
     props.runtimeModeOptions.find((option) => option.mode === shownMode) ??
     supervisedRuntimeModeOption;
   const descriptionId = useId();
+  // Mounted only while a picker is open, so this asks the server again each time one opens.
+  useProviderRuntimeModeLimits(use(RuntimeModeLimitsTargetContext), "picker");
   return (
     <div data-composer-permissions className="grid w-72 gap-1.5 px-2 py-1.5">
       <div className="font-medium text-muted-foreground text-xs">{t("Permissions")}</div>
@@ -209,6 +216,7 @@ export function ComposerPermissionsSection(props: {
               label={option.label}
               aria-label={option.label}
               aria-describedby={`${descriptionId}-${option.mode}`}
+              disabled={option.disabledReason !== undefined && option.mode !== props.runtimeMode}
               closeOnClick
               onPointerEnter={() => setPreviewMode(option.mode)}
               onPointerLeave={() => setPreviewMode(null)}
@@ -224,7 +232,7 @@ export function ComposerPermissionsSection(props: {
       {/* Static per-mode descriptions for screen readers; the preview below is visual only. */}
       {props.runtimeModeOptions.map((option) => (
         <span key={option.mode} id={`${descriptionId}-${option.mode}`} className="sr-only">
-          {option.description}
+          {t(option.disabledReason ?? option.description)}
         </span>
       ))}
       <div className="grid gap-0.5" aria-hidden="true">
@@ -238,7 +246,9 @@ export function ComposerPermissionsSection(props: {
           {shown.label}
         </span>
         {/* Two lines reserved so the menu does not shift while you preview modes. */}
-        <span className="min-h-8 text-muted-foreground text-xs leading-4">{shown.description}</span>
+        <span className="min-h-8 text-muted-foreground text-xs leading-4">
+          {t(shown.disabledReason ?? shown.description)}
+        </span>
       </div>
     </div>
   );

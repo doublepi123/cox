@@ -6,11 +6,16 @@ import { BackgroundThreadContext } from "./backgroundThread";
 import { useLocation } from "@tanstack/react-router";
 import { isAppModalPage } from "../sidebar/mainAppLocation";
 import {
+  draftRuntimeModeLimitsInstance,
   draftSupportedRuntimeModes,
   resolveCompatibleRuntimeMode,
-  runtimeModeConfig,
-  runtimeModeOptions as runtimeModes,
+  resolveRuntimeModeOptions,
 } from "./runtimeModeConfig";
+import {
+  RuntimeModeLimitsTargetContext,
+  runtimeModeLimitsTarget,
+  useProviderRuntimeModeLimits,
+} from "../../state/runtimeModeLimits";
 import { usePrimaryEnvironmentId } from "../../state/environments";
 import { selectThreadRightPanelState, useRightPanelStore } from "~/rightPanelStore";
 import { importPastedComposerText, readPastedComposerContext } from "../composerInlineTokenPaste";
@@ -299,7 +304,6 @@ function consumePasteAsTextShortcut(deadline: { current: number }): boolean {
   deadline.current = 0;
   return armed;
 }
-const runtimeModeOptions = runtimeModes.map((mode) => ({ mode, ...runtimeModeConfig[mode] }));
 export interface ChatComposerHandle {
   isRightPanelOpen?: () => boolean;
   focusAtEnd: () => void;
@@ -966,8 +970,14 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
         providerStatuses,
       ),
     );
-  const compatibleRuntimeModeOptions = runtimeModeOptions.filter((option) =>
-    compatibleRuntimeModes.includes(option.mode),
+  const runtimeModeLimitsFor = runtimeModeLimitsTarget(
+    environmentId,
+    draftRuntimeModeLimitsInstance(selectedInstanceId, multipleModelSelections),
+    gitCwd,
+  );
+  const compatibleRuntimeModeOptions = resolveRuntimeModeOptions(
+    compatibleRuntimeModes,
+    useProviderRuntimeModeLimits(runtimeModeLimitsFor),
   );
   const providerSendBlockReason = getAntigravitySendBlockReason(
     selectedProviderEntry?.snapshot,
@@ -2360,56 +2370,58 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       ? 0
       : expandedControlsIconOnlyBlockCount;
   const composerControls = (
-    <ComposerControlsBar
-      environmentId={environmentId}
-      routeKind={routeKind}
-      routeThreadRef={routeThreadRef}
-      draftId={draftId}
-      selectedProvider={selectedProvider}
-      selectedInstanceId={selectedInstanceId}
-      selectedModel={selectedModel}
-      selectedProviderModels={selectedProviderModels}
-      composerModelOptions={composerModelOptions}
-      reportedModelSelection={reportedModelSelection}
-      promptUltrathink={promptUltrathink}
-      onPromptEdit={editPromptFromTraitsStable}
-      planModeEnabled={settings.planModeEnabled}
-      planModeUiEnabled={planModeUiEnabled}
-      interactionMode={interactionMode}
-      compatibleRuntimeMode={compatibleRuntimeMode}
-      defaultRuntimeMode={props.defaultRuntimeMode}
-      compatibleRuntimeModeOptions={compatibleRuntimeModeOptions}
-      toggleInteractionMode={toggleInteractionMode}
-      handleRuntimeModeChange={handleRuntimeModeChange}
-      composerControlsCollapsed={composerControlsCollapsed}
-      effortDisplay={settings.effortDisplay}
-      permissionsShownInStrip={props.permissionsShownInStrip}
-      composerControlsHidden={composerControlsHidden}
-      restingHiddenBlockCount={restingHiddenBlockCount}
-      iconOnlyBlockCount={iconOnlyBlockCount}
-      showProviderUnavailable={showProviderUnavailable}
-      providerSetupInstanceId={providerSetupInstanceId}
-      onOpenProviderSetup={onOpenProviderSetup}
-      providerCatalogPending={providerCatalogPending}
-      isSendBusy={isSendBusy}
-      multipleModelsEnabled={routeKind === "draft" && supportsMultipleModels}
-      multipleModelSelections={multipleModelSelections}
-      onMultipleModelSelectionsChange={setMultipleModelSelections}
-      selectedModelSelection={selectedModelSelection}
-      onProviderModelSelect={onProviderModelSelect}
-      activeThreadModelSelection={activeThreadModelSelection}
-      selectedModelForPickerWithCustomFallback={selectedModelForPickerWithCustomFallback}
-      lockedProvider={lockedProvider}
-      lockedContinuationGroupKey={lockedContinuationGroupKey}
-      providerInstanceEntries={providerInstanceEntries}
-      keybindings={keybindings}
-      modelOptionsByInstance={modelOptionsByInstance}
-      terminalOpen={terminalOpen}
-      modelPickerOpen={isComposerModelPickerOpen}
-      onModelPickerOpenChange={setIsComposerModelPickerOpen}
-      modelPickerIconClassName={composerProviderState.modelPickerIconClassName}
-      getModelDisabledReason={getModelDisabledReason}
-    />
+    <RuntimeModeLimitsTargetContext value={runtimeModeLimitsFor}>
+      <ComposerControlsBar
+        environmentId={environmentId}
+        routeKind={routeKind}
+        routeThreadRef={routeThreadRef}
+        draftId={draftId}
+        selectedProvider={selectedProvider}
+        selectedInstanceId={selectedInstanceId}
+        selectedModel={selectedModel}
+        selectedProviderModels={selectedProviderModels}
+        composerModelOptions={composerModelOptions}
+        reportedModelSelection={reportedModelSelection}
+        promptUltrathink={promptUltrathink}
+        onPromptEdit={editPromptFromTraitsStable}
+        planModeEnabled={settings.planModeEnabled}
+        planModeUiEnabled={planModeUiEnabled}
+        interactionMode={interactionMode}
+        compatibleRuntimeMode={compatibleRuntimeMode}
+        defaultRuntimeMode={props.defaultRuntimeMode}
+        compatibleRuntimeModeOptions={compatibleRuntimeModeOptions}
+        toggleInteractionMode={toggleInteractionMode}
+        handleRuntimeModeChange={handleRuntimeModeChange}
+        composerControlsCollapsed={composerControlsCollapsed}
+        effortDisplay={settings.effortDisplay}
+        permissionsShownInStrip={props.permissionsShownInStrip}
+        composerControlsHidden={composerControlsHidden}
+        restingHiddenBlockCount={restingHiddenBlockCount}
+        iconOnlyBlockCount={iconOnlyBlockCount}
+        showProviderUnavailable={showProviderUnavailable}
+        providerSetupInstanceId={providerSetupInstanceId}
+        onOpenProviderSetup={onOpenProviderSetup}
+        providerCatalogPending={providerCatalogPending}
+        isSendBusy={isSendBusy}
+        multipleModelsEnabled={routeKind === "draft" && supportsMultipleModels}
+        multipleModelSelections={multipleModelSelections}
+        onMultipleModelSelectionsChange={setMultipleModelSelections}
+        selectedModelSelection={selectedModelSelection}
+        onProviderModelSelect={onProviderModelSelect}
+        activeThreadModelSelection={activeThreadModelSelection}
+        selectedModelForPickerWithCustomFallback={selectedModelForPickerWithCustomFallback}
+        lockedProvider={lockedProvider}
+        lockedContinuationGroupKey={lockedContinuationGroupKey}
+        providerInstanceEntries={providerInstanceEntries}
+        keybindings={keybindings}
+        modelOptionsByInstance={modelOptionsByInstance}
+        terminalOpen={terminalOpen}
+        modelPickerOpen={isComposerModelPickerOpen}
+        onModelPickerOpenChange={setIsComposerModelPickerOpen}
+        modelPickerIconClassName={composerProviderState.modelPickerIconClassName}
+        getModelDisabledReason={getModelDisabledReason}
+      />
+    </RuntimeModeLimitsTargetContext>
   );
   // An open question owns the space above the composer. Only a machine problem,
   // which is why an answer could not go through, stays beside it.

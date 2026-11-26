@@ -1,4 +1,4 @@
-import type { RuntimeMode } from "@t3tools/contracts";
+import type { ProviderRuntimeModeLimit, RuntimeMode } from "@t3tools/contracts";
 import { type LucideIcon, LockIcon, PenLineIcon, ShieldOffIcon, SparklesIcon } from "lucide-react";
 
 export const runtimeModeConfig: Record<
@@ -66,3 +66,39 @@ export function draftSupportedRuntimeModes(
   if (supported.some((modes) => modes.length === 0)) return undefined;
   return runtimeModeOptions.filter((mode) => supported.some((modes) => modes.includes(mode)));
 }
+
+/**
+ * The provider whose folder limits a draft's send is under: the one every thread it starts will
+ * use. Selected models on different providers share none, so no one provider's limits apply.
+ */
+export function draftRuntimeModeLimitsInstance<InstanceId extends string>(
+  activeInstanceId: InstanceId | undefined,
+  multipleModelSelections: ReadonlyArray<{ readonly instanceId: InstanceId }> | null,
+): InstanceId | undefined {
+  const first = multipleModelSelections?.[0];
+  if (multipleModelSelections === null || first === undefined) return activeInstanceId;
+  return multipleModelSelections.every((selection) => selection.instanceId === first.instanceId)
+    ? first.instanceId
+    : undefined;
+}
+
+export function resolveRuntimeModeOptions(
+  modes: ReadonlyArray<RuntimeMode>,
+  limits?: ReadonlyArray<ProviderRuntimeModeLimit>,
+) {
+  return modes.map((mode) => {
+    const reason = limits?.find((limit) => limit.mode === mode)?.reason;
+    return {
+      mode,
+      ...runtimeModeConfig[mode],
+      ...(reason === undefined ? {} : { disabledReason: autoModeLimitMessages[reason] }),
+    };
+  });
+}
+
+const autoModeLimitMessages = {
+  "managed-settings": "Your organization's Claude settings turn auto mode off.",
+  "user-settings": "Your Claude settings turn auto mode off.",
+  "project-settings": "This project's Claude settings turn auto mode off.",
+  settings: "Claude's settings turn auto mode off.",
+} satisfies Record<ProviderRuntimeModeLimit["reason"], string>;

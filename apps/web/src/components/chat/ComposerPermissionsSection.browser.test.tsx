@@ -12,12 +12,16 @@ import {
   useComposerMenuProps,
 } from "./composerEventScope";
 import { ComposerFooterModeControls, ComposerPermissionsSection } from "./ComposerFooterControls";
-import { runtimeModeConfig, runtimeModeOptions } from "./runtimeModeConfig";
+import {
+  resolveRuntimeModeOptions,
+  runtimeModeConfig,
+  runtimeModeOptions,
+} from "./runtimeModeConfig";
 
 const options = runtimeModeOptions.map((mode) => ({ mode, ...runtimeModeConfig[mode] }));
 
 // Mirrors the overflow menu: mode radio items first, then the Permissions section.
-function OverflowMenu() {
+function OverflowMenu({ disabledAuto = false }: { disabledAuto?: boolean }) {
   const [interaction, setInteraction] = useState("plan");
   const [mode, setMode] = useState<RuntimeMode>("full-access");
   const composerMenuProps = useComposerMenuProps();
@@ -33,7 +37,13 @@ function OverflowMenu() {
           </MenuRadioGroup>
           <ComposerPermissionsSection
             runtimeMode={mode}
-            runtimeModeOptions={options}
+            runtimeModeOptions={
+              disabledAuto
+                ? resolveRuntimeModeOptions(runtimeModeOptions, [
+                    { mode: "auto", reason: "project-settings" },
+                  ])
+                : options
+            }
             onRuntimeModeChange={setMode}
           />
         </MenuPopup>
@@ -148,4 +158,14 @@ it("returns focus to the editor when picking the default hides the chip", async 
   await userEvent.click(page.getByRole("menuitemradio", { name: "Full access" }));
   await vi.waitFor(() => expect(handle.focusAtEnd).toHaveBeenCalled());
   await expect.element(screen.getByRole("button", { name: "Model" })).not.toHaveFocus();
+});
+
+it("keeps unavailable Claude Auto visible with its folder-specific reason", async () => {
+  await using screen = await render(<OverflowMenu disabledAuto />, { router: false });
+  await userEvent.click(screen.getByRole("button", { name: "More" }));
+  const auto = page.getByRole("menuitemradio", { name: "Auto", exact: true });
+  await expect.element(auto).toHaveAttribute("aria-disabled", "true");
+  await expect
+    .element(auto)
+    .toHaveAccessibleDescription("This project's Claude settings turn auto mode off.");
 });

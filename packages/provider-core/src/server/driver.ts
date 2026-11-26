@@ -8,6 +8,7 @@ import type {
   ProviderDriverKind,
   ResolvedProviderInstanceEnvironment,
   ProviderInstanceId,
+  ProviderRuntimeModeLimit,
   ModelServiceBinding,
   ProviderInstallState,
   ProviderSetupError,
@@ -47,6 +48,13 @@ export interface ProviderInstance {
   readonly snapshotForCwd?: (
     cwd: string,
   ) => Effect.Effect<ProviderWorkspaceSnapshot, ProviderDriverError>;
+  /**
+   * Modes this instance offers that cannot run in `cwd`. Must stay cheap: clients ask whenever a
+   * mode picker opens, so read configuration and never start the provider.
+   */
+  readonly runtimeModeLimitsForCwd?: (
+    cwd: string,
+  ) => Effect.Effect<ReadonlyArray<ProviderRuntimeModeLimit>>;
   readonly refreshModels?: () => Effect.Effect<void, ProviderDriverError>;
   readonly refreshModelsWhenUninstalled?: boolean;
   readonly invalidateCaches?: Effect.Effect<void>;

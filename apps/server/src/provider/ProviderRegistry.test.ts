@@ -1921,6 +1921,10 @@ it.layer(
             streamChanges: Stream.empty,
             applyUsageLimits: () => Effect.void,
           },
+          runtimeModeLimitsForCwd: (cwd) =>
+            Effect.succeed(
+              cwd === "/project" ? [{ mode: "auto", reason: "project-settings" }] : [],
+            ),
           snapshotForCwd: (directory) =>
             Ref.update(scannedDirectories, (directories) => [...directories, directory]).pipe(
               Effect.as({
@@ -1959,6 +1963,20 @@ it.layer(
 
         yield* Effect.gen(function* () {
           const registry = yield* ProviderRegistry.ProviderRegistry;
+          assert.deepEqual(yield* registry.runtimeModeLimits({ instanceId, scanCwd: "/project" }), [
+            { mode: "auto", reason: "project-settings" },
+          ]);
+          assert.deepEqual(
+            yield* registry.runtimeModeLimits({ instanceId, scanCwd: "/worktree" }),
+            [],
+          );
+          assert.deepEqual(
+            yield* registry.runtimeModeLimits({
+              instanceId: ProviderInstanceId.make("removed"),
+              scanCwd: "/project",
+            }),
+            [],
+          );
           const providers = yield* registry.refreshWorkspaceSnapshot({
             instanceId,
             cwd: "/worktree",
