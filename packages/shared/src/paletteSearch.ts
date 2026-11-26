@@ -10,6 +10,7 @@ const UPPERCASE = /\p{Lu}/u;
 const DIGIT = /\p{N}/u;
 const LETTER = /\p{L}/u;
 const COMBINING_MARKS = /\p{M}/gu;
+const DOT_FROM_LOWERCASED_I = /(?<=i)\u0307/g;
 // Emoji and other symbols can be searched for, so they start words too.
 const SYMBOL = /\p{So}/u;
 const APOSTROPHE = /['’]/;
@@ -821,26 +822,6 @@ function shortestSpan(places: ReadonlyArray<ReadonlyArray<number>>): {
  * snippet, and a short long token only counts where it starts a word.
  * Snippets vary per query, so they skip the field cache.
  */
-const DOT_FROM_LOWERCASED_I = /(?<=i)\u0307/g;
-
-function findExactPhrase(
-  text: string,
-  searched: string,
-  pattern: RegExp,
-  from = 0,
-): SearchRange | null {
-  pattern.lastIndex = from;
-  for (let match = pattern.exec(searched); match !== null; match = pattern.exec(searched)) {
-    const end = match.index + match[0].length;
-    if (startsWordAt(text, match.index) && endsWordAt(text, end)) {
-      return { start: match.index, end };
-    }
-    // A whole character on: from an emoji's second half the pattern finds this match again.
-    pattern.lastIndex = match.index + (searched.codePointAt(match.index)! > 0xffff ? 2 : 1);
-  }
-  return null;
-}
-
 export function findSearchTokenRanges(text: string, query: string): SearchRange[] {
   const { long, words, exact } = messageSearchTokens(query);
   // Each word also without the dot lowercasing "İ" adds, which the text,
