@@ -27,6 +27,15 @@ function matchedSearch(url: string) {
 }
 
 describe("pull requests route search", () => {
+  it("cuts a long author and label before an emoji the limit would split", () => {
+    const author = "a".repeat(199);
+    const label = "b".repeat(199);
+    expect(
+      matchedSearch(
+        `/pull-requests?${new URLSearchParams({ author: `${author}😀`, labels: `${label}🐛` })}`,
+      ),
+    ).toMatchObject({ author, labels: [label] });
+  });
   it("drops a q the URL parser turned into a number", () => {
     expect(matchedSearch("/pull-requests?q=4089")?.q).toBeUndefined();
     expect(matchedSearch("/pull-requests?q=true")?.q).toBeUndefined();
