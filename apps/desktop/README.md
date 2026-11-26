@@ -4,10 +4,18 @@ macOS / Windows 桌面壳，复用 Cox Web UI，内置独立 Node 运行时和�
 
 ## 电脑控制（macOS / Windows）
 
-在 Cox 本地工作区，从 macOS 的 **Cox → Computer Control…** 或 Windows 的 **文件 → 电脑操控…** 打开 **Labs** 并启用电脑控制。首次启用时，Cox 会从 OMO 官方发布下载对应平台的原生引擎并校验 SHA-256。
+在 Cox 本地工作区，从 macOS 的 **Cox → Computer Control…** 或 Windows 的 **文件 → 电脑操控…** 打开 **Labs** 并启用电脑控制。macOS 安装包（含 client-only）自带 Cox 修订并签名的原生引擎；Windows 首次启用时从 OMO 官方发布下载引擎并校验 SHA-256。
 
 - macOS：在系统设置的 **隐私与安全性** 中为正在运行的 **Cox.app** 授予 **屏幕录制**、**辅助功能** 和 **输入监控**。急停快捷键为 **Control+Option+Command+Escape**。
 - Windows：不需要额外授权。急停快捷键为 **Ctrl+Alt+Shift+Esc**。以管理员身份运行的应用无法被操控，除非 Cox 也以管理员身份运行。
+
+macOS 开发模式只使用当前检出的修订引擎。首次启用前，在仓库根目录运行：
+
+```sh
+arch="$(node -p 'process.arch')"
+node scripts/build-mac-computer-engine.mjs --arch "$arch" \
+  --output ".cox/desktop-dev/computer-engine/v5.1.81-cox.1/darwin-$arch/senpi-desktop-engine"
+```
 
 后台输入不会在你正在操作时发出：Cox 会等你停下约 1 秒再继续，期间悬浮控制条显示等待状态；持续操作超过 30 秒时，本次输入不发送并告知 Agent。悬浮控制条显示当前线程、状态和目标窗口预览，停止后需由用户显式恢复。每次输入和元素操作会在日志目录写入 `computer-trace.jsonl`，记录动作、元素角色、投递方式和操作前后的前台窗口，不记录页面文字。此功能适用于收到 Cox MCP 电脑控制工具的任意 Agent。
 
@@ -109,7 +117,7 @@ Windows 未签名 NSIS 使用手动安装方式：下载并校验，在用户明
 
 Windows 支持可选的 `electron-updater` 签名 NSIS 路径：构建时同时设置 `COX_DESKTOP_SIGNED_UPDATES=true`、`COX_DESKTOP_PUBLISHER_NAME` 及标准 `CSC_LINK` / `CSC_KEY_PASSWORD`，打包任务验证安装包 Authenticode 状态和发布者，并写入 `backend.json` 的 `clientAutomaticUpdates` / `clientPublisherName`。主进程必须把这些本地构建信息传给 `ClientUpdates` 的 `automaticUpdates` / `publisherName`；新版本的更新源也必须声明支持签名安装。下载使用固定版本的 `electron-updater`、固定的单一安装包源和发布者签名校验，禁用预发布、降级、差分下载、Web 安装器、自动下载及退出时自动安装。确认后再次校验签名并启动 NSIS，只有启动成功才允许父进程退出。签名路径失败时直接报错，不会降级到未签名安装。应用打包阶段会安装并包含完整 updater 运行依赖树。
 
-当前工作流不注入发布证书；macOS 内测包默认支持上述应用内自动替换，Windows 默认使用手动安装。macOS 工作流额外运行 `smoke:mac-update`，在隔离的含空格和非 ASCII 路径内验证实际 DMG、临时更新进程、应用替换、重启、后端与界面就绪确认及数据保留。公开分发的 Developer ID 签名、公证与真机验收要求仍需满足。
+普通构建不注入发布证书；macOS 内测包默认支持上述应用内自动替换，Windows 默认使用手动安装。macOS 工作流额外运行 `smoke:mac-update`，在隔离的含空格和非 ASCII 路径内验证实际 DMG、临时更新进程、应用替换、重启、后端与界面就绪确认及数据保留。公开分发的 Developer ID 签名、公证与真机验收要求仍需满足。
 
 后端集成入口为 `src/client-updates.ts` 的 `ClientUpdates`：构造后按需调用 `check(manual = false)`、`download()`、`setPolicy("automatic" | "ignore-version" | "never", version?)`，这些方法返回最新状态；`getState()` 读取状态副本，`onState` 接收变化。`apply(): Promise<void>` 仅在 ready 后接受显式请求，成功表示安装器已成功交给系统或启动，不会调用应用退出；失败会更新 error 状态并抛出异常。`close()` 取消正在进行的下载并清理 updater 监听。退出确认及自有后端停止、恢复和应用退出由主进程统一处理。
 
@@ -117,8 +125,8 @@ Windows 支持可选的 `electron-updater` 签名 NSIS 路径：构建时同时�
 
 ### 签名与发布边界
 
-本地没有签名凭据时，macOS 显式使用 ad-hoc 签名生成内测包，Windows 生成未签名内测包。ad-hoc 签名保证应用签名结构完整，但不提供开发者身份认证或公证，仍可能被 Gatekeeper 拦截。macOS 公开分发前需要 Apple Developer ID 签名、公证及干净机器验收，Windows 公开分发前需要代码签名和安装验收。不要把证书或密码提交到仓库。macOS 可通过 `CSC_NAME` 指定钥匙串身份，或通过 `CSC_LINK` 等标准环境变量导入发布证书；当前 CI 不注入发布证书。普通构建只上传工作流附件，正式 `desktop-v*` 发布流程在所有目标成功后发布版本附件和更新源。
+本地没有签名凭据时，macOS 显式使用 ad-hoc 签名生成内测包，Windows 生成未签名内测包。ad-hoc 签名保证应用签名结构完整，但不提供开发者身份认证或公证，仍可能被 Gatekeeper 拦截。macOS 公开分发前需要 Apple Developer ID 签名、公证及干净机器验收，Windows 公开分发前需要代码签名和安装验收。不要把证书或密码提交到仓库。macOS 正式发布工作流会先将配置的 Developer ID Application 证书导入临时钥匙串，以同一身份签名捕获助手、引擎和应用。在其他环境打签名包时，请先将证书及私钥导入钥匙串，设置 `CSC_NAME` 为该身份；若打包器通过 `CSC_LINK` 导入证书，还须设置 `COX_ENGINE_SIGN_IDENTITY` 为同一已导入身份的 SHA-1，或设置匹配的 `CSC_NAME`。普通构建只上传工作流附件，正式 `desktop-v*` 发布流程在所有目标成功后发布版本附件和更新源。
 
-macOS 构建后运行 `pnpm --filter @cox/desktop verify:mac`：严格校验解包目录和只读挂载 DMG 内的应用及内置 Node 签名。CI 在窗口 smoke 前执行该检查；直接启动构建目录不能证明下载后的应用签名有效。此检查不等于 Gatekeeper 公证验收。
+macOS 构建后运行 `pnpm --filter @cox/desktop verify:mac`：严格校验解包目录和只读挂载 DMG 内的应用、内置 Node 和电脑控制引擎的签名。CI 在窗口 smoke 前执行该检查；直接启动构建目录不能证明下载后的应用签名有效。此检查不等于 Gatekeeper 公证验收。
 
 发布前应在两种系统真机覆盖：首次启动、重复启动、已有 CLI 服务并行运行、项目/Git/终端、各目标 Agent 的安装与认证、关闭窗口与退出、崩溃恢复、含空格和非 ASCII 的路径、卸载重装后数据保留。Linux 上的测试和构建不等于 macOS / Windows 真机验证。

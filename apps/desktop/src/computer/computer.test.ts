@@ -1,6 +1,6 @@
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { afterEach, describe, expect, it } from "vite-plus/test";
 import type { DesktopComputerUseState } from "@t3tools/contracts";
 import {
@@ -11,11 +11,14 @@ import {
 } from "./executor.ts";
 import {
   ComputerEngineExitError,
+  COMPUTER_ENGINE_RELEASE,
+  MAC_COMPUTER_ENGINE_BUILD,
   computerEngineAsset,
   computerStopChord,
   EngineClient,
   engineCachePaths,
   openEngine,
+  resolveComputerEngine,
 } from "./engine.ts";
 import { createComputerOverlayPage } from "./overlay-page.ts";
 
@@ -77,6 +80,34 @@ describe("desktop computer host", () => {
     );
     expect(computerStopChord("win32")).toBe("ctrl+alt+shift+escape");
     expect(computerStopChord("darwin")).toBe("ctrl+alt+cmd+escape");
+  });
+  it.each(["x64", "arm64"] as const)("uses only the patched Mac engine on %s", async (arch) => {
+    const home = await mkdtemp(join(tmpdir(), "cox-computer-engine-"));
+    directories.push(home);
+    const resources = join(home, "Resources");
+    const old = engineCachePaths(home, COMPUTER_ENGINE_RELEASE, "darwin", arch)[0]!;
+    await mkdir(dirname(old), { recursive: true });
+    await writeFile(old, "old engine");
+    const dev = join(
+      home,
+      "computer-engine",
+      MAC_COMPUTER_ENGINE_BUILD,
+      `darwin-${arch}`,
+      "senpi-desktop-engine",
+    );
+    await expect(resolveComputerEngine(home, "darwin", arch, undefined)).rejects.toThrow(
+      `node scripts/build-mac-computer-engine.mjs --output ${JSON.stringify(dev)} --arch ${arch}`,
+    );
+    await mkdir(dirname(dev), { recursive: true });
+    await writeFile(dev, "local build");
+    await expect(resolveComputerEngine(home, "darwin", arch, undefined)).resolves.toBe(dev);
+    await expect(resolveComputerEngine(home, "darwin", arch, resources)).rejects.toThrow(
+      "The Cox installation is missing its computer engine",
+    );
+    const bundled = join(resources, "senpi-desktop-engine");
+    await mkdir(resources);
+    await writeFile(bundled, "bundled build");
+    await expect(resolveComputerEngine(home, "darwin", arch, resources)).resolves.toBe(bundled);
   });
   it("keeps the stop latch until explicit resume", async () => {
     const client = await fakeEngine(

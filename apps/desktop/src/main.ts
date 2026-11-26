@@ -57,13 +57,10 @@ import {
 } from "./config.ts";
 import { desktopConnectionError, desktopText } from "./native-text.ts";
 import {
-  acquireComputerEngine,
-  COMPUTER_ENGINE_RELEASE,
   ComputerEngineExitError,
   computerStopChord,
-  engineCachePaths,
-  findEngine,
   openEngine,
+  resolveComputerEngine,
 } from "./computer/engine.ts";
 import {
   captureImage,
@@ -1184,9 +1181,12 @@ async function start() {
     publishComputerState();
     try {
       const engineArch = process.arch === "arm64" ? "arm64" : "x64";
-      const paths = engineCachePaths(home, COMPUTER_ENGINE_RELEASE, process.platform, engineArch);
-      let binary = await findEngine(paths);
-      if (!binary) binary = await acquireComputerEngine(paths[0]!, process.platform, engineArch);
+      const binary = await resolveComputerEngine(
+        home,
+        process.platform,
+        engineArch,
+        app.isPackaged ? process.resourcesPath : undefined,
+      );
       const engine = await openEngine(binary, [], {
         onStderr: (line) => log.write(`computer engine: ${line}\n`),
       });

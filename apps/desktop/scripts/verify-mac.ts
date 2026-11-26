@@ -1,15 +1,18 @@
 import assert from "node:assert/strict";
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
+import { readdirSync } from "node:fs";
 import { mkdtemp, mkdir, readFile, readdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
+import { MAC_COMPUTER_ENGINE_BUILD, computerEngineFile } from "../src/computer/engine.ts";
 
 assert.equal(process.platform, "darwin", "macOS signature verification requires macOS.");
 const flavor = process.env.COX_DESKTOP_CLIENT_ONLY === "true" ? "client-only" : "bundled";
 const output = resolve(import.meta.dirname, "../../../release/desktop", flavor);
 const metadata = JSON.parse(
   await readFile(join(output, "BUILD-" + flavor + "-darwin-" + process.arch + ".json"), "utf8"),
-) as { artifactBaseName: string };
+) as { artifactBaseName: string; computerEngineBuild: string };
+assert.equal(metadata.computerEngineBuild, MAC_COMPUTER_ENGINE_BUILD);
 const basename = metadata.artifactBaseName + "-mac-" + process.arch;
 const temporary = await mkdtemp(join(tmpdir(), "cox-desktop-signatures-"));
 const verify = (application: string) => {
@@ -32,16 +35,30 @@ const verify = (application: string) => {
   execFileSync("codesign", ["--verify", "--deep", "--strict", "--verbose=2", application], {
     stdio: "inherit",
   });
-  execFileSync(
-    "codesign",
-    [
-      "--verify",
-      "--strict",
-      "--verbose=2",
-      join(application, "Contents/Resources/runtime/bin/node"),
-    ],
-    { stdio: "inherit" },
-  );
+  const resources = join(application, "Contents/Resources");
+  const engine = computerEngineFile("darwin");
+  assert.ok(readdirSync(join(resources, "licenses", engine + "-NOTICES")).length > 0);
+  const identity = spawnSync("codesign", ["--display", "--verbose=4", application], {
+    encoding: "utf8",
+  });
+  assert.equal(identity.status, 0, identity.stderr);
+  const team = /^TeamIdentifier=([A-Z0-9]{10})$/m.exec(identity.stderr)?.[1];
+  assert.ok(team || /^Signature=adhoc$/m.test(identity.stderr), "Unknown application signature");
+  for (const binary of ["runtime/bin/node", engine]) {
+    execFileSync(
+      "codesign",
+      [
+        "--verify",
+        "--strict",
+        "--verbose=2",
+        ...(team
+          ? ["-R", `=anchor apple generic and certificate leaf[subject.OU] = "${team}"`]
+          : []),
+        join(resources, binary),
+      ],
+      { stdio: "inherit" },
+    );
+  }
 };
 
 try {
@@ -59,7 +76,7 @@ try {
   } finally {
     execFileSync("hdiutil", ["detach", mounted], { stdio: "inherit" });
   }
-  console.log("PASS: unpacked and DMG application signatures and bundled Node signatures.");
+  console.log("PASS: unpacked and DMG application, Node and computer engine signatures.");
 } finally {
   await rm(temporary, { recursive: true, force: true });
 }

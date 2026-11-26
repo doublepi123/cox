@@ -6,6 +6,7 @@ import { spawn, type ChildProcess } from "node:child_process";
 import { createInterface } from "node:readline";
 
 export const COMPUTER_ENGINE_RELEASE = "v5.1.81";
+export const MAC_COMPUTER_ENGINE_BUILD = `${COMPUTER_ENGINE_RELEASE}-cox.1`;
 const repository = "https://github.com/code-yeongyu/oh-my-openagent/releases/download";
 const engineName = "senpi-desktop-engine";
 
@@ -42,6 +43,7 @@ export async function acquireComputerEngine(
   platform: NodeJS.Platform,
   arch: ComputerEngineArch,
 ): Promise<string> {
+  if (platform === "darwin") throw new Error("macOS requires the patched Cox computer engine.");
   const directory = dirname(destination);
   await mkdir(directory, { recursive: true, mode: 0o700 });
   const asset = computerEngineAsset(platform, arch);
@@ -73,6 +75,28 @@ export async function acquireComputerEngine(
   }
   await rename(temporary, destination);
   return destination;
+}
+
+export async function resolveComputerEngine(
+  home: string,
+  platform: NodeJS.Platform,
+  arch: ComputerEngineArch,
+  resources: string | undefined,
+): Promise<string> {
+  if (platform === "darwin") {
+    const file = computerEngineFile(platform);
+    const binary = resources
+      ? join(resources, file)
+      : join(home, "computer-engine", MAC_COMPUTER_ENGINE_BUILD, `darwin-${arch}`, file);
+    if (await findEngine([binary])) return binary;
+    if (resources)
+      throw new Error(`The Cox installation is missing its computer engine: ${binary}`);
+    throw new Error(
+      `Build the macOS computer engine from the checkout root: node scripts/build-mac-computer-engine.mjs --output ${JSON.stringify(binary)} --arch ${arch}`,
+    );
+  }
+  const paths = engineCachePaths(home, COMPUTER_ENGINE_RELEASE, platform, arch);
+  return (await findEngine(paths)) ?? acquireComputerEngine(paths[0]!, platform, arch);
 }
 
 export class EngineRpcError extends Error {

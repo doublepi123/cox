@@ -6,6 +6,7 @@ import { setTimeout as delay } from "node:timers/promises";
 import { build, Platform, Arch } from "electron-builder";
 import { pruneDesktopPayload } from "../src/package-payload.ts";
 import { fetchBackendRelease, installBackendRelease } from "../src/backend-install.ts";
+import { MAC_COMPUTER_ENGINE_BUILD, computerEngineFile } from "../src/computer/engine.ts";
 
 const directory = resolve(import.meta.dirname, "..");
 const root = resolve(directory, "../..");
@@ -178,6 +179,22 @@ if (!clientOnly) {
 const application = join(stage, "app");
 const licenses = join(stage, "licenses");
 await mkdir(licenses);
+const macEngine = computerEngineFile("darwin");
+if (process.platform === "darwin") {
+  execFileSync(
+    node,
+    [
+      join(root, "scripts/build-mac-computer-engine.mjs"),
+      "--output",
+      join(stage, macEngine),
+      "--arch",
+      process.arch,
+    ],
+    { cwd: root, stdio: "inherit" },
+  );
+  const notices = `${macEngine}-NOTICES`;
+  await cp(join(stage, notices), join(licenses, notices), { recursive: true });
+}
 for (const filename of ["LICENSE", "LICENSES.chromium.html"]) {
   await cp(
     join(directory, "node_modules", "electron", "dist", filename),
@@ -270,7 +287,9 @@ const buildMetadata = {
   electron: manifest.devDependencies.electron,
   clientAutomaticUpdates,
   clientPublisherName: clientPublisherName ?? null,
-  ...(process.platform === "darwin" ? { macUpdateProtocol: 1 } : {}),
+  ...(process.platform === "darwin"
+    ? { macUpdateProtocol: 1, computerEngineBuild: MAC_COMPUTER_ENGINE_BUILD }
+    : {}),
 };
 await writeFile(backendMetadata, JSON.stringify(buildMetadata));
 await mkdir(output, { recursive: true });
@@ -308,6 +327,7 @@ const artifacts = await build({
       { from: licenses, to: "licenses" },
       { from: runtime, to: "runtime" },
       { from: backendMetadata, to: "backend.json" },
+      ...(process.platform === "darwin" ? [{ from: join(stage, macEngine), to: macEngine }] : []),
       ...(process.platform === "win32"
         ? [{ from: join(runtime, "node_modules"), to: "runtime/node_modules" }]
         : []),
@@ -340,7 +360,7 @@ const artifacts = await build({
       hardenedRuntime: true,
       entitlements: join(directory, "entitlements.mac.plist"),
       entitlementsInherit: join(directory, "entitlements.mac.plist"),
-      binaries: ["Contents/Resources/runtime/bin/node"],
+      binaries: ["Contents/Resources/runtime/bin/node", `Contents/Resources/${macEngine}`],
     },
     win: {
       icon: join(root, "apps/web/public/icon-512.png"),

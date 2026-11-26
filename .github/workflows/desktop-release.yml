@@ -68,6 +68,7 @@ jobs:
     env:
       COX_DESKTOP_BACKEND_VERSION: ${{ needs.resolve.outputs.cox_version }}
       COX_DESKTOP_CLIENT_ONLY: ${{ matrix.flavor == 'client-only' && 'true' || 'false' }}
+      HAS_MAC_CERTIFICATE: ${{ secrets.COX_MACOS_CERT_BASE64 != '' }}
       EXPECTED_CLIENT_VERSION: ${{ needs.resolve.outputs.client_version }}
     steps:
       - uses: actions/checkout@v4
@@ -213,6 +214,26 @@ jobs:
             printf '%s' "$APPLE_API_KEY_BASE64" | base64 --decode > "$RUNNER_TEMP/cox-notarization.p8"
             echo "APPLE_API_KEY=$RUNNER_TEMP/cox-notarization.p8" >> "$GITHUB_ENV"
           fi
+      - name: Import the Mac engine signing certificate
+        if: runner.os == 'macOS' && env.HAS_MAC_CERTIFICATE == 'true'
+        id: engine-certificate
+        uses: apple-actions/import-codesign-certs@288b8ec97b82c66b6f2a6baaf7acc8dfbcbe331c # v7.2.0
+        with:
+          p12-file-base64: ${{ secrets.COX_MACOS_CERT_BASE64 }}
+          p12-password: ${{ secrets.COX_MACOS_CERT_PASSWORD }}
+      - name: Select the engine Developer ID Application identity
+        if: runner.os == 'macOS' && env.HAS_MAC_CERTIFICATE == 'true'
+        env:
+          IDENTITIES: ${{ steps.engine-certificate.outputs.identities }}
+        run: |
+          node --input-type=module <<'JS'
+          import { appendFileSync } from "node:fs";
+          const identities = JSON.parse(process.env.IDENTITIES).filter(({ name }) => name.startsWith("Developer ID Application: "));
+          if (identities.length !== 1 || !/^[a-f0-9]{40}$/i.test(identities[0].hash)) {
+            throw new Error("Expected exactly one valid Developer ID Application certificate for the Mac engine.");
+          }
+          appendFileSync(process.env.GITHUB_ENV, `COX_ENGINE_SIGN_IDENTITY=${identities[0].hash}\n`);
+          JS
       - name: Package signed macOS client
         if: runner.os == 'macOS'
         env:
