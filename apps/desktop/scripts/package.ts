@@ -4,6 +4,7 @@ import { chmod, cp, mkdir, readFile, readdir, rm, writeFile } from "node:fs/prom
 import { delimiter, dirname, join, resolve } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { build, Platform, Arch } from "electron-builder";
+import { desktopElectronFuses } from "./package-fuses.ts";
 import { pruneDesktopPayload } from "../src/package-payload.ts";
 import { fetchBackendRelease, installBackendRelease } from "../src/backend-install.ts";
 import { MAC_COMPUTER_ENGINE_BUILD, computerEngineFile } from "../src/computer/engine.ts";
@@ -303,6 +304,10 @@ const artifacts = await build({
     appId: "dev.cox.desktop",
     productName: "Cox",
     electronVersion: manifest.devDependencies.electron,
+    electronFuses: desktopElectronFuses(
+      process.platform,
+      Boolean(process.env.CSC_NAME || process.env.CSC_LINK),
+    ),
     directories: { app: application, output },
     files: [
       "dist/**",
