@@ -36,9 +36,9 @@ const VIDEO_TAG_MAX_LINES = 8;
 
 const INDENTED_CODE_PATTERN = /^(?: {4}| {0,3}\t)/u;
 const BARE_URL_PATTERN = /^<?(https?:\/\/\S+?)>?$/u;
-const IMAGE_EXTENSION_PATTERN = /\.(?:png|jpe?g|gif|webp|avif|heic|heif|svg)(?:$|[?#])/iu;
+const IMAGE_EXTENSION_PATTERN = /\.(?:png|jpe?g|gif|webp|avif|heic|heif|svg)$/iu;
 const MARKDOWN_LINK_PATTERN = /^\[[^\]]*\]\((https?:\/\/[^\s)]+)\)$/u;
-const VIDEO_EXTENSION_PATTERN = /\.(?:mp4|webm|mov|m4v|ogv)(?:$|[?#])/iu;
+const VIDEO_EXTENSION_PATTERN = /\.(?:mp4|webm|mov|m4v|ogv)$/iu;
 
 // Stops at the next `<`, so matching stays linear in the length of the line.
 const VIDEO_TAG_SRC_PATTERN = /<(?:video|source)\b[^<>]*\bsrc\s*=\s*["']([^"']+)["']/iu;
@@ -58,12 +58,12 @@ const TABLE_STRUCTURE_TAG_PATTERN =
 
 const CELL_SPAN_PATTERN = /\b(?:col|row)span\b/iu;
 
-function isWebUrl(url: string): boolean {
+function webUrl(url: string): URL | null {
   try {
     const parsed = new URL(url);
-    return parsed.protocol === "https:" || parsed.protocol === "http:";
+    return parsed.protocol === "https:" || parsed.protocol === "http:" ? parsed : null;
   } catch {
-    return false;
+    return null;
   }
 }
 
@@ -72,11 +72,14 @@ function attachmentFromLine(
 ): { url: string; media: "video" | "image" | "unknown" } | null {
   const url =
     BARE_URL_PATTERN.exec(line.trim())?.[1] ?? MARKDOWN_LINK_PATTERN.exec(line.trim())?.[1];
-  if (url === undefined || !isWebUrl(url)) return null;
-  if (VIDEO_EXTENSION_PATTERN.test(url) || sourceControlClients.mediaUrl(url)?.kind === "video") {
+  if (url === undefined) return null;
+  // Only the path names the file: `report?file=demo.mp4` is a page, not a video.
+  const path = webUrl(url)?.pathname;
+  if (path === undefined) return null;
+  if (VIDEO_EXTENSION_PATTERN.test(path) || sourceControlClients.mediaUrl(url)?.kind === "video") {
     return { url, media: "video" };
   }
-  if (IMAGE_EXTENSION_PATTERN.test(url)) return { url, media: "image" };
+  if (IMAGE_EXTENSION_PATTERN.test(path)) return { url, media: "image" };
   return null;
 }
 
@@ -239,7 +242,7 @@ function splitBodyAt(body: string, baseOffset: number): ReadonlyArray<PullReques
     const source = VIDEO_TAG_END_PATTERN.test(lines[cursor]!)
       ? VIDEO_TAG_SRC_PATTERN.exec(lines.slice(index, cursor + 1).join("\n"))?.[1]
       : undefined;
-    if (source !== undefined && isWebUrl(source)) {
+    if (source !== undefined && webUrl(source) !== null) {
       flushMarkdown();
       segments.push({
         id: `attachment:${segments.length}`,
