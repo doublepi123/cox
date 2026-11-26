@@ -14,6 +14,9 @@ export const en = {
   "withdrawn by {by}": "withdrawn by {by}",
   "Withdrawn by {by}.": "Withdrawn by {by}.",
   "Withdrawn by {by}: {reason}": "Withdrawn by {by}: {reason}",
+  "Queued for {pool}": "Queued for {pool}",
+  "queued, next in line": "queued, next in line",
+  "queued, {count} ahead": "queued, {count} ahead",
   ", or ask an agent to.": ", or ask an agent to.",
   "Line {line}:": "Line {line}:",
   "Leave without saving? Your changes to this file are lost.":
