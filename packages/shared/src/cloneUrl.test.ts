@@ -3,6 +3,12 @@ import { describe, expect, it } from "vite-plus/test";
 import { cloneUrlForProtocol, cloneUrlProtocol, cloneUrlRepositoryPath } from "./cloneUrl.ts";
 
 describe("cloneUrlForProtocol", () => {
+  it("escapes literal SSH URL punctuation without double-encoding existing escapes", () => {
+    expect(cloneUrlForProtocol("ssh://git@host.example/team/repo%20name#1?.git", "https")).toBe(
+      "https://host.example/team/repo%20name%231%3F.git",
+    );
+  });
+
   it("switches between scp-style SSH and HTTPS", () => {
     expect(cloneUrlForProtocol("git@github.com:pingdotgg/t3code.git", "https")).toBe(
       "https://github.com/pingdotgg/t3code.git",

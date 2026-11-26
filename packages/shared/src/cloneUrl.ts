@@ -55,7 +55,7 @@ export function cloneUrlForProtocol(url: string, protocol: CloneProtocol): strin
     }
     const path = isScpLikeCloneUrl(url.trim())
       ? parsed.path.split("/").map(encodeURIComponent).join("/")
-      : parsed.path;
+      : parsed.path.replaceAll("#", "%23").replaceAll("?", "%3F");
     return `https://${parsed.host}/${path}`;
   } catch {
     return null;
