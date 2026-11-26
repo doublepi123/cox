@@ -7,11 +7,16 @@ import {
 } from "@ff-labs/fff-node";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { afterEach, expect, it } from "@effect/vitest";
+import * as HostProcess from "@t3tools/shared/HostProcess";
 import * as Effect from "effect/Effect";
+import * as FileSystem from "effect/FileSystem";
+import * as Layer from "effect/Layer";
+import * as Path from "effect/Path";
 import { ExitCode } from "effect/process/ChildProcessSpawner";
 import { vi } from "vite-plus/test";
 
 import * as WorkspaceSearchIndex from "./WorkspaceSearchIndex.ts";
+import * as VcsProcessModule from "../vcs/VcsProcess.ts";
 import { VcsProcess } from "../vcs/VcsProcess.ts";
 
 afterEach(() => {
@@ -195,5 +200,37 @@ it.effect("refreshes the index through FFF's asynchronous scan", () =>
 
       expect(scanFilesAsync).toHaveBeenCalledOnce();
     }),
+  ),
+);
+
+it.effect("keeps symlinks Git does not ignore when a link's name looks like a git pathspec", () =>
+  Effect.gen(function* () {
+    if ((yield* HostProcess.Platform) === "win32") return;
+    const fs = yield* FileSystem.FileSystem;
+    const path = yield* Path.Path;
+    const vcs = yield* VcsProcess;
+    const cwd = yield* fs.makeTempDirectoryScoped({ prefix: "cox-symlink-pathspec-" });
+    const git = (...args: string[]) =>
+      vcs.run({ operation: "test.git", command: "git", args, cwd });
+    yield* git("init");
+    yield* fs.writeFileString(path.join(cwd, ".gitignore"), "ignored-link\n");
+    yield* fs.writeFileString(path.join(cwd, "a.ts"), "");
+    for (const link of ["docs-link", ":(link)", "ignored-link"]) {
+      yield* fs.symlink("a.ts", path.join(cwd, link));
+    }
+    yield* git("add", "-f", "ignored-link");
+    const searchIndex = yield* WorkspaceSearchIndex.make(cwd);
+    const listed = yield* searchIndex.list();
+    expect(listed.entries.map((entry) => entry.path)).toEqual(
+      expect.arrayContaining([":(link)", "docs-link"]),
+    );
+    expect(listed.entries.map((entry) => entry.path)).not.toContain("ignored-link");
+    expect((yield* searchIndex.search(":(link)", 10, "file")).entries).toContainEqual({
+      path: ":(link)",
+      kind: "file",
+    });
+  }).pipe(
+    Effect.scoped,
+    Effect.provide(VcsProcessModule.layer.pipe(Layer.provideMerge(NodeServices.layer))),
   ),
 );

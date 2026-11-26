@@ -25,9 +25,11 @@ import type {
   ProjectSearchContentsResult,
   ProjectSearchEntriesResult,
 } from "@t3tools/contracts";
+import { scoreSubsequenceMatch } from "@t3tools/shared/searchRanking";
 import { isProjectFaviconPath } from "@t3tools/shared/projectFavicon";
 
 import * as VcsProcess from "../vcs/VcsProcess.ts";
+import { isWithinRoot } from "./KnownWorkspaces.ts";
 import { type IgnoreFile, parseIgnoreFile } from "./IgnorePatterns.ts";
 
 // fff-node's native library stays external; single-executables require disk packages instead of importing them.
@@ -538,6 +540,90 @@ export const make = Effect.fn("WorkspaceSearchIndex.make")(function* (
     }
   });
 
+  const scanSymlinks = Effect.fn("WorkspaceSearchIndex.scanSymlinks")(function* () {
+    const root = yield* fileSystem.realPath(cwd).pipe(Effect.orElseSucceed(() => null));
+    if (root === null) return [];
+    const indexed = yield* runSearch("", WORKSPACE_INDEX_PAGE_SIZE, "directorySearch", () =>
+      finder.directorySearch("", { pageSize: WORKSPACE_INDEX_PAGE_SIZE }),
+    ).pipe(Effect.orElseSucceed(() => null));
+    const directories = new Set(["", ...(indexed?.items ?? []).map((item) => item.relativePath)]);
+    const scanned = yield* Effect.forEach(
+      directories,
+      (directory) =>
+        fileSystem.readDirectoryEntries(path.join(root, directory)).pipe(
+          Effect.map((entries) => ({ directory, entries })),
+          Effect.orElseSucceed(() => ({ directory, entries: [] })),
+        ),
+      { concurrency: 16 },
+    );
+    const repositories = new Set(
+      scanned
+        .filter(({ entries }) => entries.some((entry) => entry.name === ".git"))
+        .map(({ directory }) => directory),
+    );
+    const candidates = scanned.flatMap(({ directory, entries }) =>
+      entries.flatMap((entry) =>
+        entry.type === "SymbolicLink" && entry.name !== ".git"
+          ? [directory ? directory + "/" + entry.name : entry.name]
+          : [],
+      ),
+    );
+    const decision = makeIgnoreFileDecider();
+    const links = (yield* Effect.forEach(
+      candidates,
+      Effect.fnUntraced(function* (relativePath) {
+        const target = yield* fileSystem
+          .realPath(path.join(root, relativePath))
+          .pipe(Effect.orElseSucceed(() => null));
+        if (
+          target === null ||
+          !isWithinRoot(path, target, root) ||
+          path.relative(root, target).split(path.sep).includes(".git")
+        )
+          return null;
+        const stat = yield* fileSystem.stat(target).pipe(Effect.orElseSucceed(() => null));
+        const kind =
+          stat?.type === "File" ? "file" : stat?.type === "Directory" ? "directory" : null;
+        if (kind === null || (yield* decision(relativePath, kind === "directory")) === "ignored")
+          return null;
+        return { path: relativePath, kind } satisfies ProjectEntry;
+      }),
+      { concurrency: 16 },
+    )).filter((entry) => entry !== null);
+    const byRepository = Map.groupBy(links, (entry) => {
+      for (let dir = parentPathOf(entry.path); dir !== undefined; dir = parentPathOf(dir)) {
+        if (repositories.has(dir)) return dir;
+      }
+      return "";
+    });
+    const visible = yield* Effect.forEach(
+      byRepository,
+      ([repository, entries]) =>
+        Effect.gen(function* () {
+          const prefix = repository === "" ? "" : repository + "/";
+          // ./ avoids leading : pathspec magic; check-ignore rejects --literal-pathspecs.
+          const relative = entries.map((entry) => "./" + entry.path.slice(prefix.length));
+          const result = yield* vcsProcess
+            .run({
+              operation: "WorkspaceSearchIndex.listGitIgnored",
+              command: "git",
+              args: ["-c", "core.fsmonitor=false", "check-ignore", "--no-index", "-z", "--stdin"],
+              cwd: path.join(root, repository),
+              stdin: relative.join("\0") + "\0",
+              allowNonZeroExit: true,
+              timeoutMs: 10_000,
+              maxOutputBytes: 16 * 1024 * 1024,
+            })
+            .pipe(Effect.orElseSucceed(() => undefined));
+          const ignored = new Set(result?.exitCode === 0 ? result.stdout.split("\0") : []);
+          return entries.filter((entry, index) => !ignored.has(relative[index]!));
+        }),
+      { concurrency: 4 },
+    );
+    return visible.flat();
+  });
+  let symlinks = yield* Effect.cached(scanSymlinks());
+
   const refresh: WorkspaceSearchIndex["Service"]["refresh"] = Effect.fn(
     "WorkspaceSearchIndex.refresh",
   )(function* () {
@@ -568,6 +654,7 @@ export const make = Effect.fn("WorkspaceSearchIndex.make")(function* (
         }),
     );
     ignoredPaths = yield* loadIgnoredPaths();
+    symlinks = yield* Effect.cached(scanSymlinks());
   });
 
   const list: WorkspaceSearchIndex["Service"]["list"] = Effect.fn("WorkspaceSearchIndex.list")(
@@ -581,9 +668,10 @@ export const make = Effect.fn("WorkspaceSearchIndex.make")(function* (
         mixedItemPath,
       );
       const mapped = mapMixedSearchResult(result, WORKSPACE_INDEX_MAX_ENTRIES);
-      const sortedEntries = withDirectoryAncestors(mapped.entries).toSorted((left, right) =>
-        left.path.localeCompare(right.path),
-      );
+      const sortedEntries = withDirectoryAncestors([
+        ...mapped.entries,
+        ...(yield* symlinks),
+      ]).toSorted((left, right) => left.path.localeCompare(right.path));
       const entries = sortedEntries.slice(0, WORKSPACE_INDEX_MAX_ENTRIES);
       return {
         entries,
@@ -638,7 +726,18 @@ export const make = Effect.fn("WorkspaceSearchIndex.make")(function* (
     if (result.entries.length === 0 && query.includes("{")) {
       result = yield* searchNames(query.replaceAll("{", ""), limit, kind, imageOnly);
     }
-    return { ...result, truncated: incompleteBeforeQuery || result.truncated };
+    const queryText = query.toLowerCase();
+    const links = (yield* symlinks).filter(
+      (entry) =>
+        (kind === undefined || entry.kind === kind) &&
+        (!imageOnly || (entry.kind === "file" && isProjectFaviconPath(entry.path))) &&
+        (queryText === "" || scoreSubsequenceMatch(entry.path.toLowerCase(), queryText) !== null),
+    );
+    const byPath = new Map([...result.entries, ...links].map((entry) => [entry.path, entry]));
+    return {
+      entries: [...byPath.values()].slice(0, limit),
+      truncated: incompleteBeforeQuery || result.truncated || byPath.size > limit,
+    };
   });
 
   const searchContents: WorkspaceSearchIndex["Service"]["searchContents"] = Effect.fn(
