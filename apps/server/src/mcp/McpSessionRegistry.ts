@@ -12,6 +12,7 @@ import * as NetAddress from "effect/net/NetAddress";
 import * as ServerEnvironment from "../environment/ServerEnvironment.ts";
 import * as McpInvocationContext from "./McpInvocationContext.ts";
 import * as McpProviderSession from "@t3tools/provider-core/server/mcpSession";
+import { routineSpan } from "@t3tools/shared/observability";
 
 export interface McpCredentialRequest {
   readonly threadId: ThreadId;
@@ -139,22 +140,22 @@ const makeWithOptions = Effect.fn("McpSessionRegistry.make")(function* (
     },
   );
 
-  const resolve: McpSessionRegistryShape["resolve"] = Effect.fn("McpSessionRegistry.resolve")(
-    function* (rawToken) {
-      if (rawToken.length === 0) return undefined;
-      const tokenHash = yield* hashToken(rawToken);
-      const timestamp = yield* currentTimeMillis;
-      return yield* SynchronizedRef.modify(state, ({ records }) => {
-        const record = records.get(tokenHash);
-        if (!record || timestamp - record.lastAliveAt > livenessWindowMs) {
-          return [undefined, { records }] as const;
-        }
-        const next = new Map(records);
-        next.set(tokenHash, { ...record, lastAliveAt: timestamp });
-        return [record.scope, { records: next }] as const;
-      });
-    },
-  );
+  const resolve: McpSessionRegistryShape["resolve"] = Effect.fn("McpSessionRegistry.resolve", {
+    attributes: routineSpan,
+  })(function* (rawToken) {
+    if (rawToken.length === 0) return undefined;
+    const tokenHash = yield* hashToken(rawToken);
+    const timestamp = yield* currentTimeMillis;
+    return yield* SynchronizedRef.modify(state, ({ records }) => {
+      const record = records.get(tokenHash);
+      if (!record || timestamp - record.lastAliveAt > livenessWindowMs) {
+        return [undefined, { records }] as const;
+      }
+      const next = new Map(records);
+      next.set(tokenHash, { ...record, lastAliveAt: timestamp });
+      return [record.scope, { records: next }] as const;
+    });
+  });
 
   const touch: McpSessionRegistryShape["touch"] = Effect.fn("McpSessionRegistry.touch")(
     function* (threadId) {

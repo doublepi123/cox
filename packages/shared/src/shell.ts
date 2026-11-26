@@ -14,6 +14,7 @@ import * as Path from "effect/Path";
 
 import * as HostProcess from "./HostProcess.ts";
 import * as Context from "effect/Context";
+import { routineSpan } from "./observability.ts";
 const SHELL_ENV_NAME_PATTERN = /^[A-Z0-9_]+$/;
 const WINDOWS_PATH_DELIMITER = ";";
 const POSIX_PATH_DELIMITER = ":";
@@ -763,7 +764,9 @@ function pathSearchCwd(pathValue: string, platform: NodeJS.Platform): string | n
   }
 }
 
-const resolveCommandPathForPlatform = Effect.fn("shell.resolveCommandPathForPlatform")(function* (
+const resolveCommandPathForPlatform = Effect.fn("shell.resolveCommandPathForPlatform", {
+  attributes: routineSpan,
+})(function* (
   command: string,
   options: CommandAvailabilityOptions & { readonly platform: NodeJS.Platform },
 ): Effect.fn.Return<string | null, never, FileSystem.FileSystem | Path.Path> {
@@ -838,10 +841,9 @@ const resolveCommandPathForPlatform = Effect.fn("shell.resolveCommandPathForPlat
   return null;
 });
 
-export const resolveCommandPath = Effect.fn("shell.resolveCommandPath")(function* (
-  command: string,
-  options: CommandAvailabilityOptions = {},
-) {
+export const resolveCommandPath = Effect.fn("shell.resolveCommandPath", {
+  attributes: routineSpan,
+})(function* (command: string, options: CommandAvailabilityOptions = {}) {
   return yield* resolveCommandPathForPlatform(command, {
     env: options.env ?? (yield* HostProcess.Environment),
     platform: yield* HostProcess.Platform,
