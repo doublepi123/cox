@@ -149,6 +149,12 @@ it("keeps unrecognized reasons and provider text out of category messages", () =
     { _tag: "ProviderAdapterProtocolError", reason: "private-config" },
     { _tag: "ProviderAdapterProtocolError", reason: "constructor" },
     { _tag: "constructor", cause: "private-config" },
+    { _tag: "CommandExecutionError", command: "goal", message: "private-goal-output" },
+    {
+      _tag: "CommandExecutionError",
+      command: "review",
+      message: "A goal objective is limited to 4000 characters (got 4001).",
+    },
   ]) {
     assert.equal(
       makeProviderFailure({ cause: { _tag: "ProviderAdapterTurnStartError", cause } }).message,
