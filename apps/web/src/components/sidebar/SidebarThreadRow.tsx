@@ -1386,38 +1386,38 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
                       )
                     ) : !props.settlementSupported ? null : variantAction === "unsettle" ? (
                       <SharedTooltipTrigger
-                          render={
-                            <button
-                              type="button"
-                              aria-label={t("Un-settle thread")}
-                              onClick={handleUnsettleClick}
-                              onPointerDown={handleActionPointerDown}
-                              className={cn(
-                                "inline-flex cursor-pointer items-center gap-1 rounded-md bg-transparent px-1.5 text-xs text-muted-foreground hover:text-foreground",
-                                isWoke && "group-any-hover/sidebar-row:static",
-                              )}
-                            />
-                          }
-                        side="top"
+                        render={
+                          <button
+                            type="button"
+                            aria-label={t("Un-settle thread")}
+                            onClick={handleUnsettleClick}
+                            onPointerDown={handleActionPointerDown}
+                            className={cn(
+                              "inline-flex cursor-pointer items-center gap-1 rounded-md bg-transparent px-1.5 text-xs text-muted-foreground hover:text-foreground",
+                              isWoke && "group-any-hover/sidebar-row:static",
+                            )}
+                          />
+                        }
+                        side="right"
                         label={t("Un-settle thread")}
                         >
                           <Undo2Icon className="mb-px size-3.5" />
                       </SharedTooltipTrigger>
                     ) : (
                       <SharedTooltipTrigger
-                          render={
-                            <button
-                              type="button"
-                              aria-label={t("Settle thread")}
-                              onClick={handleSettleClick}
-                              onPointerDown={handleActionPointerDown}
-                              className={cn(
-                                "inline-flex cursor-pointer items-center gap-1 rounded-md bg-transparent px-2 text-xs text-muted-foreground hover:text-foreground",
-                                isWoke && "group-any-hover/sidebar-row:static",
-                              )}
-                            />
-                          }
-                        side="top"
+                        render={
+                          <button
+                            type="button"
+                            aria-label={t("Settle thread")}
+                            onClick={handleSettleClick}
+                            onPointerDown={handleActionPointerDown}
+                            className={cn(
+                              "inline-flex cursor-pointer items-center gap-1 rounded-md bg-transparent px-2 text-xs text-muted-foreground hover:text-foreground",
+                              isWoke && "group-any-hover/sidebar-row:static",
+                            )}
+                          />
+                        }
+                        side="right"
                         label={t("Settle thread")}
                         >
                           <CheckIcon className="size-3" />
@@ -1605,15 +1605,16 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
                       ) : null}
                       {props.settlementSupported ? (
                         <SharedTooltipTrigger
-                            render={
-                              <button
-                                type="button"
-                                aria-label={t("Settle thread")}
-                                onClick={handleSettleClick}
-                                onPointerDown={handleActionPointerDown}
-                                className="-mr-1 inline-flex cursor-pointer items-center gap-1 rounded-md bg-transparent px-1.5 text-xs text-muted-foreground hover:text-foreground"
-                              />
-                            }
+                          render={
+                            <button
+                              type="button"
+                              aria-label={t("Settle thread")}
+                              onClick={handleSettleClick}
+                              onPointerDown={handleActionPointerDown}
+                              className="-mr-1 inline-flex cursor-pointer items-center gap-1 rounded-md bg-transparent px-1.5 text-xs text-muted-foreground hover:text-foreground"
+                            />
+                          }
+                          side="right"
                           label={t("Settle thread")}
                           >
                             <CheckIcon className="size-3.5" />
