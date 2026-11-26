@@ -530,6 +530,7 @@ export const make = Effect.gen(function* () {
         });
         let gitPrefix = "";
         // stdin avoids argument limits; ignore classification is optional without git/repositories.
+        // ./ avoids leading : pathspec magic; check-ignore rejects --literal-pathspecs.
         const checkIgnore = (paths: ReadonlyArray<string>) =>
           vcsProcess
             .run({
@@ -537,26 +538,26 @@ export const make = Effect.gen(function* () {
               command: "git",
               args: ["-c", "core.fsmonitor=false", "check-ignore", "-z", "--stdin"],
               cwd: path.join(normalizedCwd, gitPrefix),
-              stdin: `${paths.join("\0")}\0`,
+              stdin: `${paths.map((gitPath) => `./${gitPath}`).join("\0")}\0`,
               allowNonZeroExit: true,
               timeoutMs: 10_000,
               maxOutputBytes: 16 * 1024 * 1024,
             })
             .pipe(Effect.orElseSucceed(() => undefined));
         for (const nestedGitRoot of nestedGitRoots) {
-          const probe = yield* checkIgnore([`./${nestedGitRoot.slice(gitPrefix.length)}/.git`]);
+          const probe = yield* checkIgnore([`${nestedGitRoot.slice(gitPrefix.length)}/.git`]);
           if (probe?.exitCode === 128 && probe.stderr.includes(" is in submodule ")) {
             gitPrefix = `${nestedGitRoot}/`;
           }
         }
         const directoryGitPath = target.relativePath.slice(gitPrefix.length);
         // Check ignored folders once to avoid child index lookups; exit 0 guarantees no tracked descendants.
-        // Symlinks and pathspec magic still need per-child checks.
+        // Symlinks and glob characters still need per-child checks.
         if (
           entries.length > IGNORE_CHECK_CHUNK_SIZE &&
           directoryGitPath !== "" &&
           !throughSymlink &&
-          !/^:|[*?[\\]/.test(directoryGitPath) &&
+          !/[*?[\\]/.test(directoryGitPath) &&
           (yield* checkIgnore([directoryGitPath]))?.exitCode === 0
         ) {
           return {
@@ -573,7 +574,7 @@ export const make = Effect.gen(function* () {
           );
           if (!result || (result.exitCode !== 0 && result.exitCode !== 1)) break;
           for (const ignoredPath of result.stdout.split("\0")) {
-            if (ignoredPath !== "") ignored.add(gitPrefix + ignoredPath);
+            if (ignoredPath !== "") ignored.add(gitPrefix + ignoredPath.replace(/^\.\//, ""));
           }
         }
         return {
