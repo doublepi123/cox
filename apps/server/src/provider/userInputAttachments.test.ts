@@ -607,6 +607,21 @@ describe("question answer paths", () => {
             "book.opf":
               '<package><manifest><item id="chapter" href="chapter.xhtml" media-type="application/xhtml+xml"/></manifest><spine><itemref idref="chapter"/></spine></package>',
             "chapter.xhtml":
+              '<html xmlns="http://www.w3.org/1999/xhtml"><body><p>Board<em>&shy;</em><img alt="Anchor symbol"/>&shy;here.</p><p>Dock<img alt="&shy;Anchor&shy;"/>now.</p><p>Stop!&shy;<img alt="Anchor"/>.</p></body></html>',
+          },
+          // Soft hyphens are kept but do not decide whether a description touches a word.
+          expected: [
+            "Board\u00ad Anchor symbol \u00adhere.\nDock \u00adAnchor\u00ad now.\nStop!\u00adAnchor.",
+          ],
+        },
+        {
+          ext: "epub",
+          bounded: true,
+          parts: {
+            "META-INF/container.xml": '<container><rootfile full-path="book.opf"/></container>',
+            "book.opf":
+              '<package><manifest><item id="chapter" href="chapter.xhtml" media-type="application/xhtml+xml"/></manifest><spine><itemref idref="chapter"/></spine></package>',
+            "chapter.xhtml":
               '<html xmlns="http://www.w3.org/1999/xhtml"><head><title>Guide</title></head><body><div>Quarterly revenue<table><tr><th>Month</th><th>Revenue</th></tr><tr><td>June</td><td>400</td></tr></table></div></body></html>',
           },
           expected: ["Quarterly revenue\nMonth\tRevenue"],
