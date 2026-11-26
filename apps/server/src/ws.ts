@@ -1,3 +1,7 @@
+import {
+  CLIENT_CAPABILITIES_QUERY_PARAM,
+  HTTP_USAGE_LIMIT_SOURCES_CAPABILITY,
+} from "@t3tools/contracts";
 import { GitCommandError, OrchestrationDispatchCommandError } from "@t3tools/contracts";
 import * as FeatureFlags from "@t3tools/shared/FeatureFlags";
 import * as Context from "effect/Context";
@@ -1260,6 +1264,7 @@ export const layerWsRpc = (
   clientAnalyticsProps: Readonly<Record<string, unknown>>,
   serverBrowser: ServerBrowser.ServerBrowser["Service"],
   reportProfiles: ServerBrowser.ProfileReporter,
+  httpUsageLimitSources = false,
 ) =>
   Layer.effectContext(
     Effect.gen(function* () {
@@ -1820,6 +1825,7 @@ export const layerWsRpc = (
           : commandProviders;
         const settings = ServerSettings.redactServerSettingsForClient(
           yield* serverSettings.getSettings,
+          httpUsageLimitSources,
         );
         const environment = yield* serverEnvironment.getDescriptor;
         const auth = yield* serverAuth.getDescriptor();
@@ -2679,7 +2685,7 @@ export const layerWsRpc = (
             const settings = yield* providerInstanceMutation === undefined
               ? serverSettings.updateSettings(nextPatch)
               : serverSettings.updateProviderInstance(providerInstanceMutation, nextPatch);
-            return ServerSettings.redactServerSettingsForClient(settings);
+            return ServerSettings.redactServerSettingsForClient(settings, httpUsageLimitSources);
           }),
         [WS_METHODS.serverDiscoverSourceControl]: (_input) => sourceControlDiscovery.discover,
         [WS_METHODS.serverGetTraceDiagnostics]: (_input) =>
@@ -3369,12 +3375,18 @@ export const layerWsRpc = (
                       Stream.map((sources) => ({
                         version: 1 as const,
                         type: "usageLimitSourcesUpdated" as const,
-                        payload: { sources },
+                        payload: {
+                          sources: httpUsageLimitSources
+                            ? sources
+                            : sources.filter((source) => source.kind === "cliproxy"),
+                        },
                       })),
                     )
                   : Stream.empty;
               const settingsUpdates = settingsChanges.pipe(
-                Stream.map((settings) => ServerSettings.redactServerSettingsForClient(settings)),
+                Stream.map((settings) =>
+                  ServerSettings.redactServerSettingsForClient(settings, httpUsageLimitSources),
+                ),
                 Stream.map((settings) => ({
                   version: 1 as const,
                   type: "settingsUpdated" as const,
@@ -3549,7 +3561,16 @@ export const layer = Layer.unwrap(
           return httpEffect;
         }).pipe(
           Effect.provide(
-            layerWsRpc(session, clientAnalyticsProps, serverBrowser, reportProfiles).pipe(
+            layerWsRpc(
+              session,
+              clientAnalyticsProps,
+              serverBrowser,
+              reportProfiles,
+              url.value.searchParams
+                .get(CLIENT_CAPABILITIES_QUERY_PARAM)
+                ?.split(",")
+                .includes(HTTP_USAGE_LIMIT_SOURCES_CAPABILITY),
+            ).pipe(
               Layer.provideMerge(RpcSerialization.layerJson),
               // Handler-context reporters see only request defects, not server-wide defects.
               Layer.provide(DefectReporter.layer),

@@ -24,7 +24,12 @@ import { formatUpcomingTimestamp } from "../../timestampFormat";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { formatContextWindowCompactionMessage } from "./ContextWindowMeter.logic";
 import { ThreadDetailsSection } from "./ThreadDetailsSection";
-import { nextPoolReset, poolSources, resolveThreadDetailsLimits } from "./ThreadDetailsUsage.logic";
+import {
+  nextPoolReset,
+  poolSources,
+  resolveThreadDetailsLimits,
+  resolveThreadHttpQuotas,
+} from "./ThreadDetailsUsage.logic";
 
 const PACE_LABEL: Record<LimitPace, string> = {
   ahead: "Ahead of pace",
@@ -59,7 +64,8 @@ export function ThreadDetailsUsage({
   const nowMinute = useNowMinute();
   const now = Date.parse(`${nowMinute}:00Z`);
   const resolved = resolveThreadDetailsLimits(providerInstanceId, model, providers, sources, now);
-  if (!resolved) return null;
+  const quotas = resolveThreadHttpQuotas(providerInstanceId, sources);
+  if (!resolved && quotas.length === 0) return null;
 
   return (
     <ThreadDetailsSection
@@ -68,11 +74,15 @@ export function ThreadDetailsUsage({
       showHeading={false}
     >
       <div className="grid grid-cols-[auto_minmax(3rem,1fr)_auto] gap-x-3 text-xs">
-        {resolved.kind === "pool" ? (
-          resolved.windows.map((window) => <PoolRow key={window.id} window={window} now={now} />)
-        ) : (
-          <InstanceRows limits={resolved.limits} now={now} />
-        )}
+        {resolved?.kind === "pool"
+          ? resolved.windows.map((window) => <PoolRow key={window.id} window={window} now={now} />)
+          : resolved &&
+            (quotas.length === 0 || limitsNotice(resolved.limits) === null) && (
+              <InstanceRows limits={resolved.limits} now={now} />
+            )}
+        {quotas.map(({ key, accountLabel, window }) => (
+          <LimitRow key={key} window={window} now={now} accountLabel={accountLabel} />
+        ))}
       </div>
     </ThreadDetailsSection>
   );
@@ -161,9 +171,11 @@ export function ThreadDetailsContext({ usage }: { readonly usage: ContextWindowS
 function LimitRow({
   window,
   now,
+  accountLabel,
 }: {
   readonly window: ServerProviderUsageWindow;
   readonly now: number;
+  readonly accountLabel?: string;
 }) {
   const timestampFormat = usePrimarySettings((settings) => settings.timestampFormat);
   const left = remainingPercent(window);
@@ -187,6 +199,7 @@ function LimitRow({
               {formatUpcomingTimestamp(window.resetsAt, timestampFormat, now)}
             </span>
           ) : null}
+          {accountLabel ? <span className="text-muted-foreground">{accountLabel}</span> : null}
           {pace ? <span className="text-muted-foreground">{PACE_LABEL[pace]}</span> : null}
         </>
       }

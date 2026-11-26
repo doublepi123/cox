@@ -168,13 +168,26 @@ const normalizeServerSettings = (
     ),
   );
 
-export function redactServerSettingsForClient(settings: ServerSettings): ServerSettings {
+export function redactServerSettingsForClient(
+  settings: ServerSettings,
+  httpUsageLimitSources = true,
+): ServerSettings {
   const redacted = mapSettingsSecrets(settings, (secret) =>
     secret.sensitive
       ? { value: "", redacted: secret.redacted || secret.value.length > 0 }
       : { value: secret.value, redacted: false },
   );
-  return { ...redacted, secretProviders: withoutUnknownSecretProviderConfigs(redacted) };
+  return {
+    ...redacted,
+    secretProviders: withoutUnknownSecretProviderConfigs(redacted),
+    usageLimitSources: httpUsageLimitSources
+      ? redacted.usageLimitSources
+      : Object.fromEntries(
+          Object.entries(redacted.usageLimitSources).filter(
+            ([, source]) => source.kind === "cliproxy",
+          ),
+        ),
+  };
 }
 
 // A newer kind's config may hold credentials this build cannot recognize, so it never leaves the server.

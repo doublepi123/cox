@@ -2677,6 +2677,16 @@ export const zh = {
   "Favorites not saved": "收藏未保存",
   "Setting not saved": "设置未保存",
   "Add hub": "添加中心",
+  "Add an HTTP quota source": "添加 HTTP 配额来源",
+  "Read quotas from an endpoint on {environmentLabel}.": "从 {environmentLabel} 上的端点读取配额。",
+  "Endpoint URL": "端点 URL",
+  "Bearer token (optional)": "Bearer 令牌（可选）",
+  "Add source": "添加来源",
+  "No usage sources configured.": "尚未配置用量来源。",
+  "HTTP quota source": "HTTP 配额来源",
+  "Add HTTP source": "添加 HTTP 来源",
+  "The saved connection and its credentials are removed from this environment.":
+    "已保存的连接及其凭据将从此环境中移除。",
   "Remove hub": "移除中心",
   "Background Activity": "后台活动",
   "Tune the shared power policy and the background intervals that feed it.":

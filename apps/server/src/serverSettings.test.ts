@@ -45,6 +45,28 @@ import * as ServerSettingsModule from "./serverSettings.ts";
 import { resolveProviderInstanceTerminalEnvironment } from "./terminal/Manager.ts";
 
 const decodeServerSettings = Schema.decodeUnknownEffect(ServerSettings);
+
+it("filters HTTP quota settings for older clients and redacts the bearer token", () => {
+  const id = UsageLimitSourceId.make("custom");
+  const settings: ServerSettings = {
+    ...DEFAULT_SERVER_SETTINGS,
+    usageLimitSources: {
+      [id]: {
+        kind: "http",
+        url: "https://quota.test/v1",
+        managementKey: "quota-token",
+        enabled: true,
+      },
+    },
+  };
+  const supported = ServerSettingsModule.redactServerSettingsForClient(settings, true);
+  assert.propertyVal(supported.usageLimitSources[id]!, "kind", "http");
+  assert.notInclude(JSON.stringify(supported), "quota-token");
+  assert.deepEqual(
+    ServerSettingsModule.redactServerSettingsForClient(settings, false).usageLimitSources,
+    {},
+  );
+});
 const decodeServerSettingsJson = Schema.decodeUnknownEffect(Schema.fromJsonString(ServerSettings));
 const decodeServerSettingsPatch = Schema.decodeUnknownEffect(ServerSettingsPatch);
 const decodeModelService = Schema.decodeSync(ModelServiceConfig);

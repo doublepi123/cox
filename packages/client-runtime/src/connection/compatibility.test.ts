@@ -32,6 +32,7 @@ describe("orchestration protocol compatibility", () => {
       String(ORCHESTRATION_PROTOCOL_VERSION),
     );
     expect(socketUrl.searchParams.get("token")).toBe("secret");
+    expect(socketUrl.searchParams.get("clientCapabilities")).toBe("httpUsageLimitSources");
     expect(socketUrl.searchParams.get("client")).toBe("web");
   });
 

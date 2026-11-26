@@ -2871,6 +2871,17 @@ export const en = {
   "Favorites not saved": "Favorites not saved",
   "Setting not saved": "Setting not saved",
   "Add hub": "Add hub",
+  "Add an HTTP quota source": "Add an HTTP quota source",
+  "Read quotas from an endpoint on {environmentLabel}.":
+    "Read quotas from an endpoint on {environmentLabel}.",
+  "Endpoint URL": "Endpoint URL",
+  "Bearer token (optional)": "Bearer token (optional)",
+  "Add source": "Add source",
+  "No usage sources configured.": "No usage sources configured.",
+  "HTTP quota source": "HTTP quota source",
+  "Add HTTP source": "Add HTTP source",
+  "The saved connection and its credentials are removed from this environment.":
+    "The saved connection and its credentials are removed from this environment.",
   "Remove hub": "Remove hub",
   "Background Activity": "Background Activity",
   "Tune the shared power policy and the background intervals that feed it.":

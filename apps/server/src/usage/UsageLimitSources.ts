@@ -1,5 +1,6 @@
 import {
   DEFAULT_PROVIDER_HEALTH_REFRESH_INTERVAL,
+  HttpQuotaResponse,
   type ProviderDriverKind,
   UsageLimitSourceError,
   type UsageLimitSourceConsumeResetCreditInput,
@@ -19,12 +20,41 @@ import * as Equal from "effect/Equal";
 import * as Layer from "effect/Layer";
 import * as PubSub from "effect/PubSub";
 import * as Ref from "effect/Ref";
+import * as Schema from "effect/Schema";
 import * as Semaphore from "effect/Semaphore";
 import * as Stream from "effect/Stream";
+import * as HttpClientError from "effect/http/HttpClientError";
+import { FetchHttpClient, HttpClient, HttpClientRequest, HttpClientResponse } from "effect/http";
 
 import * as BackgroundPolicy from "../background/BackgroundPolicy.ts";
 import * as Settings from "../serverSettings.ts";
 import { makeCliproxyApi } from "./cliproxyApi.ts";
+const decodeHttpQuotaJson = Schema.decodeUnknownEffect(Schema.fromJsonString(HttpQuotaResponse));
+const decodeHttpQuotaResponse = Effect.fn("UsageLimitSources.decodeHttpQuotaResponse")(function* (
+  response: HttpClientResponse.HttpClientResponse,
+) {
+  let bytes = 0;
+  const text = yield* response.stream.pipe(
+    Stream.mapEffect((chunk) => {
+      bytes += chunk.byteLength;
+      return bytes > 1024 * 1024
+        ? Effect.fail(
+            new HttpClientError.DecodeError({
+              request: response.request,
+              response,
+              description: "HTTP quota response exceeds 1 MiB.",
+            }),
+          )
+        : Effect.succeed(chunk);
+    }),
+    Stream.decodeText(),
+    Stream.runFold(
+      () => "",
+      (text, chunk) => text + chunk,
+    ),
+  );
+  return yield* decodeHttpQuotaJson(text);
+});
 
 export class UsageLimitSources extends Context.Service<
   UsageLimitSources,
@@ -88,6 +118,7 @@ function keepLastGoodReadings(
 /** @public */
 export const make = Effect.gen(function* () {
   const api = yield* makeCliproxyApi;
+  const http = yield* HttpClient.HttpClient;
   const settingsService = yield* Settings.ServerSettingsService;
   const backgroundPolicy = yield* BackgroundPolicy.BackgroundPolicy;
   const stateRef = yield* Ref.make<ReadonlyArray<UsageLimitSourceSnapshot>>([]);
@@ -103,7 +134,7 @@ export const make = Effect.gen(function* () {
     const checkedAt = DateTime.formatIso(yield* DateTime.now);
     const url = URL.parse(config.url);
     const endpoint =
-      url && (url.protocol === "http:" || url.protocol === "https:")
+      config.kind === "cliproxy" && url && (url.protocol === "http:" || url.protocol === "https:")
         ? `${url.origin}${url.pathname.replace(/(\/management\.html)?\/*$/i, "")}`
         : undefined;
     const base = {
@@ -113,6 +144,31 @@ export const make = Effect.gen(function* () {
       checkedAt,
       ...(endpoint ? { endpoint } : {}),
     } as const;
+    const managementKey = config.managementKey;
+    if (config.kind === "http") {
+      if (!url || !/^https?:$/.test(url.protocol) || url.username || url.password) {
+        return { ...base, accounts: [], error: "Invalid HTTP quota source URL." };
+      }
+      const request = HttpClientRequest.get(url).pipe(
+        HttpClientRequest.setHeader("Accept", "application/json"),
+      );
+      const result = yield* http
+        .execute(
+          managementKey
+            ? request.pipe(HttpClientRequest.setHeader("Authorization", `Bearer ${managementKey}`))
+            : request,
+        )
+        .pipe(
+          Effect.flatMap(HttpClientResponse.filterStatusOk),
+          Effect.flatMap(decodeHttpQuotaResponse),
+          Effect.provideService(FetchHttpClient.RequestInit, { redirect: "error" }),
+          Effect.timeout("10 seconds"),
+          Effect.result,
+        );
+      return result._tag === "Success"
+        ? { ...base, accounts: [], quotaAccounts: result.success.accounts }
+        : { ...base, accounts: [], error: "Could not read the HTTP quota source." };
+    }
     if (config.managementKey.length === 0) {
       return { ...base, accounts: [], error: "No management key configured." };
     }
@@ -158,7 +214,7 @@ export const make = Effect.gen(function* () {
       Effect.mapError(() => new UsageLimitSourceError({ detail: "Could not read hub settings." })),
     );
     const config = settings.usageLimitSources[input.sourceId];
-    if (!config?.enabled || !config.managementKey) {
+    if (!config?.enabled || config.kind !== "cliproxy" || !config.managementKey) {
       return yield* new UsageLimitSourceError({
         detail: "The usage limit source is missing or disabled.",
       });

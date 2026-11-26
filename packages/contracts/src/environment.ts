@@ -1,3 +1,5 @@
+export const HTTP_USAGE_LIMIT_SOURCES_CAPABILITY = "httpUsageLimitSources";
+export const CLIENT_CAPABILITIES_QUERY_PARAM = "clientCapabilities";
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
 

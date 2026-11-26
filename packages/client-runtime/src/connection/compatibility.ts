@@ -1,4 +1,6 @@
 import {
+  CLIENT_CAPABILITIES_QUERY_PARAM,
+  HTTP_USAGE_LIMIT_SOURCES_CAPABILITY,
   ORCHESTRATION_PROTOCOL_QUERY_PARAM,
   ORCHESTRATION_PROTOCOL_VERSION,
   type ExecutionEnvironmentDescriptor,
@@ -28,5 +30,6 @@ export function orchestrationProtocolCompatibilityError(
 export function appendOrchestrationProtocol(socketUrl: string): string {
   const url = new URL(socketUrl);
   url.searchParams.set(ORCHESTRATION_PROTOCOL_QUERY_PARAM, String(ORCHESTRATION_PROTOCOL_VERSION));
+  url.searchParams.set(CLIENT_CAPABILITIES_QUERY_PARAM, HTTP_USAGE_LIMIT_SOURCES_CAPABILITY);
   return url.toString();
 }

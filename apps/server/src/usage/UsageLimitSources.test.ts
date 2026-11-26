@@ -4,13 +4,85 @@ import { ServerConfigStreamEvent, UsageLimitSourceId } from "@t3tools/contracts"
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Schema from "effect/Schema";
-import { HttpClient } from "effect/http";
+import { HttpClient, HttpClientResponse } from "effect/http";
 
 import * as BackgroundPolicy from "../background/BackgroundPolicy.ts";
 import * as ServerSettings from "../serverSettings.ts";
 import * as UsageLimitSources from "./UsageLimitSources.ts";
 
 const encodeConfigEvent = Schema.encodeSync(ServerConfigStreamEvent);
+
+it.effect("publishes validated HTTP quotas as display-only accounts", () => {
+  const window = { id: "monthly", kind: "monthly", label: "Monthly", usedPercent: 35 };
+  const accounts = [
+    { id: "account", label: "External plan", providerInstanceId: "work-codex", windows: [window] },
+  ];
+  let usedPercent = 35;
+  let oversized = false;
+  const client = HttpClient.make((request, url) =>
+    Effect.sync(() => {
+      expect(url.href).toBe("https://quota.test/v1");
+      expect(request.headers.authorization).toBe("Bearer test-token");
+      return HttpClientResponse.fromWeb(
+        request,
+        new Response(
+          new ReadableStream({
+            start(controller) {
+              controller.enqueue(
+                new TextEncoder().encode(
+                  JSON.stringify({
+                    version: 1,
+                    accounts: [{ ...accounts[0], windows: [{ ...window, usedPercent }] }],
+                  }),
+                ),
+              );
+              if (oversized) controller.enqueue(new Uint8Array(1024 * 1024).fill(32));
+              controller.close();
+            },
+          }),
+        ),
+      );
+    }),
+  );
+  return Effect.gen(function* () {
+    const sources = yield* UsageLimitSources.make;
+    yield* sources.refresh;
+    const [snapshot] = yield* sources.current;
+    expect(snapshot).toMatchObject({ kind: "http", accounts: [], quotaAccounts: accounts });
+    expect(snapshot?.endpoint).toBeUndefined();
+    usedPercent = 101;
+    yield* sources.refresh;
+    const [failed] = yield* sources.current;
+    expect(failed).toMatchObject({ accounts: [], error: "Could not read the HTTP quota source." });
+    expect(failed?.quotaAccounts).toBeUndefined();
+    usedPercent = 35;
+    oversized = true;
+    yield* sources.refresh;
+    expect((yield* sources.current)[0]).toMatchObject({
+      accounts: [],
+      error: "Could not read the HTTP quota source.",
+    });
+  }).pipe(
+    Effect.provide([
+      ServerSettings.layerTest({
+        usageLimitSources: {
+          [UsageLimitSourceId.make("quota")]: {
+            kind: "http",
+            url: "https://quota.test/v1",
+            managementKey: "test-token",
+            enabled: true,
+          },
+        },
+      }),
+      Layer.mock(BackgroundPolicy.BackgroundPolicy)({
+        shouldRunScopeWork: () => Effect.succeed(false),
+      }),
+      Layer.succeed(HttpClient.HttpClient, client),
+      NodeCrypto.layer,
+    ]),
+    Effect.scoped,
+  );
+});
 
 it.effect("keeps malformed source URLs encodable for config subscribers", () =>
   Effect.gen(function* () {

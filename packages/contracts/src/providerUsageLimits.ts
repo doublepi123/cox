@@ -68,14 +68,34 @@ export const UsageLimitSourceAccount = Schema.Struct({
   usageLimits: ServerProviderUsageLimits,
 });
 export type UsageLimitSourceAccount = typeof UsageLimitSourceAccount.Type;
+export const HttpQuotaAccount = Schema.Struct({
+  id: TrimmedNonEmptyString,
+  label: TrimmedNonEmptyString,
+  providerInstanceId: Schema.optional(ProviderInstanceId),
+  windows: Schema.Array(
+    Schema.Struct({
+      id: ServerProviderUsageWindow.fields.id,
+      kind: ServerProviderUsageWindow.fields.kind,
+      label: ServerProviderUsageWindow.fields.label,
+      usedPercent: ServerProviderUsageWindow.fields.usedPercent,
+      resetsAt: ServerProviderUsageWindow.fields.resetsAt,
+    }),
+  ),
+});
+
+export const HttpQuotaResponse = Schema.Struct({
+  version: Schema.Literal(1),
+  accounts: Schema.Array(HttpQuotaAccount),
+});
 
 export const UsageLimitSourceSnapshot = Schema.Struct({
   id: UsageLimitSourceId,
-  kind: Schema.Literal("cliproxy"),
+  kind: Schema.Literals(["cliproxy", "http"]),
   label: TrimmedNonEmptyString,
   endpoint: Schema.optional(TrimmedNonEmptyString),
   checkedAt: IsoDateTime,
   accounts: ForwardCompatibleArray(UsageLimitSourceAccount),
+  quotaAccounts: Schema.optional(ForwardCompatibleArray(HttpQuotaAccount)),
   error: Schema.optional(TrimmedNonEmptyString),
 });
 export type UsageLimitSourceSnapshot = typeof UsageLimitSourceSnapshot.Type;
