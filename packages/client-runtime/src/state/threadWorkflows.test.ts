@@ -52,8 +52,31 @@ describe("thread workflows", () => {
         { id: "other", status: "ready", capabilities: capabilities({ steer: true }) },
       ],
       messages: [],
+      turnItems: [],
     } as unknown as OrchestrationV2ThreadProjection;
     expect(threadCanSteer(projection, compactCommandIsActive)).toBe(expected);
+  });
+
+  it("queues after Stop reaches the active run while allowing a different run to steer", () => {
+    const projection = {
+      thread: { id: "thread", activeProviderThreadId: "provider-thread" },
+      runs: [{ id: "active", status: "running", providerThreadId: "provider-thread" }],
+      providerThreads: [{ id: "provider-thread", providerSessionId: "session" }],
+      providerSessions: [
+        { id: "session", status: "running", capabilities: capabilities({ steer: true }) },
+      ],
+      turnItems: [{ runId: "active", type: "run_interrupt_request" }],
+    } as unknown as OrchestrationV2ThreadProjection;
+    expect(threadCanSteer(projection, false)).toBe(false);
+    expect(
+      threadCanSteer(
+        {
+          ...projection,
+          runs: [{ ...projection.runs[0]!, id: "next" as (typeof projection.runs)[number]["id"] }],
+        },
+        false,
+      ),
+    ).toBe(true);
   });
 
   it("allows a completed thread to switch providers after its session detaches", () => {

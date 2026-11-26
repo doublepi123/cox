@@ -101,6 +101,16 @@ function supportsSteering(turns: OrchestrationV2ProviderCapabilities["turns"]): 
 
 export function threadCanSteer(projection: Projection | null, isCompacting: boolean): boolean {
   if (isCompacting) return false;
+  if (projection !== null) {
+    const active = resolveActiveThreadRun(projection);
+    if (
+      active &&
+      projection.turnItems.some(
+        (item) => item.runId === active.id && item.type === "run_interrupt_request",
+      )
+    )
+      return false;
+  }
   const turns = projection && resolveThreadProviderSession(projection)?.capabilities.turns;
   return !turns || supportsSteering(turns);
 }
