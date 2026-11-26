@@ -93,7 +93,7 @@ function RestoreDeviceDefaultsButton({
       disabled={changedSettingLabels.length === 0}
       onClick={() => void restoreDefaults()}
     >
-      <RotateCcwIcon className="mx-1 size-3.5" />
+      <RotateCcwIcon className="size-3.5" />
       <span className="max-sm:sr-only">{t("Restore device defaults")}</span>
     </Button>
   );
