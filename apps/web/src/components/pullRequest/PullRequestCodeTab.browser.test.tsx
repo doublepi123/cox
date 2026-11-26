@@ -115,7 +115,7 @@ vi.mock(import("~/state/pullRequests"), async (original) => {
   };
 });
 
-import { render } from "../../../test/render";
+import { act, render } from "../../../test/render";
 import PullRequestCodeTab from "./PullRequestCodeTab";
 
 const detail: PullRequestDetailView = {
@@ -414,6 +414,7 @@ it("hands panel focus from the loading diff to the diff once the diff workers st
     .spyOn(WorkerPoolManager.prototype, "isInitialized")
     .mockImplementation(() => ready);
   using initialize = vi.spyOn(WorkerPoolManager.prototype, "initialize").mockReturnValue(started);
+  using isWorking = vi.spyOn(WorkerPoolManager.prototype, "isWorkingPool").mockReturnValue(true);
   const container = document.createElement("div");
   container.className = "flex h-[700px] w-[900px]";
   // A conversation off the diff puts a panel where the loading body was, which could reuse its node.
@@ -455,12 +456,16 @@ it("hands panel focus from the loading diff to the diff once the diff workers st
   );
   const focus = createWorkspaceFocusController(document);
   using _focus = { [Symbol.dispose]: focus.dispose };
-  await expect.element(screen.getByText("Loading pull request diff...")).toBeVisible();
+  const loading = screen.locator.locator("[data-workspace-focus-default]");
+  await expect.element(loading).toHaveTextContent("Loading pull request diff...");
+  expect(initialize).toHaveBeenCalled();
   expect(focus.focus("panel")).toBe(true);
+  expect(document.activeElement).toBe(loading.element());
 
-  ready = true;
-  start();
-  await vi.waitFor(() =>
-    expect(document.activeElement).toBe(container.querySelector(".diff-render-surface")),
-  );
+  await act(async () => {
+    ready = true;
+    start();
+    await started;
+  });
+  await expect.element(screen.locator.locator(".diff-render-surface")).toHaveFocus();
 });
