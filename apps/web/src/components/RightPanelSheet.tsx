@@ -16,10 +16,12 @@ export function RightPanelSheet(props: {
   return (
     <Sheet
       open={props.open}
-      onOpenChange={(open) => {
-        if (!open) {
-          props.onClose();
+      onOpenChange={(open, eventDetails) => {
+        if (open) return;
+        if (eventDetails.reason === "escape-key" && eventDetails.event.repeat) {
+          return eventDetails.cancel();
         }
+        props.onClose();
       }}
     >
       <SheetPopup
