@@ -45,7 +45,7 @@ const thread = (
   ...overrides,
 });
 
-it("omits custom, user-configured, and unknown models and instance names", () => {
+it("labels custom models by provider without exposing model or instance names", () => {
   expect(
     agentToolProperties({
       tool: "cox_thread_send",
@@ -62,13 +62,13 @@ it("omits custom, user-configured, and unknown models and instance names", () =>
   ).toEqual([
     {
       callerProvider: "claudeAgent",
-      callerModel: undefined,
+      callerModel: "custom:claudeAgent",
       targetProvider: "opencode",
-      targetModel: undefined,
+      targetModel: "custom:opencode",
     },
     {
       callerProvider: "claudeAgent",
-      callerModel: undefined,
+      callerModel: "custom:claudeAgent",
       targetProvider: "unknown",
       targetModel: undefined,
     },
@@ -83,8 +83,8 @@ it("labels public Codex and Claude model families only for vendor endpoints", ()
   const label = (p: ServerProvider, model: string) =>
     providerDimensions([p], { instanceId: p.instanceId, model }).model;
   expect(label(vendor, "new")).toBe("gpt-6-new");
-  expect(label(vendor, "internal-name")).toBeUndefined();
-  expect(label(custom, model.slug)).toBeUndefined();
+  expect(label(vendor, "internal-name")).toBe("custom:codex");
+  expect(label(custom, model.slug)).toBe("custom:codex");
   expect(label(claude, "claude-opus-6")).toBe("claude-opus-6");
 });
 
@@ -98,8 +98,8 @@ it("records canonical model labels from the Antigravity live catalog", () => {
     providerDimensions([antigravity], { instanceId: antigravity.instanceId, model }).model;
   expect(label("gemini-4-hydrogen")).toBe("gemini-4-hydrogen");
   expect(label("antigravity-default")).toBe("gemini-4-neon");
-  expect(label("gemini-4-unlisted")).toBeUndefined();
-  expect(label("private-alias")).toBeUndefined();
+  expect(label("gemini-4-unlisted")).toBe("custom:antigravity");
+  expect(label("private-alias")).toBe("custom:antigravity");
 });
 
 it("drops input strings outside the schema's literals, since rejected calls are recorded too", () => {

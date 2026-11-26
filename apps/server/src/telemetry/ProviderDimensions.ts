@@ -21,7 +21,7 @@ export interface ProviderDimensions {
 /**
  * Anonymous provider and model for a model selection. Instance ids are
  * user-defined, so only the driver kind is reported. The model is reported
- * only when it comes from a vendor catalog and is not a user-added custom model.
+ * by its public vendor catalog name or the non-identifying custom:<driver> label.
  */
 export function providerDimensions(
   providers: ReadonlyArray<ServerProvider>,
@@ -29,13 +29,15 @@ export function providerDimensions(
 ): ProviderDimensions {
   const provider = providers.find((candidate) => candidate.instanceId === selection.instanceId);
   if (provider === undefined) return { provider: "unknown" };
+  if (selection.model === "") return { provider: provider.driver };
+  const custom = { provider: provider.driver, model: `custom:${provider.driver}` };
   if (
     !VENDOR_CATALOGS.has(provider.driver) ||
     provider.auth.endpoint !== undefined ||
     provider.auth.type === "customEndpoint" ||
     provider.auth.type === "bedrock"
   )
-    return { provider: provider.driver };
+    return custom;
   const model =
     provider.models.find((candidate) => candidate.slug === selection.model) ??
     provider.models.find(
@@ -44,7 +46,7 @@ export function providerDimensions(
   const family = VENDOR_CATALOGS.get(provider.driver);
   return model !== undefined && !model.isCustom && (family === undefined || family.test(model.slug))
     ? { provider: provider.driver, model: model.slug }
-    : { provider: provider.driver };
+    : custom;
 }
 
 /** The thread fields agent analytics reads. Ids are used for lookups, never reported. */
