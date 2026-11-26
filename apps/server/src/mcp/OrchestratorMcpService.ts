@@ -2474,7 +2474,14 @@ const make = Effect.gen(function* () {
         input.interactionMode,
       );
       let workspaceStrategy: OrchestrationV2ThreadLaunchWorkspaceStrategy | undefined;
-      if (input.isolation === "worktree" && !isRetryOfAcceptedDelegation) {
+      if (
+        input.isolation === "worktree" &&
+        !isRetryOfAcceptedDelegation &&
+        (yield* threadLaunch.isNonGitProject(parent.thread.projectId))
+      ) {
+        // A plain project folder has no commit of its own; `HEAD` leaves each repository on its default branch.
+        workspaceStrategy = { type: "worktree", baseRef: "HEAD", startFromOrigin: false };
+      } else if (input.isolation === "worktree" && !isRetryOfAcceptedDelegation) {
         const project = yield* requireProject(parent.thread.projectId);
         const base = yield* gitDriver
           .resolveCommit({
