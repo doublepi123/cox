@@ -962,6 +962,14 @@ export function ThemeEditorPanel({
             <Input
               aria-label={t("Filter colors")}
               onChange={(event) => setRoleQuery(event.currentTarget.value)}
+              onKeyDown={(event) => {
+                if (event.key !== "Escape" || !roleQuery) return;
+                if (event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return;
+                if (event.nativeEvent.isComposing || event.keyCode === 229) return;
+                event.preventDefault();
+                event.stopPropagation();
+                setRoleQuery("");
+              }}
               placeholder={t("Filter colors")}
               size="sm"
               value={roleQuery}
@@ -1139,7 +1147,7 @@ export function ThemeEditorPanel({
         if (event.key !== "Escape" || event.defaultPrevented) return;
         if (!event.currentTarget.contains(event.target as Node)) return;
         event.stopPropagation();
-        if (event.nativeEvent.isComposing || event.keyCode === 229) return;
+        if (event.repeat || event.nativeEvent.isComposing || event.keyCode === 229) return;
         onOpenChange(false);
       }}
       ref={panelRef}
