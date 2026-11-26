@@ -38,6 +38,7 @@ import { joinHostPath } from "./filePath";
 import { createFileTreeDragMentionController } from "./fileTreeDragMention";
 import {
   areAllDirectoriesExpanded,
+  onlyChildren,
   readExpandedDirectories,
   setAllDirectoriesExpanded,
   writeExpandedDirectories,
@@ -154,6 +155,9 @@ function buildTreeEntries(
   const expandableDirectoryPaths = directories.filter((entry) => !entry.ignored).map(treePath);
   return { entries, entryKinds, treePaths, directoryPaths, expandableDirectoryPaths };
 }
+
+// A symlink to its own parent lists itself as an only child without end.
+const MAX_FOLDERS_OPENED_WITH_PARENT = 16;
 
 export default function FileBrowserPanel({
   environmentId,
@@ -357,6 +361,7 @@ export default function FileBrowserPanel({
     search.close();
   };
   const expandedPathsRef = useRef(new Set<string>());
+  const openingPathsRef = useRef(new Map<string, number>());
   const expansionRoot = `${environmentId}:${cwd}`;
   const [pendingExpandedPaths] = useState(() => new Set(readExpandedDirectories(expansionRoot)));
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- subscribes to the Pierre tree model to load directories as they are expanded
@@ -366,6 +371,11 @@ export default function FileBrowserPanel({
     for (const path of expandedPaths) {
       if (!currentPaths.has(path)) expandedPaths.delete(path);
     }
+    const openingPaths = openingPathsRef.current;
+    for (const path of openingPaths.keys()) {
+      if (!currentPaths.has(path)) openingPaths.delete(path);
+    }
+    let childrenByParent: ReturnType<typeof onlyChildren> | undefined;
     let restoring = false;
     const loadExpanded = () => {
       if (restoring || model.isSearchOpen()) return;
@@ -373,7 +383,8 @@ export default function FileBrowserPanel({
       for (const path of directoryPaths) {
         const item = model.getItem(path);
         if (!item?.isDirectory() || !("isExpanded" in item)) continue;
-        if ("expand" in item && pendingExpandedPaths.delete(path) && !item.isExpanded()) {
+        const restored = pendingExpandedPaths.delete(path);
+        if ("expand" in item && restored && !item.isExpanded()) {
           restoring = true;
           item.expand();
           restoring = false;
@@ -382,11 +393,40 @@ export default function FileBrowserPanel({
           if (!expandedPaths.has(path)) {
             expandedPaths.add(path);
             changed = true;
+            if (!restored && !openingPaths.has(path))
+              openingPaths.set(path, MAX_FOLDERS_OPENED_WITH_PARENT);
             void load(path.replace(/\/$/, ""));
           }
-        } else if (expandedPaths.delete(path)) {
-          changed = true;
-          setExpandAll(false);
+          const remaining = openingPaths.get(path);
+          if (remaining === undefined) continue;
+          if (childrenByParent === undefined) childrenByParent = onlyChildren(directoryEntries);
+          const child = childrenByParent.get(path.replace(/\/$/, ""));
+          if (child === undefined) continue;
+          if (
+            remaining === 0 ||
+            child?.kind !== "directory" ||
+            (child.ignored &&
+              !directoryEntries.some((entry) => entry.ignored && treePath(entry) === path))
+          ) {
+            openingPaths.delete(path);
+            continue;
+          }
+          const childPath = treePath(child);
+          const childItem = model.getItem(childPath);
+          if (!childItem || !("expand" in childItem)) continue;
+          openingPaths.delete(path);
+          if (!childItem.isExpanded()) {
+            openingPaths.set(childPath, remaining - 1);
+            restoring = true;
+            childItem.expand();
+            restoring = false;
+          }
+        } else {
+          openingPaths.delete(path);
+          if (expandedPaths.delete(path)) {
+            changed = true;
+            setExpandAll(false);
+          }
         }
       }
       if (changed) {
@@ -395,7 +435,7 @@ export default function FileBrowserPanel({
     };
     loadExpanded();
     return model.subscribe(loadExpanded);
-  }, [directoryPaths, expansionRoot, load, model, pendingExpandedPaths]);
+  }, [directoryEntries, directoryPaths, expansionRoot, load, model, pendingExpandedPaths]);
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- pushes ignored-file status into the imperative Pierre tree model
   useEffect(() => {
     model.setGitStatus(

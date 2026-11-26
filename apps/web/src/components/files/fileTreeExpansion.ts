@@ -1,3 +1,4 @@
+import type { ProjectEntry } from "@t3tools/contracts";
 import * as Schema from "effect/Schema";
 
 import { readLocalStorageValue, writeLocalStorageValue } from "~/hooks/useLocalStorage";
@@ -94,4 +95,16 @@ export function setAllDirectoriesExpanded(
     if (expanded) item.expand();
     else item.collapse();
   }
+}
+
+/** Maps each listed parent path to its only child, or to null when it holds several entries. */
+export function onlyChildren(
+  entries: readonly ProjectEntry[],
+): ReadonlyMap<string, ProjectEntry | null> {
+  const result = new Map<string, ProjectEntry | null>();
+  for (const entry of entries) {
+    const parent = entry.path.slice(0, Math.max(0, entry.path.lastIndexOf("/")));
+    result.set(parent, result.has(parent) ? null : entry);
+  }
+  return result;
 }
