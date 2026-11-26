@@ -339,9 +339,16 @@ function WorkEntryLogRow(props: WorkEntryRowProps) {
     );
   }
   const iconConfig = workToneIcon(workEntry.tone);
-  const showWarningIndicator = workEntry.sourceActivityKind === "runtime.warning";
+  const noticeLevel =
+    workEntry.structuredPayload?.type === "system_notice"
+      ? workEntry.structuredPayload.level
+      : undefined;
+  const showWarningIndicator =
+    noticeLevel === "warning" ||
+    (noticeLevel === undefined && workEntry.sourceActivityKind === "runtime.warning");
   const showFailedIndicator =
-    !showWarningIndicator && workEntryDisplayIndicatesToolFailure(workEntry);
+    !showWarningIndicator &&
+    (noticeLevel === "error" || workEntryDisplayIndicatesToolFailure(workEntry));
   const showDestructiveRowStyle =
     !showWarningIndicator &&
     showFailedIndicator &&

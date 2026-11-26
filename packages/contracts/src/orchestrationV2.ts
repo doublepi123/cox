@@ -2100,6 +2100,7 @@ export const OrchestrationV2TurnItem = Schema.Union([
   Schema.Struct({
     ...OrchestrationV2TurnItemBaseFields,
     type: Schema.Literal("system_notice"),
+    level: Schema.optionalKey(Schema.Literals(["info", "warning", "error"])),
     message: Schema.String,
     mcpSignIn: Schema.optional(OrchestrationV2McpSignIn),
   }),
@@ -2937,6 +2938,7 @@ export const OrchestrationV2TurnItemJson = Schema.Union([
   Schema.Struct({
     ...OrchestrationV2TurnItemJsonBaseFields,
     type: Schema.Literal("system_notice"),
+    level: Schema.optionalKey(Schema.Literals(["info", "warning", "error"])),
     message: Schema.String,
     mcpSignIn: Schema.optional(OrchestrationV2McpSignIn),
   }),
