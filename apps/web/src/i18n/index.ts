@@ -39,7 +39,7 @@ export function getFormattingLocale() {
 }
 
 export function useFormattingLocale() {
-  return useSyncExternalStore(subscribe, getFormattingLocale, () => undefined);
+  return useSyncExternalStore(subscribeI18n, getFormattingLocale, () => undefined);
 }
 
 export function translateCurrent(
@@ -76,7 +76,7 @@ function onStorage(event: StorageEvent) {
   publishLanguage();
 }
 
-function subscribe(listener: () => void): () => void {
+export function subscribeI18n(listener: () => void): () => void {
   if (listeners.size === 0 && typeof window !== "undefined") {
     window.addEventListener("storage", onStorage);
     window.addEventListener("languagechange", publishLanguage);
@@ -96,7 +96,7 @@ function snapshot(): string {
 }
 
 export function useTranslation() {
-  const state = useSyncExternalStore(subscribe, snapshot, () => "system:en");
+  const state = useSyncExternalStore(subscribeI18n, snapshot, () => "system:en");
   const [languagePreference, language] = state.split(":") as [LanguagePreference, Language];
   const t = useCallback(
     (key: string, values?: Readonly<Record<string, string | number>>) =>

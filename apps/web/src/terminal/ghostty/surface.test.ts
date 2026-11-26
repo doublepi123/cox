@@ -4,6 +4,7 @@ import {
   INITIAL_TERMINAL_OUTPUT_CURSOR,
   nextTerminalAttachSeedState,
 } from "@t3tools/client-runtime/state/terminal";
+import { setLanguagePreference } from "../../i18n";
 import { synchronizeTerminalSession } from "../../components/ThreadTerminalDrawer";
 
 import { GhosttyTerminalCore, type GhosttyCell, type GhosttyRow } from "./core";
@@ -108,7 +109,14 @@ describe("GhosttyTerminalSurface visibility", () => {
       children: TerminalTestElement[] = [];
       private readonly captures = new Set<number>();
 
-      setAttribute() {}
+      private readonly attributes = new Map<string, string>();
+
+      setAttribute(name: string, value: string) {
+        this.attributes.set(name, value);
+      }
+      getAttribute(name: string) {
+        return this.attributes.get(name) ?? null;
+      }
       append(...children: TerminalTestElement[]) {
         for (const child of children) child.parentElement = this;
       }
@@ -162,6 +170,7 @@ describe("GhosttyTerminalSurface visibility", () => {
     };
     const fakeDocument = {
       activeElement: null as TerminalTestElement | null,
+      documentElement: { lang: "" },
       createElement: (tag: string) => (tag === "canvas" ? canvas : new TerminalTestElement()),
       fonts: Object.assign(new EventTarget(), { load: async () => [], add() {} }),
     };
@@ -654,6 +663,31 @@ describe("GhosttyTerminalSurface visibility", () => {
     surface.focus();
     blur();
     expect(reports()).toEqual([]);
+  });
+
+  it("updates terminal labels during and after surface creation", async () => {
+    const harness = createHarness();
+    setLanguagePreference("en");
+    const pending = harness.create();
+    try {
+      const [, input, scrollbar] = harness.mount.children;
+      expect(input?.getAttribute("aria-label")).toBe("Terminal input");
+      expect(scrollbar?.getAttribute("aria-label")).toBe("Terminal scrollback");
+      setLanguagePreference("zh");
+      expect(input?.getAttribute("aria-label")).toBe("终端输入");
+      expect(scrollbar?.getAttribute("aria-label")).toBe("终端滚动历史");
+      const surface = await pending;
+      expect(surface.input.getAttribute("aria-label")).toBe("终端输入");
+      setLanguagePreference("en");
+      expect(input?.getAttribute("aria-label")).toBe("Terminal input");
+      expect(scrollbar?.getAttribute("aria-label")).toBe("Terminal scrollback");
+      surface.dispose();
+      setLanguagePreference("zh");
+      expect(input?.getAttribute("aria-label")).toBe("Terminal input");
+    } finally {
+      await pending;
+      setLanguagePreference("system");
+    }
   });
 
   it("reports the blur of an input focused while the surface was still loading", async () => {
