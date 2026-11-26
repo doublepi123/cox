@@ -35,6 +35,18 @@ describe("deriveTimelineMinimapItems", () => {
 });
 
 describe("resolveTimelineMinimapPreview", () => {
+  it("does not split a surrogate pair at the preview slice boundary", () => {
+    const linkStart = "[Build log](https://example.com/builds/1042/log?sig=";
+    const linkEnd = ") ";
+    const pad = "a".repeat(1_499 - linkStart.length - linkEnd.length);
+    const preview = resolveTimelineMinimapPreview({
+      id: "turn-1",
+      rowIndex: 0,
+      userText: null,
+      assistantText: `${linkStart}${pad}${linkEnd}🎉 the release build passed`,
+    });
+    expect(preview?.assistantText).toBe("Build log");
+  });
   it("previews a thread autolink as prose, not its URL", () => {
     const preview = resolveTimelineMinimapPreview({
       id: "turn-1",

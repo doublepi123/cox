@@ -1,3 +1,4 @@
+import { splitsSurrogatePair } from "@t3tools/shared/assistantCitations";
 import { parseThreadLinkHref } from "@t3tools/shared/threadLinks";
 import { isAttachmentOnlyBootstrapPrompt } from "@t3tools/shared/composerContextReferences";
 import type { Nodes } from "hast";
@@ -103,7 +104,14 @@ export function resolveTimelineMinimapPreview(
         assistantText: compactMinimapPreview(
           item.assistantText === null
             ? null
-            : markdownNodeText(markdownTree(item.assistantText.slice(0, 1_500))),
+            : markdownNodeText(
+                markdownTree(
+                  item.assistantText.slice(
+                    0,
+                    splitsSurrogatePair(item.assistantText, 1_500) ? 1_499 : 1_500,
+                  ),
+                ),
+              ),
         ),
       };
 }
