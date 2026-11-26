@@ -4522,6 +4522,72 @@ describe("PiAdapterV2", () => {
     }).pipe(Effect.scoped, Effect.provide(layerTest)),
   );
 
+  it.effect("keeps Cox native Pi child work alive after its coordinator fails", () =>
+    Effect.gen(function* () {
+      const fake = yield* makeFakePi;
+      const nativeRuntime: NonNullable<PiAdapterV2Options["runtime"]> = {
+        driver: "omo" as NonNullable<PiAdapterV2Options["runtime"]>["driver"],
+        label: "OMO",
+        connect: makePiRpcConnection,
+        buildLaunch: buildPiRpcLaunch,
+        materializeExtension: materializePiT3McpExtension,
+        nativeSubagents: { requestName: "cox.omo.tasks" },
+      };
+      const tasks = (status: "running" | "completed", updatedAt: string) =>
+        omoTaskEvent(
+          {
+            parent_session_id: "main",
+            tasks: [
+              {
+                task_id: "st_scout",
+                agent_type: "scout",
+                description: "Inspect fixtures",
+                status,
+                updated_at: updatedAt,
+              },
+            ],
+          },
+          FAKE_SESSION_FILE,
+        )!;
+      const { runtime, takeEvent } = yield* openRuntime(
+        fake,
+        "default",
+        THREAD_ID,
+        SESSION_ID,
+        undefined,
+        undefined,
+        nativeRuntime,
+      );
+      const providerThread = yield* runtime.ensureThread({
+        threadId: THREAD_ID,
+        modelSelection: modelSelection("default"),
+        runtimePolicy,
+      });
+      yield* startTurn(runtime, providerThread);
+      yield* fake.takeRequest("prompt");
+      yield* fake.emit({ type: "agent_start" });
+      yield* fake.emit(tasks("running", "2026-11-12T09:00:00Z"));
+      const running = yield* takeEvent((event) => event.type === "subagent.updated");
+      assert.isTrue(running.type === "subagent.updated" && running.subagent.status === "running");
+      yield* fake.emit({
+        type: "message_end",
+        message: { role: "assistant", stopReason: "error", errorMessage: "Rate limited" },
+      });
+      yield* fake.emit({ type: "agent_settled" });
+      const terminal = yield* takeEvent((event) => event.type === "turn.terminal");
+      assert.isTrue(
+        terminal.type === "turn.terminal" &&
+          terminal.status === "failed" &&
+          terminal.childTurnsContinue === true,
+      );
+      yield* fake.emit(tasks("completed", "2026-11-12T09:00:01Z"));
+      const completed = yield* takeEvent((event) => event.type === "subagent.updated");
+      assert.isTrue(
+        completed.type === "subagent.updated" && completed.subagent.status === "completed",
+      );
+    }).pipe(Effect.scoped, Effect.provide(layerTest)),
+  );
+
   it.effect("persists edit patches and write content on file change items", () =>
     Effect.gen(function* () {
       const fake = yield* makeFakePi;

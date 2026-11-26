@@ -2237,6 +2237,17 @@ export const makePiAdapterV2 = Effect.fn("makePiAdapterV2")(function* (
             failureItemOrdinal: itemOrdinal(turn, failureItemId),
             status: "failed",
             failure,
+            ...(!closed &&
+            !stopRequested &&
+            [...(state.nativeSubagents?.values() ?? [])].some(
+              ({ subagent, turnItem }) =>
+                turnItem.providerTurnId === turn.providerTurn.id &&
+                (subagent.status === "pending" ||
+                  subagent.status === "running" ||
+                  subagent.status === "waiting"),
+            )
+              ? { childTurnsContinue: true }
+              : {}),
             ...(turn.activeProviderRetry === null
               ? {}
               : {
