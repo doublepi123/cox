@@ -496,12 +496,13 @@ export interface ViewedImageAsset {
 }
 
 export function resolveViewedImageAsset(
-  source: string,
+  path: string,
   input: {
     readonly threadId: ThreadId;
     readonly workspaceRoot?: string | null | undefined;
   },
 ): ViewedImageAsset | null {
+  const source = /^file:/i.test(path) ? path : path.replace(/[%#?]/g, encodeURIComponent);
   const imageSource = classifyMarkdownImageSource(source, input.workspaceRoot ?? ".");
   if (imageSource._tag !== "WorkspaceFile") return null;
   const resolvedFilePath =
