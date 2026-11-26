@@ -1225,12 +1225,18 @@ importers:
       '@t3tools/provider-core':
         specifier: workspace:*
         version: link:../provider-core
+      '@t3tools/provider-cursor':
+        specifier: workspace:*
+        version: link:../provider-cursor
       '@t3tools/shared':
         specifier: workspace:*
         version: link:../shared
       effect:
         specifier: 4.1.5
         version: 4.1.5(patch_hash=e53a13f2079eefc06c6e31baed952c6121603c215e40c4fed2b3288e8eed883a)
+      yaml:
+        specifier: ^2.9.0
+        version: 2.9.1
     devDependencies:
       '@effect/platform-node':
         specifier: 4.1.5
@@ -1247,9 +1253,6 @@ importers:
       vite-plus:
         specifier: 1.4.0
         version: 1.4.0(@opentelemetry/api@1.10.0)(@tsc-rs/typescript@0.8.0)(@types/node@24.12.4)(@vitest/browser-playwright@5.0.5)(@vitest/ui@5.0.5)(jiti@2.7.0)(playwright@1.60.0)(yaml@2.9.1)
-      yaml:
-        specifier: ^2.9.0
-        version: 2.9.1
 
   packages/provider-fx:
     dependencies:

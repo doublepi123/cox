@@ -40,6 +40,7 @@ import { makeDshInstallation } from "./installation.ts";
 import { buildInitialDshProviderSnapshot, checkDshProviderStatus } from "./status.ts";
 import { makeDshTextGeneration } from "./textGeneration.ts";
 import { dshUsageReader } from "./usage.ts";
+import { discoverDshSkills } from "./skills.ts";
 
 const decodeDshSettings = Schema.decodeSync(DshSettings);
 const MAINTENANCE = {
@@ -87,6 +88,7 @@ export const DshDriver: ProviderDriver<DshSettings, DshDriverEnv, Path.Path> = {
     const http = yield* HttpClient.HttpClient;
     const latestVersions = yield* ProviderLatestVersions.ProviderLatestVersions;
     const effectiveConfig = { ...config, enabled } satisfies DshSettings;
+    const homeDirectory = yield* HostProcess.HomeDirectory;
     const processEnv = yield* mergeProviderInstanceEnvironment(
       environment,
       yield* HostProcess.Environment,
@@ -189,6 +191,16 @@ export const DshDriver: ProviderDriver<DshSettings, DshDriverEnv, Path.Path> = {
       accentColor,
       enabled,
       snapshot,
+      snapshotForCwd: (cwd) =>
+        !effectiveConfig.enabled
+          ? snapshot.getSnapshot
+          : Effect.all([
+              snapshot.getSnapshot,
+              discoverDshSkills(cwd, processEnv, processEnv.HOME || homeDirectory).pipe(
+                Effect.provideService(FileSystem.FileSystem, fileSystem),
+                Effect.provideService(Path.Path, path),
+              ),
+            ]).pipe(Effect.map(([machineSnapshot, skills]) => ({ ...machineSnapshot, skills }))),
       orchestrationAdapter,
       textGeneration,
       installation,

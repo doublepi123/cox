@@ -4,7 +4,7 @@ import { type OrchestrationV2ProviderCapabilities } from "@t3tools/contracts";
 import { readCustomModelEntries } from "@t3tools/shared/model";
 import type * as SecureRandom from "effect/crypto/SecureRandom";
 import * as Effect from "effect/Effect";
-import type * as FileSystem from "effect/FileSystem";
+import * as FileSystem from "effect/FileSystem";
 import * as Path from "effect/Path";
 import * as Schema from "effect/Schema";
 import type * as Scope from "effect/Scope";
@@ -31,6 +31,11 @@ import {
 } from "@t3tools/provider-acp/server/adapter";
 import { DshSettings } from "../settings.ts";
 import { extractDshElicitationForm } from "./elicitation.ts";
+import { discoverDshSkills } from "./skills.ts";
+import {
+  hasCursorSkillMention,
+  rewriteCursorSkillMentions,
+} from "@t3tools/provider-cursor/server/skills";
 import {
   DSH_DRIVER_KIND,
   dshPermissionMode,
@@ -77,13 +82,42 @@ export interface DshAdapterV2Options {
   >;
 }
 
-export function makeDshAcpAdapterFlavor(options: DshAdapterV2Options): AcpAdapterV2Flavor {
+export function makeDshAcpAdapterFlavor(
+  options: DshAdapterV2Options,
+  services: {
+    readonly fileSystem: FileSystem.FileSystem;
+    readonly path: Path.Path;
+    readonly homeDirectory: string;
+  },
+): AcpAdapterV2Flavor {
   return {
     driver: DSH_DRIVER_KIND,
     runtimeHarness: "DeepSeek Harness",
     capabilities: DshProviderCapabilitiesV2,
     customModels: readCustomModelEntries(options.settings.customModels).map((entry) => entry.slug),
     resolveModelId: (selection) => resolveDshModelValue(selection.model),
+    rewriteUserText: (text, turnInput) =>
+      hasCursorSkillMention(text)
+        ? discoverDshSkills(
+            turnInput.runtimePolicy.cwd ?? process.cwd(),
+            options.environment,
+            services.homeDirectory,
+          ).pipe(
+            Effect.map((skills) =>
+              rewriteCursorSkillMentions(
+                text,
+                new Set(
+                  skills
+                    .filter((skill) => skill.userInvocable !== false)
+                    .map((skill) => skill.name),
+                ),
+              ),
+            ),
+            Effect.provideService(FileSystem.FileSystem, services.fileSystem),
+            Effect.provideService(Path.Path, services.path),
+            Effect.orElseSucceed(() => text),
+          )
+        : Effect.succeed(text),
     extractElicitationForm: extractDshElicitationForm,
     registerExtensions: ({ runtime, captureProposedPlan }) =>
       runtime.handleSessionUpdate(({ update }) => {
@@ -113,7 +147,11 @@ export const makeDshAdapterV2 = Effect.fn("makeDshAdapterV2")(function* (
 ) {
   return yield* makeAcpAdapterV2({
     instanceId: options.instanceId,
-    flavor: makeDshAcpAdapterFlavor(options),
+    flavor: makeDshAcpAdapterFlavor(options, {
+      fileSystem: yield* FileSystem.FileSystem,
+      path: yield* Path.Path,
+      homeDirectory: options.environment.HOME || (yield* HostProcess.HomeDirectory),
+    }),
     selfInvocation: options.selfInvocation,
     ...(options.nativeLogging === undefined ? {} : { nativeLogging: options.nativeLogging }),
   });

@@ -30,6 +30,7 @@ import {
 } from "./acpSupport.ts";
 import { extractDshElicitationForm } from "./elicitation.ts";
 import { dshUsageDirectories } from "./usage.ts";
+import { discoverDshSkills } from "./skills.ts";
 import * as HostProcess from "@t3tools/shared/HostProcess";
 import {
   dshRuntimeManifest,
@@ -616,5 +617,69 @@ it.layer(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))("DeepSeek Harness
         { dir: "/home/user/work-dsh/sessions" },
       ]);
     }).pipe(Effect.provideService(HostProcess.Platform, "linux")),
+  );
+});
+
+it.layer(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))("DeepSeek Harness skills", (it) => {
+  it.effect("lists skills from the harness project and user roots in priority order", () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem;
+      const path = yield* Path.Path;
+      const root = yield* fs.makeTempDirectoryScoped({ prefix: "cox-dsh-skills-test-" });
+      const project = path.join(root, "repo");
+      const home = path.join(root, "home");
+      const write = (file: string, name: string, description: string, extra = "") =>
+        Effect.gen(function* () {
+          yield* fs.makeDirectory(path.dirname(file), { recursive: true });
+          yield* fs.writeFileString(
+            file,
+            `---\nname: ${name}\ndescription: ${description}\n${extra}---\nBody\n`,
+          );
+        });
+      yield* fs.makeDirectory(path.join(project, ".git"), { recursive: true });
+      yield* write(path.join(project, ".dsh/skills/greet/SKILL.md"), "greet", "Project greet");
+      yield* write(path.join(project, ".agents/skills/review.md"), "review", "Shared review");
+      yield* write(
+        path.join(project, ".agents/skills/greet/SKILL.md"),
+        "greet",
+        "Shadowed by the dsh root",
+      );
+      yield* write(
+        path.join(project, ".dsh/skills/nested/deeper/SKILL.md"),
+        "deeper",
+        "Nested skills are not discovered",
+      );
+      yield* write(
+        path.join(home, "dsh/skills/deploy/SKILL.md"),
+        "deploy",
+        "User deploy",
+        "disable-model-invocation: true\n",
+      );
+      yield* write(path.join(home, "dsh/skills/.system/hidden/SKILL.md"), "hidden", "System");
+      yield* write(
+        path.join(home, ".agents/skills/quiet.md"),
+        "quiet",
+        "Model only",
+        "user-invocable: false\n",
+      );
+      yield* fs.writeFileString(path.join(project, ".dsh/skills/broken.md"), "no frontmatter");
+
+      const skills = yield* discoverDshSkills(
+        path.join(project, "packages", "app"),
+        { DSH_HOME: path.join(home, "dsh") },
+        home,
+      );
+      assert.deepStrictEqual(
+        skills.map((skill) => [skill.name, skill.description, skill.scope]),
+        [
+          ["deploy", "User deploy", "user"],
+          ["greet", "Project greet", "project"],
+          ["quiet", "Model only", "user"],
+          ["review", "Shared review", "project"],
+        ],
+      );
+      assert.strictEqual(skills.find((skill) => skill.name === "deploy")?.userInvocationOnly, true);
+      assert.strictEqual(skills.find((skill) => skill.name === "quiet")?.userInvocable, false);
+    }).pipe(Effect.scoped),
   );
 });
