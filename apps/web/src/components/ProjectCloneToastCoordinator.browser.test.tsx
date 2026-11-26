@@ -1,9 +1,11 @@
+import { scopeProjectRef } from "@t3tools/client-runtime/environment";
+import { holdProjectCloneToasts } from "../state/projectClones";
 import { ProjectId, type ProjectCloneSnapshot } from "@t3tools/contracts";
 import { expect, it, vi } from "vite-plus/test";
 import { page } from "vite-plus/test/browser";
 
 import { ENVIRONMENT_ID } from "../../test/fakeEnvironment";
-import { render } from "../../test/render";
+import { act, render } from "../../test/render";
 import { ProjectCloneToastCoordinator } from "./ProjectCloneToastCoordinator";
 import { ToastProvider } from "./ui/toast";
 
@@ -14,7 +16,8 @@ vi.mock("../hooks/useRemoveClonedProject", () => ({ useRemoveClonedProject: () =
 vi.mock("../state/environments", () => ({
   useEnvironments: () => ({ environments: [{ environmentId: ENVIRONMENT_ID }] }),
 }));
-vi.mock("../state/projectClones", () => ({
+vi.mock(import("../state/projectClones"), async (original) => ({
+  ...(await original()),
   useEnvironmentProjectClones: () => clones,
   isProjectCloneToastSilenced: () => false,
   silenceProjectCloneToasts: vi.fn(),
@@ -72,4 +75,38 @@ it("shows a failed clone after dismissal and shows progress on retry", async () 
   clones = [{ ...failed, startedAt, endedAt: "2026-11-22T10:00:03.000Z", sequence: 4 }];
   await screen.rerender(ui());
   await expect.element(failure).toBeVisible();
+});
+
+it("shows a clone once its dismissed palette releases the pending toast hold", async () => {
+  const projectId = ProjectId.make("dismissed-start");
+  clones = [
+    {
+      projectId,
+      remoteUrl: "https://example.com/dismissed-start.git",
+      destinationPath: "/projects/dismissed-start",
+      repository: null,
+      phase: "running",
+      stage: "connecting",
+      percent: null,
+      detail: null,
+      error: null,
+      startedAt: "2026-11-22T10:00:00.000Z",
+      endedAt: null,
+      sequence: 1,
+    },
+  ];
+  const release = holdProjectCloneToasts(scopeProjectRef(ENVIRONMENT_ID, projectId));
+  try {
+    await using screen = await render(
+      <ToastProvider>
+        <ProjectCloneToastCoordinator />
+      </ToastProvider>,
+    );
+    const progress = screen.getByText("Cloning dismissed-start", { exact: true });
+    await expect.element(progress).not.toBeInTheDocument();
+    await act(release);
+    await expect.element(progress).toBeVisible();
+  } finally {
+    release();
+  }
 });

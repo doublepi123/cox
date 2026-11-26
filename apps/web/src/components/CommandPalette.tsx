@@ -122,6 +122,7 @@ import { useScratchProject } from "../hooks/useScratchProject";
 import { useWorkflowEnvironmentIds } from "./workflows/useWorkflowEnvironmentIds";
 import { useStartTriage } from "../hooks/useStartTriage";
 import { pickTriageEnvironment } from "../lib/triageTarget";
+import { holdProjectCloneToasts, silenceProjectCloneToasts } from "../state/projectClones";
 import { useNewProject } from "../hooks/useNewProject";
 import { useOrderWhileOpen } from "../hooks/useOrderWhileOpen";
 import { reportProjectFailure, useProjectPin } from "../hooks/useProjectGroupUpdate";
@@ -1951,40 +1952,59 @@ function OpenCommandPaletteDialog(props: {
     }
 
     setIsRemoteProjectCloning(true);
-    const startResult = await startProjectClone({
-      environmentId: addProjectCloneFlow.environmentId,
-      input: {
-        projectId: newProjectId(),
-        title: inferProjectTitleFromPath(destinationPath),
-        createdAt: new Date().toISOString(),
-        remoteUrl: addProjectCloneFlow.remoteUrl,
-        destinationPath,
-      },
+    const requestedId = newProjectId();
+    const { session } = useCommandPaletteStore.getState();
+    let dismissed = false;
+    const stopWatching = useCommandPaletteStore.subscribe((state) => {
+      if (!state.open || state.mode !== "command" || state.session !== session) dismissed = true;
     });
-    setIsRemoteProjectCloning(false);
-    if (startResult._tag === "Failure") {
-      if (!isAtomCommandInterrupted(startResult)) {
-        toastManager.add(
-          stackedThreadToast({
-            type: "error",
-            title: "Clone failed",
-            description: errorMessage(squashAtomCommandFailure(startResult)),
-          }),
-        );
+    const releaseToastHold = holdProjectCloneToasts(
+      scopeProjectRef(addProjectCloneFlow.environmentId, requestedId),
+    );
+    const navigateAfterClone = async () => {
+      const startResult = await startProjectClone({
+        environmentId: addProjectCloneFlow.environmentId,
+        input: {
+          projectId: requestedId,
+          title: inferProjectTitleFromPath(destinationPath),
+          createdAt: new Date().toISOString(),
+          remoteUrl: addProjectCloneFlow.remoteUrl,
+          destinationPath,
+        },
+      });
+      setIsRemoteProjectCloning(false);
+      if (startResult._tag === "Failure") {
+        if (!isAtomCommandInterrupted(startResult)) {
+          toastManager.add(
+            stackedThreadToast({
+              type: "error",
+              title: "Clone failed",
+              description: errorMessage(squashAtomCommandFailure(startResult)),
+            }),
+          );
+        }
+        return;
       }
-      return;
-    }
-    setOpen(false);
-    void suggestAppAccessForRemote(
-      addProjectCloneFlow.environmentId,
-      addProjectCloneFlow.remoteUrl,
-    );
-    const projectRef = scopeProjectRef(
-      addProjectCloneFlow.environmentId,
-      startResult.value.projectId,
-    );
-    await waitForProject(projectRef, 3_000).catch(() => null);
-    const navigationResult = await settlePromise(() => openAddedProject(projectRef));
+      void suggestAppAccessForRemote(
+        addProjectCloneFlow.environmentId,
+        addProjectCloneFlow.remoteUrl,
+      );
+      const projectRef = scopeProjectRef(
+        addProjectCloneFlow.environmentId,
+        startResult.value.projectId,
+      );
+      await waitForProject(projectRef, 3_000).catch(() => null);
+      if (dismissed) return;
+      silenceProjectCloneToasts(projectRef);
+      stopWatching();
+      setOpen(false);
+      return settlePromise(() => openAddedProject(projectRef));
+    };
+    const navigationResult = await navigateAfterClone().finally(() => {
+      stopWatching();
+      releaseToastHold();
+    });
+    if (navigationResult === undefined) return;
     if (navigationResult._tag === "Failure") {
       const error = squashAtomCommandFailure(navigationResult);
       toastManager.add(
