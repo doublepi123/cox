@@ -53,12 +53,13 @@ cox workflow cancel <run> [--reason '<why>']
 cox workflow questions [--kind <kind>]
 cox workflow signal '{"choice":"yes"}' --run <run> --wait <name>
 cox workflow signal '<json>' --workflow <name> --channel <channel>
+cox workflow withdraw --run <run> --wait <name> [--reason '<why>']
 cox workflow hooks
 cox workflow store list
 cox workflow store set <key> '<json>'
 ```
 
-Every start needs a `--key`: starting twice with the same key returns the same run — even after a version bump — so retries do not duplicate work. Use `signal` with `--run` and `--wait` to answer a question or wake a run, or with `--workflow` and `--channel` to wake whichever run waits on that channel. A signal for a question that is no longer open is kept for a later wait rather than refused, so check `cox workflow questions` first. Use `store` to read or change state kept between runs.
+Every start needs a `--key`: starting twice with the same key returns the same run — even after a version bump — so retries do not duplicate work. Use `signal` with `--run` and `--wait` to answer a question or wake a run, or with `--workflow` and `--channel` to wake whichever run waits on that channel. A signal for a question that is no longer open is kept for a later wait rather than refused, so check `cox workflow questions` first. Use `withdraw` when a question no longer needs an answer: its `ask` returns `None`, as on a timeout, and the run goes on; the step records who withdrew it and why. A workflow does the same from a step with `withdraw({ run, name, reason })`. Use `store` to read or change state kept between runs.
 
 For the `cox_workflow` MCP tool, full access in default interaction mode is required to start, signal, resume or cancel runs, change stored state, or read webhook paths. Lower modes can still read runs, questions and stored state.
 

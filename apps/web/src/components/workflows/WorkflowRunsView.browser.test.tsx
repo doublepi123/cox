@@ -521,6 +521,34 @@ describe("WorkflowRunsView", () => {
     await expect.element(await card("old")).toMatchTextContent("Chrome on Linux said Yes: Fine");
   });
 
+  it("says who withdrew a question that ended unanswered, and why", async () => {
+    setup(
+      {
+        runs: [run({ runId: "ship", title: "Ship", status: "completed", endedAt: at(2) })],
+        questions: [],
+      },
+      {
+        ship: [
+          step({
+            name: "wanted",
+            kind: "ask",
+            endedAt: at(1),
+            detail: "withdrawn by cox CLI: settled elsewhere",
+            result: { withdrawn: { by: "cox CLI", reason: "settled elsewhere" } },
+          }),
+        ],
+      },
+    );
+    await using screen = await render(page("ship"));
+
+    const flow = screen.getByRole("navigation", { name: "Steps so far" });
+    await expect.element(flow).toMatchTextContent(/wanted.*withdrawn by cox CLI/);
+    await flow.getByRole("button", { name: /wanted/ }).click();
+    await expect
+      .element(screen.getByRole("region", { name: "wanted" }))
+      .toMatchTextContent(/withdrawn · 1m.*Withdrawn by cox CLI: settled elsewhere/);
+  });
+
   it("opens an invoked run from its parent's story", async () => {
     setup(
       {

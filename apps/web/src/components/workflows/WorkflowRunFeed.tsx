@@ -65,6 +65,7 @@ import {
   workflowResultLines,
   workflowRunNow,
   workflowRunState,
+  workflowWithdrawal,
   workflowSaidStart,
   workflowStepReferences,
   workflowStepTime,
@@ -1274,11 +1275,14 @@ function WorkflowBeatRow({
       case "agent":
         return said === null ? null : workflowOneLine(said);
       case "ask":
-        return answer === null
-          ? gt("nobody answered")
-          : answer.answeredBy === null || isOwnWorkflowAnswer(answer, sessionId)
+        if (answer !== null)
+          return answer.answeredBy === null || isOwnWorkflowAnswer(answer, sessionId)
             ? gt("You said {choice}", { choice: answer.choice })
             : gt("{who} said {choice}", { who: answer.answeredBy, choice: answer.choice });
+        const withdrawal = workflowWithdrawal(beat.result);
+        return withdrawal === null
+          ? gt("nobody answered")
+          : gt("withdrawn by {by}", { by: withdrawal.by });
       case "sleep":
       case "wait":
         return null;
@@ -1506,6 +1510,23 @@ function WorkflowBeatCard({
       );
     case "ask": {
       const answer = workflowAnswer(beat.result);
+      const withdrawal = answer === null ? workflowWithdrawal(beat.result) : null;
+      if (withdrawal !== null)
+        return (
+          <Note
+            label={beat.name}
+            detail={
+              <p className="mt-3 text-sm">
+                {withdrawal.reason === null
+                  ? gt("Withdrawn by {by}.", { by: withdrawal.by })
+                  : gt("Withdrawn by {by}: {reason}", {
+                      by: withdrawal.by,
+                      reason: withdrawal.reason,
+                    })}
+              </p>
+            }
+          >{`${gt("withdrawn")} · ${length}`}</Note>
+        );
       if (answer === null)
         return <Note label={beat.name}>{`${gt("nobody answered")} · ${length}`}</Note>;
       const who = isOwnWorkflowAnswer(answer, sessionId) ? null : answer.answeredBy;
