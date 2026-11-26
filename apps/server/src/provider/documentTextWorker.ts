@@ -72,12 +72,17 @@ function xml(source: string, extension: string): XmlNode {
     stack.at(-1)!.children.push(node);
     stack.push(node);
   });
-  parser.on("closetag", () => {
+  parser.on("closetag", (tag) => {
     const node = stack.pop()!;
     const parent = stack.at(-1)!;
     // Markup-compatibility fallbacks repeat their mc:Choice content, e.g. Word text boxes.
     // Keep one when no Choice carries text, such as a chart with a VML caption.
     if (
+      (htmlEntities && node.name === "head" && stack[1]?.name === "html") ||
+      (htmlEntities &&
+        (stack[1] ?? node).name === "html" &&
+        Object.hasOwn(tag.attributes, "hidden") &&
+        !/^until-found$/i.test(String(tag.attributes.hidden))) ||
       (node.name === "Fallback" && parent.hasTextChoice) ||
       (word &&
         node.name === "r" &&
