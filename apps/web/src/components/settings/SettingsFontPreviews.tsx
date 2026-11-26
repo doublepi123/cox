@@ -16,6 +16,7 @@ import { DEFAULT_COMPOSER_PLACEHOLDER } from "../../composerPlaceholder";
 import { resolveDiffThemeName, type DiffThemeName } from "../../lib/diffRendering";
 import { PREFERRED_HIGHLIGHTER } from "../../lib/syntaxHighlighting";
 import { GhosttyTerminalSurface } from "~/terminal/ghostty/surface";
+import { Skeleton } from "../ui/skeleton";
 
 const PREVIEW_SKILLS: ReadonlyArray<ServerProviderSkill> = [
   { name: "frontend-design", path: ".agents/skills/frontend-design/SKILL.md", enabled: true },
@@ -122,7 +123,12 @@ export function CodeFontPreview() {
   // An appearance switch keeps the previous theme's preview up while the new one renders.
   const [htmlByFile, setHtmlByFile] = useState(loadedHtml);
   if (loadedHtml !== null && loadedHtml !== htmlByFile) setHtmlByFile(loadedHtml);
-  if (htmlByFile === null) return null;
+  if (htmlByFile === null)
+    return (
+      <div className="mt-1 mb-2">
+        <Skeleton shape="card" height="8rem" />
+      </div>
+    );
   return (
     <div className="mt-1 mb-2 space-y-2">
       {htmlByFile.map((html) => (

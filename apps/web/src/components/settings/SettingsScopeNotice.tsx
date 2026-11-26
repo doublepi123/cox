@@ -1,7 +1,7 @@
 import { SharedTooltipTrigger } from "../ui/shared-tooltip";
 import { useTranslation } from "../../i18n";
 import { resolveEnvironmentMachineKind, type EnvironmentId } from "@t3tools/contracts";
-import { useLocation, useNavigate } from "@tanstack/react-router";
+import { useNavigate } from "@tanstack/react-router";
 import { ChevronRightIcon, LayersIcon } from "lucide-react";
 import type { ReactNode } from "react";
 
@@ -15,6 +15,7 @@ import { ITEM_ROW_CLASSNAME } from "./itemRows";
 import { SettingsGroup } from "./SettingsGroup";
 import { SettingsPageContainer, SettingsSection } from "./settingsLayout";
 import { useSettingsScope } from "./SettingsScopeContext";
+import { useRenderedSettingsPathname } from "./useRenderedSettingsPathname";
 import type { SettingsScopeSearch } from "./settingsScope";
 import {
   settingsScopeEnvironmentAddress,
@@ -46,7 +47,7 @@ export function SettingsScopeNotice({
   const { t } = useTranslation();
   const { selectScope, search, groups } = useSettingsScope();
   const navigate = useNavigate({ from: "/settings" });
-  const pathname = useLocation({ select: (location) => location.pathname });
+  const pathname = useRenderedSettingsPathname();
   const { environments } = useEnvironments();
   const environmentIcon = (environment: EnvironmentPresentation | undefined) =>
     environment ? (

@@ -114,6 +114,7 @@ import {
 import { Label } from "../ui/label";
 import { Menu, MenuTrigger, MenuPopup, MenuItem, MenuSeparator } from "../ui/menu";
 import { ToggleGroup, Toggle } from "../ui/toggle-group";
+import { Skeleton } from "../ui/skeleton";
 import { Empty, EmptyHeader, EmptyTitle, EmptyDescription, EmptyMedia } from "../ui/empty";
 import { ProviderModelPicker } from "../chat/ProviderModelPicker";
 import { TraitsPicker } from "../chat/TraitsPicker";
@@ -568,6 +569,8 @@ function ScheduledTaskEnvironmentList({
 
   const loaded = states.filter((state) => state.connected && state.error === null && state.tasks);
   const populated = loaded.filter((state) => state.tasks && state.tasks.length > 0);
+  const loading = states.some((state) => state.connected && state.error === null && !state.tasks);
+  const placeholder = loading && populated.length === 0;
   const summaries: Record<string, string[]> = {
     "Not connected:": [],
     "Loading scheduled tasks on": [],
@@ -583,7 +586,7 @@ function ScheduledTaskEnvironmentList({
     } else if (error !== null) {
       summaries["Could not load scheduled tasks:"]!.push(`${label}: ${error}`);
     } else if (!tasks) {
-      summaries["Loading scheduled tasks on"]!.push(label);
+      if (!placeholder) summaries["Loading scheduled tasks on"]!.push(label);
     } else if (tasks.length === 0 && populated.length > 0) {
       summaries["No tasks on"]!.push(label);
     }
@@ -624,7 +627,8 @@ function ScheduledTaskEnvironmentList({
           role="status"
         />
       ) : null}
-      {populated.length === 0 && loaded.length > 0 ? (
+      {placeholder ? <ScheduledTaskRowsSkeleton /> : null}
+      {populated.length === 0 && loaded.length > 0 && !loading ? (
         <SettingsRow
           title={t("No scheduled tasks")}
           description={t("No tasks match this environment and project selection.")}
@@ -698,7 +702,7 @@ function ScheduledTaskEnvironmentSection({
       ) : tasksQuery.error ? (
         <SettingsRow title={t("Could not load scheduled tasks")} description={tasksQuery.error} />
       ) : !tasks ? (
-        <SettingsRow title={t("Loading scheduled tasks…")} role="status" />
+        <ScheduledTaskRowsSkeleton />
       ) : (
         <>
           {taskId && !linkedTask ? (
@@ -729,6 +733,37 @@ function ScheduledTaskEnvironmentSection({
         </>
       )}
     </SettingsSection>
+  );
+}
+
+const SKELETON_ROWS = [0, 1] as const;
+
+function ScheduledTaskRowsSkeleton() {
+  const { t } = useTranslation();
+  return (
+    <div
+      role="status"
+      aria-label={t("Loading scheduled tasks…")}
+      className="divide-y divide-border/50"
+    >
+      {SKELETON_ROWS.map((row) => (
+        <div
+          key={row}
+          aria-hidden
+          className="flex items-center justify-between gap-3 px-3 py-3 sm:px-4"
+        >
+          <div className="min-w-0 flex-1 space-y-2">
+            <Skeleton shape="pill" width="10rem" height="1rem" />
+            <Skeleton shape="pill" width="min(100%, 24rem)" height="0.75rem" />
+            <Skeleton shape="pill" width="12rem" height="0.75rem" />
+          </div>
+          <div className="flex shrink-0 items-center gap-2">
+            <Skeleton shape="pill" width="2.25rem" height="1.25rem" />
+            <Skeleton width="1.75rem" height="1.75rem" />
+          </div>
+        </div>
+      ))}
+    </div>
   );
 }
 

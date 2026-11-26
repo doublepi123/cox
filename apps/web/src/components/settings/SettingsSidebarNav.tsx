@@ -38,6 +38,7 @@ import {
   SidebarInput,
 } from "../ui/sidebar";
 import { scrollToSettingsTarget } from "./settingsLayout";
+import { useSettingsSectionPrefetch } from "./useSettingsSectionPrefetch";
 import {
   searchSettings,
   revealSettingsSearchTarget,
@@ -106,6 +107,7 @@ export function SettingsSidebarNav({
   const isMenuLayout = layout === "menu";
   const navArea = workspaceAreaProps("settings-nav", 0, t("Settings sections"));
   const navigate = useNavigate();
+  const preloadSection = useSettingsSectionPrefetch();
   const currentHash = useLocation({ select: (location) => location.hash });
   const activePath = SETTINGS_DETAIL_PAGE_PARENTS[pathname] ?? pathname;
   const navGroups = settingsNavGroups(useHasSecretProvidersEnvironment());
@@ -215,12 +217,18 @@ export function SettingsSidebarNav({
     if (results.length === 0) return;
     if (event.key === "ArrowDown") {
       event.preventDefault();
-      setActiveResultIndex((activeResultIndex + 1) % results.length);
+      const next = (activeResultIndex + 1) % results.length;
+      setActiveResultIndex(next);
+      const result = results[next];
+      if (result) preloadSection(result.to);
       return;
     }
     if (event.key === "ArrowUp") {
       event.preventDefault();
-      setActiveResultIndex((activeResultIndex - 1 + results.length) % results.length);
+      const next = (activeResultIndex - 1 + results.length) % results.length;
+      setActiveResultIndex(next);
+      const result = results[next];
+      if (result) preloadSection(result.to);
       return;
     }
     if (event.key === "Enter") {
@@ -340,6 +348,7 @@ export function SettingsSidebarNav({
                         data-active={index === activeResultIndex}
                         className="flex min-h-11 w-full cursor-pointer items-start gap-[var(--sidebar-control-gap)] overflow-hidden rounded-[var(--control-radius)] px-[var(--sidebar-row-content-inset)] py-2 text-left text-xs text-sidebar-muted-foreground/80 outline-hidden hover:bg-sidebar-row-hover focus-visible:ring-2 focus-visible:ring-inset data-[active=true]:bg-sidebar-row-selected [&>svg]:size-4 [&>svg]:shrink-0"
                         onMouseMove={() => setActiveResultIndex(index)}
+                        onPointerEnter={() => preloadSection(item.to)}
                         onClick={() => handleSearchResultClick(item)}
                       >
                         <SettingsSectionIcon to={item.to} />
@@ -421,6 +430,8 @@ export function SettingsSidebarNav({
                                       aria-current={isActive ? "page" : undefined}
                                       isActive={isActive}
 
+                                      onPointerEnter={() => preloadSection(to)}
+                                      onFocus={() => preloadSection(to)}
                                       onClick={() => handleSectionClick(to)}
                                     >
                                       <Icon />

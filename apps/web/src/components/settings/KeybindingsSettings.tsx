@@ -19,6 +19,7 @@ import {
   type KeyboardEvent,
   type ReactNode,
   type RefObject,
+  useDeferredValue,
   useReducer,
   useRef,
   useState,
@@ -45,6 +46,7 @@ import { cn } from "../../lib/utils";
 import { serverEnvironment } from "../../state/server";
 import { useSettingsScope } from "./SettingsScopeContext";
 import { Badge } from "../ui/badge";
+import { Skeleton } from "../ui/skeleton";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { InputGroup, InputGroupAddon, InputGroupInput } from "../ui/input-group";
@@ -1310,6 +1312,21 @@ function KeybindingsGroups(props: KeybindingsGroupsProps) {
     </SettingsSection>
   ));
 }
+function KeybindingsGroupsSkeleton() {
+  return (
+    <>
+      <div aria-hidden className="space-y-2.5">
+        <Skeleton shape="pill" width="6rem" height="0.75rem" />
+        <Skeleton shape="card" height="24rem" />
+      </div>
+      <div aria-hidden className="space-y-2.5">
+        <Skeleton shape="pill" width="6rem" height="0.75rem" />
+        <Skeleton shape="card" height="18rem" />
+      </div>
+    </>
+  );
+}
+
 function BrowserKeybindingNotice() {
   const { t } = useTranslation();
   const message = t("The browser may claim some shortcuts before Cox receives them.");
@@ -1386,6 +1403,7 @@ export function KeybindingsSettingsPanel() {
   const { commandOptions, allRows } = useKeybindingCatalog();
   const rows = filterKeybindingRows(allRows, query);
   const groups = groupKeybindingRows(rows);
+  const shownGroups = useDeferredValue(groups, null);
   const anchorIds = keybindingAnchorIds(rows);
   const openKeybindingsFile = () => {
     if (
@@ -1554,9 +1572,11 @@ export function KeybindingsSettingsPanel() {
           </SettingsGroup>
         ) : null}
 
-        {groups.length > 0 ? (
+        {shownGroups === null ? (
+          <KeybindingsGroupsSkeleton />
+        ) : shownGroups.length > 0 ? (
           <KeybindingsGroups
-            groups={groups}
+            groups={shownGroups}
             anchorIds={anchorIds}
             savingCommand={savingCommand}
             {...rowActions}

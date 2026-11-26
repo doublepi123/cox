@@ -772,17 +772,16 @@ export function StorageCleanupSections() {
   if (!supportsStorageCleanup(connectedEnvironments)) {
     return (
       <>
-        {databaseStorageNotice}
         <SettingsSection id="storage-artifacts" title={t("Artifacts and logs")} variant="plain">
           <StorageCleanupScopeNotice />
         </SettingsSection>
+        {databaseStorageNotice}
       </>
     );
   }
 
   return (
     <>
-      {databaseStorageNotice}
       <SettingsSection id="storage-artifacts" title={t("Artifacts and logs")}>
         <AnimatedHeight>
           <SettingsRow
@@ -820,6 +819,7 @@ export function StorageCleanupSections() {
         </AnimatedHeight>
       </SettingsSection>
       <CleanupSection />
+      {databaseStorageNotice}
     </>
   );
 }

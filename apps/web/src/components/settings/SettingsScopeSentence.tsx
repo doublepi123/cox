@@ -1,4 +1,4 @@
-import { useLocation } from "@tanstack/react-router";
+import { useRenderedSettingsPathname } from "./useRenderedSettingsPathname";
 import { useTranslation } from "../../i18n";
 import { CheckIcon, ChevronDownIcon } from "lucide-react";
 import { Fragment, useState, type ReactNode } from "react";
@@ -55,7 +55,7 @@ interface SettingsScopeMenuProps {
 export function SettingsScopeSentence() {
   const { t } = useTranslation();
   const scope = useOptionalSettingsScope();
-  const pathname = useLocation({ select: (location) => location.pathname });
+  const pathname = useRenderedSettingsPathname();
   const { environments } = useEnvironments();
   if (scope === null || SETTINGS_DEVICE_ONLY_PATHS.has(pathname)) return null;
   const props: SettingsScopeMenuProps = {

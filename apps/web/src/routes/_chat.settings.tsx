@@ -6,6 +6,7 @@ import {
   createFileRoute,
   redirect,
   useLocation,
+  useRouter,
   useNavigate,
 } from "@tanstack/react-router";
 import { useEffect, useState, type ReactNode } from "react";
@@ -23,6 +24,7 @@ import {
 } from "../components/settings/SettingsScopeContext";
 import { useEnvironments } from "../state/environments";
 import { useMediaQuery } from "../hooks/useMediaQuery";
+import { useRenderedSettingsPathname } from "../components/settings/useRenderedSettingsPathname";
 import { SettingsScopeNotice } from "../components/settings/SettingsScopeNotice";
 import { SETTINGS_DEVICE_ONLY_PATHS } from "../components/settings/SettingsScopeSentence";
 import { SettingsPageContainer } from "../components/settings/settingsLayout";
@@ -103,7 +105,9 @@ function SettingsScopeBoundary({ pathname, children }: { pathname: string; child
   const { t } = useTranslation();
   const { scope, connectedEnvironments } = useSettingsScope();
   const { environments } = useEnvironments();
-  const hash = useLocation({ select: (location) => location.hash });
+  const hash = useLocation({
+    select: (location) => (location.pathname === pathname ? location.hash : ""),
+  });
   const searchTarget = getSettingsSearchTargetScope(hash);
   const autoSettlementAvailability = searchTarget?.requiresThreadAutoSettlement
     ? getThreadAutoSettlementSearchAvailability(environments, scope)
@@ -168,20 +172,21 @@ function SettingsScopeBoundary({ pathname, children }: { pathname: string; child
 export function SettingsContentLayout() {
   const { t } = useTranslation();
   const contentArea = workspaceAreaProps("settings", 1, "Settings content");
-  const location = useLocation();
+  const navPathname = useLocation({ select: (location) => location.pathname });
+  const pathname = useRenderedSettingsPathname();
   const navigate = useNavigate();
   const { search, environment } = useSettingsScope();
   const contentScopeKey =
-    location.pathname === "/settings/diagnostics" ||
-    location.pathname === "/settings/providers" ||
-    location.pathname === "/settings/notifications" ||
-    location.pathname === "/settings/model-services"
+    pathname === "/settings/diagnostics" ||
+    pathname === "/settings/providers" ||
+    pathname === "/settings/notifications" ||
+    pathname === "/settings/model-services"
       ? environment?.environmentId
       : JSON.stringify(search);
   const [restoreSignal, setRestoreSignal] = useState(0);
   const isPhoneLayout = useMediaQuery("max-sm");
-  const isSettingsIndex = isSettingsIndexPath(location.pathname);
-  const normalizedPath = location.pathname.replace(/\/+$/, "") || "/";
+  const isSettingsIndex = isSettingsIndexPath(pathname);
+  const normalizedPath = pathname.replace(/\/+$/, "") || "/";
   const phoneSectionLabel =
     isPhoneLayout && !isSettingsIndex
       ? (SETTINGS_SECTION_LABELS[normalizedPath as SettingsPath] ??
@@ -197,7 +202,7 @@ export function SettingsContentLayout() {
   return (
     <SettingsFrame>
       <div className="relative flex min-h-0 flex-1">
-        {isPhoneLayout ? null : <SettingsSidebarNav pathname={location.pathname} />}
+        {isPhoneLayout ? null : <SettingsSidebarNav pathname={navPathname} />}
         <div {...contentArea} className="flex min-h-0 min-w-0 flex-1 flex-col">
           <header
             data-settings-header
@@ -225,12 +230,12 @@ export function SettingsContentLayout() {
               </>
             ) : (
               <SettingsBreadcrumb
-                pathname={location.pathname}
+                pathname={pathname}
                 showSection={!isPhoneLayout && !isSettingsIndex}
               />
             )}
             <div className="ms-auto flex shrink-0 items-center gap-1">
-              {location.pathname === "/settings/general" ? (
+              {pathname === "/settings/general" ? (
                 <RestoreDeviceDefaultsButton
                   compact={isPhoneLayout}
                   onRestored={() => setRestoreSignal((value) => value + 1)}
@@ -242,13 +247,13 @@ export function SettingsContentLayout() {
             </div>
           </header>
           {isPhoneLayout && isSettingsIndex ? (
-            <SettingsSidebarNav pathname={location.pathname} layout="menu" />
+            <SettingsSidebarNav pathname={pathname} layout="menu" />
           ) : (
             <div
               key={`${contentScopeKey}:${restoreSignal}`}
               className="min-h-0 flex flex-1 flex-col"
             >
-              <SettingsScopeBoundary pathname={location.pathname}>
+              <SettingsScopeBoundary pathname={pathname}>
                 <Outlet />
               </SettingsScopeBoundary>
             </div>
@@ -262,7 +267,8 @@ export function SettingsContentLayout() {
 function SettingsRouteLayout() {
   const rawSearch = Route.useSearch();
   const navigate = Route.useNavigate();
-  const pathname = useLocation({ select: (location) => location.pathname });
+  const router = useRouter();
+  const pathname = useRenderedSettingsPathname();
   return (
     <SettingsScopeProvider
       search={rawSearch}
@@ -275,7 +281,7 @@ function SettingsRouteLayout() {
       onChange={(next) => {
         // Send every axis so retain middleware recognizes "all" as an explicit target.
         void navigate({
-          to: pathname,
+          to: router.state.location.pathname,
           search: () => ({
             project: next.project,
             machine: next.machine,
