@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+## 0.2.43 — 2026-11-26
+
+- Failed Cox MCP tools called from OMO `eval` cells report `hasError: true`, so code that checks
+  the flag stops on a failure such as `computer_screenshot` of a missing window.
+- Find in the file preview scrolls to matches below many wrapped lines on slow machines.
+- The computer-control changes listed under 0.2.39 were first published in 0.2.40; 0.2.39 was
+  never released.
+
 ## 0.2.42 — 2026-11-26
 
 - Cox Desktop on macOS now restores computer control after restarting to apply a backend update or grant permissions. Settings show the engine startup error and offer a restart when recovery is needed.
