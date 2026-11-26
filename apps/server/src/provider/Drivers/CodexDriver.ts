@@ -261,7 +261,7 @@ export const CodexDriver: ProviderDriver<
       Effect.provideService(FileSystem.FileSystem, fileSystem),
       Effect.provideService(Path.Path, pathService),
     );
-    const resolveMaintenance = yield* makeCachedProviderMaintenanceResolution(
+    const resolvePackageMaintenance = yield* makeCachedProviderMaintenanceResolution(
       resolveProviderMaintenanceCapabilitiesEffect(
         makeCodexMaintenanceResolver(homeLayout.sharedHomePath),
         {
@@ -274,6 +274,15 @@ export const CodexDriver: ProviderDriver<
         Effect.provideService(Path.Path, pathService),
       ),
     );
+    const managedMaintenance = CodexInstallation.managedCodexMaintenance(installation);
+    const resolveMaintenance = (options?: { readonly fresh?: boolean }) =>
+      resolveBinaryPath.pipe(
+        Effect.flatMap((binaryPath) =>
+          binaryPath.startsWith(`${installation.managedDirectory}${pathService.sep}`)
+            ? Effect.succeed(managedMaintenance)
+            : resolvePackageMaintenance(options),
+        ),
+      );
 
     const orchestrationAdapter = yield* createCodexAdapterV2(
       {

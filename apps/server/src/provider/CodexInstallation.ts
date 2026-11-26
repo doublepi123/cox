@@ -6,6 +6,7 @@ import {
 } from "@t3tools/contracts";
 import { providerArchiveTarCommand } from "@t3tools/shared/providerArchive";
 import * as HostProcess from "@t3tools/shared/HostProcess";
+import { compareSemverVersions } from "@t3tools/shared/semver";
 import { resolveCommandPath, resolveSpawnCommand } from "@t3tools/shared/shell";
 import * as Clock from "effect/Clock";
 import * as Cause from "effect/Cause";
@@ -28,6 +29,8 @@ import { HttpClient, HttpClientRequest, HttpClientResponse } from "effect/http";
 import { ChildProcess, ChildProcessSpawner } from "effect/process";
 import * as NodeCrypto from "node:crypto";
 import * as ServerConfig from "../config.ts";
+import type { ProviderMaintenanceCapabilities } from "@t3tools/provider-core/server/maintenance";
+import { makeManualOnlyProviderMaintenanceCapabilities } from "@t3tools/provider-core/server/maintenanceResolver";
 import * as ModelManifest from "./ModelManifest.ts";
 import { resolveProviderCompatibility } from "./providerCompatibility.ts";
 
@@ -66,52 +69,30 @@ export interface CodexReleaseAsset {
   readonly sha256: string;
   readonly archiveBytes: number;
 }
-const RELEASES: Readonly<Record<string, CodexReleaseAsset>> = {
-  "darwin-arm64": {
-    version: "0.166.0",
-    target: "aarch64-apple-darwin",
-    url: "https://github.com/openai/codex/releases/download/rust-v0.166.0/codex-package-aarch64-apple-darwin.tar.gz",
-    sha256: "55a440cb579f970abe7c79ab181e54b0ea4c419be99f333bbd868eebac9c21f0",
-    archiveBytes: 165951869,
-  },
-  "darwin-x64": {
-    version: "0.166.0",
-    target: "x86_64-apple-darwin",
-    url: "https://github.com/openai/codex/releases/download/rust-v0.166.0/codex-package-x86_64-apple-darwin.tar.gz",
-    sha256: "1cb65690230be5982c654ba2655e3a3b594dce9c55b780e78bfdfeff829d7ad9",
-    archiveBytes: 180076524,
-  },
-  "linux-arm64": {
-    version: "0.166.0",
-    target: "aarch64-unknown-linux-musl",
-    url: "https://github.com/openai/codex/releases/download/rust-v0.166.0/codex-package-aarch64-unknown-linux-musl.tar.gz",
-    sha256: "7821b77dda2e6283fb1f63f3165177a271da8833e857cf673c6ca1c9db3bfcc6",
-    archiveBytes: 187370368,
-  },
-  "linux-x64": {
-    version: "0.166.0",
-    target: "x86_64-unknown-linux-musl",
-    url: "https://github.com/openai/codex/releases/download/rust-v0.166.0/codex-package-x86_64-unknown-linux-musl.tar.gz",
-    sha256: "1d44b28bc4ac9937d7d3532264baa68a507ce364956a0d4ebb856f331cdee254",
-    archiveBytes: 199694962,
-  },
-  "win32-arm64": {
-    version: "0.166.0",
-    target: "aarch64-pc-windows-msvc",
-    url: "https://github.com/openai/codex/releases/download/rust-v0.166.0/codex-package-aarch64-pc-windows-msvc.tar.gz",
-    sha256: "9383152a72f97bb5dd148493c8214e4fed38d805aa2c3297cb3739f7f130becf",
-    archiveBytes: 187024318,
-  },
-  "win32-x64": {
-    version: "0.166.0",
-    target: "x86_64-pc-windows-msvc",
-    url: "https://github.com/openai/codex/releases/download/rust-v0.166.0/codex-package-x86_64-pc-windows-msvc.tar.gz",
-    sha256: "d559bb88e74d471265857b93b7f19bc250dae527673b9191b33534478093f6bc",
-    archiveBytes: 202589789,
-  },
+const CODEX_RELEASES_URL = "https://api.github.com/repos/openai/codex/releases?per_page=10";
+const RELEASE_DOWNLOADS = "https://github.com/openai/codex/releases/download";
+const RELEASE_TARGETS: Readonly<Record<string, string>> = {
+  "darwin-arm64": "aarch64-apple-darwin",
+  "darwin-x64": "x86_64-apple-darwin",
+  "linux-arm64": "aarch64-unknown-linux-musl",
+  "linux-x64": "x86_64-unknown-linux-musl",
+  "win32-arm64": "aarch64-pc-windows-msvc",
+  "win32-x64": "x86_64-pc-windows-msvc",
 };
-const resolveCodexReleaseAsset = (platform: NodeJS.Platform, arch: string) =>
-  RELEASES[`${platform}-${arch}`] ?? null;
+const GitHubReleases = Schema.Array(
+  Schema.Struct({
+    tag_name: Schema.String,
+    draft: Schema.Boolean,
+    prerelease: Schema.Boolean,
+    assets: Schema.Array(
+      Schema.Struct({
+        name: Schema.String,
+        size: Schema.Number,
+        digest: Schema.optional(Schema.NullOr(Schema.String)),
+      }),
+    ),
+  }),
+);
 export class CodexInstallationError extends Schema.TaggedError<CodexInstallationError>()(
   "CodexInstallationError",
   {
@@ -142,6 +123,7 @@ interface CodexInstallationService {
   readonly compatibility: (
     version: string,
   ) => Effect.Effect<ServerProviderCompatibilityAdvisory | undefined>;
+  readonly latestVersion: Effect.Effect<string | null>;
   readonly start: Effect.Effect<ProviderInstallState, CodexInstallationError>;
   readonly cancel: (
     operationId: string,
@@ -166,7 +148,6 @@ export class CodexInstallation extends Context.Service<
 }
 export interface CodexInstallationOptions {
   readonly baseDir: string;
-  readonly releaseAsset?: CodexReleaseAsset | null;
   readonly validate?: (
     executable: CodexExecutable,
     expectedVersion: string,
@@ -187,10 +168,7 @@ export const makeCodexInstallation = Effect.fn("makeCodexInstallation")(function
   const platform = yield* HostProcess.Platform;
   const environment = yield* HostProcess.Environment;
   const arch = yield* HostProcess.Architecture;
-  const asset =
-    options.releaseAsset === undefined
-      ? resolveCodexReleaseAsset(platform, arch)
-      : options.releaseAsset;
+  const target = RELEASE_TARGETS[`${platform}-${arch}`] ?? null;
   const managedDirectory = path.join(options.baseDir, "tools", "codex");
   const activePath = path.join(managedDirectory, "active.json");
   const localProbePath = path.join(options.baseDir, "caches", "codex-local-probe.json");
@@ -203,8 +181,8 @@ export const makeCodexInstallation = Effect.fn("makeCodexInstallation")(function
     operationId: null,
     phase: "idle",
     downloadedBytes: 0,
-    totalBytes: asset?.archiveBytes ?? null,
-    version: asset?.version ?? null,
+    totalBytes: null,
+    version: null,
     installedVersion: null,
     executablePath: null,
     canRemove: false,
@@ -289,6 +267,51 @@ export const makeCodexInstallation = Effect.fn("makeCodexInstallation")(function
       )
     );
   });
+  const latestRelease = Effect.fn("CodexInstallation.latestRelease")(
+    function* (packageTarget: string) {
+      const releases = yield* http
+        .execute(
+          HttpClientRequest.get(CODEX_RELEASES_URL).pipe(
+            HttpClientRequest.setHeaders({
+              accept: "application/vnd.github+json",
+              "user-agent": "cox",
+              "x-github-api-version": "2022-11-28",
+            }),
+          ),
+        )
+        .pipe(
+          Effect.flatMap(HttpClientResponse.filterStatusOk),
+          Effect.flatMap(HttpClientResponse.schemaBodyJson(GitHubReleases)),
+          Effect.timeout("30 seconds"),
+        );
+      const name = `codex-package-${packageTarget}.tar.gz`;
+      let latest: CodexReleaseAsset | null = null;
+      for (const release of releases) {
+        const version = /^rust-v(\d+\.\d+\.\d+)$/u.exec(release.tag_name)?.[1];
+        if (!version || release.draft || release.prerelease) continue;
+        if (latest && compareSemverVersions(version, latest.version) <= 0) continue;
+        const asset = release.assets.find((entry) => entry.name === name);
+        const sha256 = /^sha256:([0-9a-f]{64})$/u.exec(asset?.digest ?? "")?.[1];
+        if (!asset || !sha256 || !Number.isSafeInteger(asset.size) || asset.size <= 0) continue;
+        if ((yield* compatibility(version))?.status !== "supported") continue;
+        latest = {
+          version,
+          target: packageTarget,
+          url: `${RELEASE_DOWNLOADS}/${release.tag_name}/${name}`,
+          sha256,
+          archiveBytes: asset.size,
+        };
+      }
+      return latest;
+    },
+    Effect.mapError((cause) =>
+      installationError(
+        "release",
+        "Could not check the latest official Codex release. Check your internet connection, then try again.",
+        cause,
+      ),
+    ),
+  );
   const resolveManaged = Effect.fn("CodexInstallation.resolveManaged")(
     function* () {
       const active = yield* readRecord(activePath, ActiveRelease);
@@ -698,7 +721,7 @@ export const makeCodexInstallation = Effect.fn("makeCodexInstallation")(function
         const current = yield* SubscriptionRef.get(state);
         if (isRunning(current)) return current;
         if (yield* reuseLocal()) return yield* SubscriptionRef.get(state);
-        if (!asset) {
+        if (!target) {
           return yield* installationError(
             "start",
             `OpenAI does not publish a Codex runtime for ${platform}-${arch}. Use a supported remote environment or a custom executable.`,
@@ -710,12 +733,30 @@ export const makeCodexInstallation = Effect.fn("makeCodexInstallation")(function
           operationId,
           phase: "downloading",
           downloadedBytes: 0,
-          totalBytes: asset.archiveBytes,
-          version: asset.version,
-          message: "Downloading Codex.",
+          totalBytes: null,
+          message: "Checking the latest Codex release.",
         };
         yield* SubscriptionRef.set(state, next);
-        const work = install(asset).pipe(
+        const work = latestRelease(target).pipe(
+          Effect.flatMap((release) =>
+            release === null
+              ? Effect.fail(
+                  installationError(
+                    "release",
+                    "No official Codex release for this computer is supported by this Cox version yet. Try again later.",
+                  ),
+                )
+              : SubscriptionRef.update(
+                  state,
+                  (value) =>
+                    ({
+                      ...value,
+                      totalBytes: release.archiveBytes,
+                      version: release.version,
+                      message: "Downloading Codex.",
+                    }) satisfies ProviderInstallState,
+                ).pipe(Effect.andThen(install(release))),
+          ),
           Effect.onExit((exit) =>
             Exit.isFailure(exit)
               ? SubscriptionRef.update(state, (value) => {
@@ -875,10 +916,25 @@ export const makeCodexInstallation = Effect.fn("makeCodexInstallation")(function
     resolve,
     acquire,
     compatibility,
+    latestVersion:
+      target === null
+        ? Effect.succeed(null)
+        : latestRelease(target).pipe(
+            Effect.map((release) => release?.version ?? null),
+            Effect.orElseSucceed(() => null),
+          ),
     start,
     cancel,
     state: SubscriptionRef.get(state),
     changes: SubscriptionRef.changes(state),
     remove,
   });
+});
+
+export const managedCodexMaintenance = (
+  installation: CodexInstallation["Service"],
+): ProviderMaintenanceCapabilities => ({
+  ...makeManualOnlyProviderMaintenanceCapabilities({ provider: DRIVER, packageName: null }),
+  lookupLatestVersion: installation.latestVersion,
+  latestVersionCacheKey: "codex-managed-release",
 });

@@ -1,7 +1,6 @@
 import { translateCurrent, useTranslation } from "../../i18n";
 import { ProviderAuthenticationSection } from "./ProviderAuthenticationSection";
 import { AuthProvidersManageScope } from "@t3tools/contracts";
-import { compareSemverVersions } from "@t3tools/shared/semver";
 import { useEnvironmentScope } from "../../state/session";
 
 import type { EnvironmentId, ProviderInstanceId, ServerProvider } from "@t3tools/contracts";
@@ -213,8 +212,7 @@ function ManagedCodexSetup({
   const canUpdate =
     managedRuntime &&
     state?.installedVersion != null &&
-    state.version != null &&
-    compareSemverVersions(state.installedVersion, state.version) < 0;
+    provider?.versionAdvisory?.status === "behind_latest";
   const operationId = state?.operationId;
   if (mode === "existing" && installed && !managedRuntime && !installing) return null;
   const install = async () => {

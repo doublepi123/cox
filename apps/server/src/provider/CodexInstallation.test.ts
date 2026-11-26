@@ -24,12 +24,18 @@ const archive = Buffer.from(
   "H4sIAAAAAAAC/+3W0W6DIBQGYB/FcD0sKNSkD7J7aom6tmAQtzXL3n3QZM3qdWVt+n8XoCckJp78wLY3q8bu9Ge2HBbUUp7nYD4H8s9zrNdSsCxnWQLT6JULn8ye09K9h/u2/c0/jSM9xqGzo0+bf3Gdf15WQiD/Kdy61/CA+z8dlO9Wrv2387+c5Z9VZY38p7BY0+Gh8t/sVauLt9Ga9Pnnop7ln1e4/6fxRQ7qZCf/qt3YW0M2OX/JyfvljbCCy3XBSaiGH9VqH4tKuaZbC6qG4aDpTrmP3sQV2nh3Gmxvzqsud0vyjaABAAAAAAAAAAAAAAAk8gOq19rvACgAAA==",
   "base64",
 );
-const asset = {
-  version: "0.156.1",
-  target: "aarch64-apple-darwin",
-  url: "https://github.com/openai/codex/releases/download/test/package.tar.gz",
-  archiveBytes: archive.length,
-};
+const downloadUrl =
+  "https://github.com/openai/codex/releases/download/rust-v0.156.1/codex-package-aarch64-apple-darwin.tar.gz";
+const githubRelease = (
+  version: string,
+  assets: ReadonlyArray<{ readonly name: string; readonly size: number; readonly digest?: string }>,
+  flags: { readonly draft?: boolean; readonly prerelease?: boolean } = {},
+) => ({ tag_name: `rust-v${version}`, draft: false, prerelease: false, ...flags, assets });
+const packageAsset = (target: string, sha256: string, size = archive.length) => ({
+  name: `codex-package-${target}.tar.gz`,
+  size,
+  digest: `sha256:${sha256}`,
+});
 const makeHarness = Effect.fn("test.makeCodexInstallation")(function* (
   input: {
     options?: Partial<CodexInstallation.CodexInstallationOptions>;
@@ -40,7 +46,8 @@ const makeHarness = Effect.fn("test.makeCodexInstallation")(function* (
     local?: { version: string; appServerFails?: boolean; versionFails?: boolean };
     platform?: NodeJS.Platform;
     arch?: string;
-    useDefaultRelease?: boolean;
+    releases?: (sha256: string) => ReadonlyArray<unknown>;
+    releasesStatus?: number;
     spawner?: ChildProcessSpawner.ChildProcessSpawner["Service"];
     runtimeRenameFailures?: number;
   } = {},
@@ -61,6 +68,7 @@ const makeHarness = Effect.fn("test.makeCodexInstallation")(function* (
     );
   }
   let downloads = 0;
+  const requests: Array<string> = [];
   const crypto = yield* Digest.Digest;
   const sha256 = Hex.encode(yield* crypto.digest(Digest.sha256, archive).pipe(Effect.orDie));
   let runtimeRenameFailures = input.runtimeRenameFailures ?? 0;
@@ -89,7 +97,6 @@ const makeHarness = Effect.fn("test.makeCodexInstallation")(function* (
   const spawner = input.spawner ?? (yield* ChildProcessSpawner.ChildProcessSpawner);
   const installation = yield* CodexInstallation.makeCodexInstallation({
     baseDir,
-    ...(input.useDefaultRelease ? {} : { releaseAsset: { ...asset, sha256 } }),
     validate: () => Effect.void,
     ...input.options,
   }).pipe(
@@ -112,6 +119,22 @@ const makeHarness = Effect.fn("test.makeCodexInstallation")(function* (
       HttpClient.HttpClient,
       HttpClient.make((request) =>
         Effect.sync(() => {
+          requests.push(request.url);
+          if (request.url.startsWith("https://api.github.com/"))
+            return HttpClientResponse.fromWeb(
+              request,
+              new Response(
+                JSON.stringify(
+                  input.releases?.(sha256) ?? [
+                    githubRelease("0.156.1", [packageAsset("aarch64-apple-darwin", sha256)]),
+                  ],
+                ),
+                {
+                  status: request.headers["user-agent"] ? (input.releasesStatus ?? 200) : 403,
+                  headers: { "content-type": "application/json" },
+                },
+              ),
+            );
           downloads++;
           return Object.defineProperty(
             HttpClientResponse.fromWeb(
@@ -135,6 +158,7 @@ const makeHarness = Effect.fn("test.makeCodexInstallation")(function* (
     probeLog,
     failedRenames,
     downloads: () => downloads,
+    requests: () => requests,
   };
 });
 const terminalState = (installation: CodexInstallation.CodexInstallation["Service"]) =>
@@ -145,19 +169,68 @@ const terminalState = (installation: CodexInstallation.CodexInstallation["Servic
   );
 
 it.effect.each([
-  { platform: "darwin", arch: "arm64", archiveBytes: 165951869 },
-  { platform: "darwin", arch: "x64", archiveBytes: 180076524 },
-  { platform: "linux", arch: "arm64", archiveBytes: 187370368 },
-  { platform: "linux", arch: "x64", archiveBytes: 199694962 },
-  { platform: "win32", arch: "arm64", archiveBytes: 187024318 },
-  { platform: "win32", arch: "x64", archiveBytes: 202589789 },
-] as const)("pins managed Codex 0.166.0 for $platform/$arch", ({ platform, arch, archiveBytes }) =>
+  { platform: "darwin", arch: "arm64", target: "aarch64-apple-darwin" },
+  { platform: "darwin", arch: "x64", target: "x86_64-apple-darwin" },
+  { platform: "linux", arch: "arm64", target: "aarch64-unknown-linux-musl" },
+  { platform: "linux", arch: "x64", target: "x86_64-unknown-linux-musl" },
+  { platform: "win32", arch: "arm64", target: "aarch64-pc-windows-msvc" },
+  { platform: "win32", arch: "x64", target: "x86_64-pc-windows-msvc" },
+] as const)(
+  "targets the newest supported stable official release for $platform/$arch",
+  ({ platform, arch, target }) =>
+    Effect.gen(function* () {
+      const other =
+        target === "x86_64-apple-darwin" ? "aarch64-apple-darwin" : "x86_64-apple-darwin";
+      const h = yield* makeHarness({
+        platform,
+        arch,
+        releases: (sha256) => [
+          githubRelease("0.190.0-alpha.1", [packageAsset(target, sha256)], { prerelease: true }),
+          githubRelease("0.190.0", [packageAsset(target, sha256)], { prerelease: true }),
+          githubRelease("0.185.0", [packageAsset(target, sha256)], { draft: true }),
+          githubRelease("0.180.0", [packageAsset(other, sha256)]),
+          githubRelease("0.175.0", [{ name: `codex-package-${target}.tar.gz`, size: 1 }]),
+          githubRelease("0.160.0", [packageAsset(target, sha256)]),
+          githubRelease("0.172.0", [packageAsset(target, sha256)]),
+          githubRelease("0.150.0", [packageAsset(target, sha256)]),
+        ],
+      });
+      expect(yield* h.installation.state).toMatchObject({ version: null, installedVersion: null });
+      expect(h.requests()).toEqual([]);
+      expect(yield* h.installation.latestVersion).toBe("0.172.0");
+      expect(h.downloads()).toBe(0);
+    }).pipe(Effect.scoped, Effect.provide(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))),
+);
+
+it.effect("skips stable releases outside the supported Codex range", () =>
   Effect.gen(function* () {
-    const h = yield* makeHarness({ platform, arch, useDefaultRelease: true });
-    expect(yield* h.installation.state).toMatchObject({
-      version: "0.166.0",
-      totalBytes: archiveBytes,
+    const h = yield* makeHarness({
+      releases: (sha256) => [
+        githubRelease("0.150.0", [packageAsset("aarch64-apple-darwin", sha256)]),
+      ],
+    });
+    expect(yield* h.installation.latestVersion).toBeNull();
+    yield* h.installation.start;
+    expect(yield* terminalState(h.installation)).toMatchObject({
+      phase: "failed",
       installedVersion: null,
+      message:
+        "No official Codex release for this computer is supported by this Cox version yet. Try again later.",
+    });
+    expect(h.downloads()).toBe(0);
+    expect(yield* h.fs.exists(`${h.installation.managedDirectory}/active.json`)).toBe(false);
+  }).pipe(Effect.scoped, Effect.provide(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))),
+);
+
+it.effect("reports a failed release lookup without downloading", () =>
+  Effect.gen(function* () {
+    const h = yield* makeHarness({ releasesStatus: 403 });
+    expect(yield* h.installation.latestVersion).toBeNull();
+    yield* h.installation.start;
+    expect(yield* terminalState(h.installation)).toMatchObject({
+      phase: "failed",
+      message:
+        "Could not check the latest official Codex release. Check your internet connection, then try again.",
     });
     expect(h.downloads()).toBe(0);
   }).pipe(Effect.scoped, Effect.provide(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))),
@@ -202,7 +275,7 @@ it.effect.each([
   { version: "unknown" },
   { version: "0.156.1", appServerFails: true },
   { version: "0.156.1", versionFails: true },
-])("downloads the pinned release when the local CLI is unsupported or broken: %j", (local) =>
+])("downloads the latest release when the local CLI is unsupported or broken: %j", (local) =>
   Effect.gen(function* () {
     const h = yield* makeHarness({ local });
     expect((yield* h.installation.state).installedVersion).toBeNull();
@@ -386,9 +459,14 @@ it.effect(
   "installs the complete verified package in tools/codex/version and survives a restart",
   () =>
     Effect.gen(function* () {
-      const { installation, fs, baseDir } = yield* makeHarness();
+      const { installation, fs, baseDir, requests } = yield* makeHarness();
       yield* installation.start;
-      expect((yield* terminalState(installation)).phase).toBe("succeeded");
+      expect(yield* terminalState(installation)).toMatchObject({
+        phase: "succeeded",
+        version: "0.156.1",
+        totalBytes: archive.length,
+      });
+      expect(requests().at(-1)).toBe(downloadUrl);
       const executable = yield* installation.resolve();
       expect(executable.executablePath).toBe(`${baseDir}/tools/codex/0.156.1/bin/codex`);
       expect(
@@ -443,7 +521,9 @@ it.effect("requires an update before running an older activated managed installa
 it.effect("rejects corrupted downloads without publishing a runtime", () =>
   Effect.gen(function* () {
     const { installation, fs } = yield* makeHarness({
-      options: { releaseAsset: { ...asset, sha256: "0".repeat(64) } },
+      releases: () => [
+        githubRelease("0.156.1", [packageAsset("aarch64-apple-darwin", "0".repeat(64))]),
+      ],
     });
     yield* installation.start;
     const state = yield* terminalState(installation);
@@ -458,7 +538,7 @@ it.effect.each(["interrupted body", "HTTP 404"] as const)(
   "reports a download failure for %s without blaming disk access",
   (failure) =>
     Effect.gen(function* () {
-      const request = HttpClientRequest.get(asset.url);
+      const request = HttpClientRequest.get(downloadUrl);
       const response = HttpClientResponse.fromWeb(request, new Response(null));
       const h = yield* makeHarness(
         failure === "HTTP 404"
@@ -571,7 +651,9 @@ it.effect("keeps an activated runtime when a later update fails verification", (
     yield* terminalState(first.installation);
     const update = yield* makeHarness({
       baseDir: first.baseDir,
-      options: { releaseAsset: { ...asset, version: "0.156.2", sha256: "0".repeat(64) } },
+      releases: () => [
+        githubRelease("0.156.2", [packageAsset("aarch64-apple-darwin", "0".repeat(64))]),
+      ],
     });
     expect((yield* update.installation.state).executablePath).toBe(
       (yield* first.installation.resolve()).executablePath,
@@ -579,6 +661,50 @@ it.effect("keeps an activated runtime when a later update fails verification", (
     yield* update.installation.start;
     expect((yield* terminalState(update.installation)).phase).toBe("failed");
     expect((yield* update.installation.resolve()).version).toBe("0.156.1");
+  }).pipe(Effect.scoped, Effect.provide(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))),
+);
+
+it.effect("keeps the previous runtime active when the updated Codex cannot start", () =>
+  Effect.gen(function* () {
+    const first = yield* makeHarness();
+    yield* first.installation.start;
+    yield* terminalState(first.installation);
+    const executable = yield* first.installation.resolve();
+    const oldDirectory = `${first.installation.managedDirectory}/0.156.0`;
+    yield* first.fs.rename(executable.managedVersionDirectory!, oldDirectory);
+    for (const name of ["codex-package.json", ".install-complete.json"]) {
+      const file = `${oldDirectory}/${name}`;
+      yield* first.fs.writeFileString(
+        file,
+        (yield* first.fs.readFileString(file)).replaceAll("0.156.1", "0.156.0"),
+      );
+    }
+    const activePath = `${first.installation.managedDirectory}/active.json`;
+    yield* first.fs.writeFileString(activePath, '{"version":"0.156.0"}');
+    const update = yield* makeHarness({
+      baseDir: first.baseDir,
+      options: {
+        validate: () =>
+          Effect.fail(
+            new CodexInstallation.CodexInstallationError({
+              operation: "verify",
+              detail: "The downloaded Codex runtime could not start.",
+            }),
+          ),
+      },
+    });
+    expect((yield* update.installation.state).installedVersion).toBe("0.156.0");
+    yield* update.installation.start;
+    expect(yield* terminalState(update.installation)).toMatchObject({
+      phase: "failed",
+      installedVersion: "0.156.0",
+      executablePath: `${oldDirectory}/bin/codex`,
+      message: "The downloaded Codex runtime could not start.",
+    });
+    expect(update.downloads()).toBe(1);
+    expect((yield* update.installation.resolve()).version).toBe("0.156.0");
+    expect(yield* update.fs.readFileString(activePath)).toBe('{"version":"0.156.0"}');
+    expect(yield* update.fs.exists(`${update.installation.managedDirectory}/0.156.1`)).toBe(false);
   }).pipe(Effect.scoped, Effect.provide(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))),
 );
 
