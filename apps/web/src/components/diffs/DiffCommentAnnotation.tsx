@@ -119,6 +119,7 @@ export function DiffCommentAnnotation({
           }
           if (event.key === "Escape") {
             event.preventDefault();
+            event.stopPropagation();
             onCancel();
           }
           if (isCommentSubmitShortcut(event, trimmedText, pending)) {
