@@ -57,8 +57,8 @@ describe("PullRequestsColumn find shortcut", () => {
     await screen.rerender(createColumn(false, scrollRef));
     expect(dispatchFindShortcut().defaultPrevented).toBe(true);
     await expect
-      .element(screen.getByRole("textbox", { name: "Search pull requests" }))
-      .toHaveFocus();
+      .element(screen.locator.locator('input[aria-label="Search pull requests"]:focus'))
+      .toBeInTheDocument();
   });
 });
 
