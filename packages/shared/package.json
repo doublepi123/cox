@@ -131,6 +131,10 @@
       "types": "./src/grepOutput.ts",
       "import": "./src/grepOutput.ts"
     },
+    "./projectMonogram": {
+      "types": "./src/projectMonogram.ts",
+      "import": "./src/projectMonogram.ts"
+    },
     "./toolActivity": {
       "types": "./src/toolActivity.ts",
       "import": "./src/toolActivity.ts"
