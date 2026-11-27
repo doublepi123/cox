@@ -128,3 +128,44 @@ export function parseDiffFilePaths(
     (oldPath ?? newPath) === null ? [] : [{ oldPath, newPath }],
   );
 }
+
+function nextEntry(patch: string, from: number): number {
+  const at = patch.indexOf(`\n${ENTRY}`, from);
+  return at === -1 ? -1 : at + 1;
+}
+
+/** The one file's section of a multi-file patch, or null when no section names `path`. */
+export function diffFileSection(patch: string, path: string): string | null {
+  let start = patch.startsWith(ENTRY) ? 0 : nextEntry(patch, 0);
+  while (start !== -1) {
+    const end = nextEntry(patch, start);
+    const section = end === -1 ? patch.slice(start) : patch.slice(start, end);
+    // Only the header names the file; hunks can be megabytes.
+    const hunk = section.indexOf("\n@@");
+    const [entry] = parseEntries(hunk === -1 ? section : section.slice(0, hunk));
+    if (entry !== undefined && (entry.newPath ?? entry.oldPath) === path) return section;
+    start = end;
+  }
+  return null;
+}
+
+/** Cuts hunk lines past `maxLength` and says how much was cut; headers stay whole. */
+function cutLineNote(omittedCharacters: number): string {
+  return ` …[${omittedCharacters.toLocaleString("en-US")} more characters]`;
+}
+
+export function truncateLongDiffLines(patch: string, maxLength: number): string {
+  let inBody = false;
+  return patch
+    .split("\n")
+    .map((line) => {
+      if (line.startsWith(ENTRY)) inBody = false;
+      else if (line.startsWith("@@")) inBody = true;
+      const contentEnd = line.endsWith("\r") ? line.length - 1 : line.length;
+      if (!inBody || contentEnd <= maxLength + 1) return line;
+      let end = maxLength + 1;
+      if ((line.codePointAt(end - 1) ?? 0) > 0xffff) end -= 1;
+      return `${line.slice(0, end)}${cutLineNote(contentEnd - end)}${line.slice(contentEnd)}`;
+    })
+    .join("\n");
+}
