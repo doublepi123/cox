@@ -312,7 +312,7 @@ export function unbindDraftFromThread(draft: DraftState): DraftState {
 
 export function changeDraftProject(draft: DraftState, projectId: string): DraftState {
   if (projectId === draft.projectId) return draft;
-  return { ...unbindDraftFromThread(draft), projectId };
+  return { ...unbindDraftFromThread(draft), projectId, baseRef: "", existingWorktreePath: "" };
 }
 
 export function scheduledTaskDestinationThreads(

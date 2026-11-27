@@ -170,6 +170,21 @@ const legacyTask: ScheduledTask = {
 };
 
 describe("editing scheduled task branch settings", () => {
+  it("clears the previous project base branch and checkout when changing projects", () => {
+    const worktree = taskToDraft(legacyTask);
+    expect(changeDraftProject(worktree, legacyTask.projectId)).toBe(worktree);
+    expect(changeDraftProject(worktree, "other")).toMatchObject({
+      projectId: "other",
+      workspaceMode: "worktree",
+      baseRef: "",
+    });
+    const checkout = taskToDraft({
+      ...legacyTask,
+      workspaceStrategy: { type: "existing_worktree", worktreePath: "/work/project" },
+    });
+    expect(changeDraftProject(checkout, "other").existingWorktreePath).toBe("");
+  });
+
   it("keeps an omitted origin flag on the local base branch", () => {
     const draft = taskToDraft(legacyTask);
     expect(draft.baseRef).toBe("release");
