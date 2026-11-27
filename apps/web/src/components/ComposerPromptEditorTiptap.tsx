@@ -482,12 +482,13 @@ function ComposerCitationNodeView({ node, editor, getPos }: NodeViewProps) {
       if (sent) editor.view.focus();
       return;
     }
+    const end = pos + current.nodeSize;
+    const { doc } = editor.state;
+    const trailingSpace =
+      doc.textBetween(end, end + 1) === " " && doc.resolve(end).end() === end + 1;
+    const caret = trailingSpace ? end + 1 : end;
     // The send's controlled rewrite may still be pending; emitting this caret move would restore the old prompt.
-    editor
-      .chain()
-      .setMeta(SILENT_SELECTION_META, sent)
-      .focus(pos + current.nodeSize)
-      .run();
+    editor.chain().setMeta(SILENT_SELECTION_META, sent).focus(caret).run();
   };
 
   return (
