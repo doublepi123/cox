@@ -553,6 +553,15 @@ describe("model service discovery", () => {
       "https://models.test/v1beta/models",
     );
   });
+  it.each(["?", "#", "?#"])("keeps the model endpoint in the path after %s", (suffix) => {
+    const baseUrl = "https://models.test/proxy/" + suffix;
+    expect(modelServiceEndpoint({ baseUrl }, "openai-chat", "chat/completions").href).toBe(
+      "https://models.test/proxy/chat/completions",
+    );
+    expect(modelServiceEndpoint({ baseUrl }, "anthropic-messages", "messages").href).toBe(
+      "https://models.test/proxy/v1/messages",
+    );
+  });
   it("adds the Anthropic version segment to unversioned vendor base paths", () => {
     const anthropic = (baseUrl: string) =>
       modelServiceEndpoint({ baseUrl }, "anthropic-messages", "messages").href;

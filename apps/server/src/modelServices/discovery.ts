@@ -37,7 +37,8 @@ export function modelServiceEndpoint(
   endpoint: string,
 ): URL {
   const url = new URL(service.baseUrl);
-  const base = url.href.replace(/\/+$/, "");
+  url.search = "";
+  url.hash = "";
   const version =
     url.pathname === "/"
       ? protocol === "gemini"
@@ -46,7 +47,8 @@ export function modelServiceEndpoint(
       : protocol === "anthropic-messages" && !/\/v\d+[a-z0-9]*\/*$/i.test(url.pathname)
         ? "/v1"
         : "";
-  return new URL(`${base}${version}/${endpoint.replace(/^\/+/, "")}`);
+  url.pathname = `${url.pathname.replace(/\/+$/, "")}${version}/${endpoint.replace(/^\/+/, "")}`;
+  return url;
 }
 
 export function modelServiceHeaders(
