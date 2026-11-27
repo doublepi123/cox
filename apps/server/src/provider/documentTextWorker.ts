@@ -15,6 +15,7 @@ const CELL_END = Symbol("cell-end");
 const LINE_START = Symbol("line-start");
 const THEMATIC_BREAK = Symbol("thematic-break");
 const MARKUP_COMPATIBILITY_NS = "http://schemas.openxmlformats.org/markup-compatibility/2006";
+const MATHML_NS = "http://www.w3.org/1998/Math/MathML";
 type TextPart =
   | string
   | typeof CELL_START
@@ -64,6 +65,7 @@ interface XmlNode {
   markupCompatibility?: boolean;
   hasSelectedChoice?: boolean;
   epubTable?: boolean;
+  mathmlFirstChildSeen?: boolean;
 }
 
 function separateRubyReadings(ruby: XmlNode) {
@@ -135,6 +137,8 @@ function xml(source: string, extension: string): XmlNode {
     if (odfSpaces && node.name === "s") node.spaceCount = repeatCount(node.attrs.c);
     stack.at(-1)!.children.push(node);
     stack.push(node);
+    if (htmlEntities && node.name === "semantics" && namespaceOf(tag.name, stack) === MATHML_NS)
+      node.mathmlFirstChildSeen = false;
     if (
       (node.name === "AlternateContent" || node.name === "Choice") &&
       namespaceOf(tag.name, stack) === MARKUP_COMPATIBILITY_NS
@@ -144,6 +148,9 @@ function xml(source: string, extension: string): XmlNode {
   parser.on("closetag", (tag) => {
     const node = stack.pop()!;
     const parent = stack.at(-1)!;
+    // MathML Core displays only the first element child of semantics by default.
+    const isMathmlAlternative = parent.mathmlFirstChildSeen === true;
+    if (parent.mathmlFirstChildSeen === false) parent.mathmlFirstChildSeen = true;
     const isCompatibilityChoice =
       node.name === "Choice" &&
       node.markupCompatibility &&
@@ -152,6 +159,7 @@ function xml(source: string, extension: string): XmlNode {
     // Markup-compatibility fallbacks repeat their mc:Choice content, e.g. Word text boxes.
     // Keep one when no Choice carries text, such as a chart with a VML caption.
     if (
+      isMathmlAlternative ||
       (htmlEntities && isXhtmlTemplate(tag.name, node, stack, rootTagName)) ||
       (htmlEntities && node.name === "head" && stack[1]?.name === "html") ||
       (htmlEntities &&
