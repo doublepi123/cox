@@ -3499,6 +3499,8 @@ export const en = {
   Description: "Description",
   "Search pull requests": "Search pull requests",
   "Search authors": "Search authors",
+  "{count} merge loaded": "{count} merge loaded",
+  "{count} merges loaded": "{count} merges loaded",
   "Search labels": "Search labels",
   Filters: "Filters",
   Checks: "Checks",

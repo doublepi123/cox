@@ -3291,6 +3291,8 @@ export const zh = {
   Description: "说明",
   "Search pull requests": "搜索拉取请求",
   "Search authors": "搜索作者",
+  "{count} merge loaded": "已加载 {count} 次合并",
+  "{count} merges loaded": "已加载 {count} 次合并",
   "Search labels": "搜索标签",
   Filters: "筛选",
   Checks: "检查",
