@@ -3981,6 +3981,14 @@ export const zh = {
   "{enabled} of {total} on": "已启用 {enabled}/{total} 项",
   now: "刚刚",
   "just now": "刚刚",
+  "Paste a pull request URL or enter 123 / #123.": "粘贴拉取请求 URL，或输入 123 / #123。",
+  "Use a pull request URL, 123, or #123.": "请输入拉取请求 URL、123 或 #123。",
+  "No project in this environment can read {repository}.":
+    "此环境中没有项目可以读取 {repository}。",
+  "Paste the full pull request URL; this thread has no repository to resolve the number against.":
+    "请粘贴完整的拉取请求 URL，当前线程没有可用于解析编号的仓库。",
+  "Paste a full URL; this project's host has no known {kind} URL.":
+    "请粘贴完整 URL，此项目的托管平台没有已知的 {kind} URL。",
   "Could not download file": "无法下载文件",
   "Reconnect to the environment and try again.": "请重新连接到环境后重试。",
   "The file could not be loaded. Try again.": "无法加载文件，请重试。",

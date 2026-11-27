@@ -22,6 +22,7 @@ vi.mock(import("~/state/entities"), async (original) => ({
 
 import { RegistryContext } from "@effect/atom-react";
 
+import { setLanguagePreference } from "~/i18n";
 import { appAtomRegistry } from "~/rpc/atomRegistry";
 import { act, render } from "../../../test/render";
 import { LinkPullRequestDialogHost, openLinkPullRequestDialog } from "./LinkPullRequestDialog";
@@ -110,3 +111,15 @@ it.each([{ isComposing: true }, { keyCode: 229 }, { repeat: true }])(
     await expect.element(dialog.input).not.toBeInTheDocument();
   },
 );
+
+it("shows the number error in the UI language when the thread has no repository", async () => {
+  await using dialog = await openDialog();
+  setLanguagePreference("zh");
+  using _language = { [Symbol.dispose]: () => setLanguagePreference("system") };
+  await dialog.input.fill("123");
+  await userEvent.keyboard("{Enter}");
+  await expect
+    .element(page.getByText("请粘贴完整的拉取请求 URL，当前线程没有可用于解析编号的仓库。"))
+    .toBeVisible();
+  expect(linking.changeLink).not.toHaveBeenCalled();
+});

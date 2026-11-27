@@ -89,11 +89,14 @@ function LinkPullRequestDialog({
     }
   }
 
-  const resolved = resolveLinkPullRequestInput({
-    reference,
-    project: ownProject,
-    hasProject: (reference) => linking.canLink(reference.url),
-  });
+  const resolved = resolveLinkPullRequestInput(
+    {
+      reference,
+      project: ownProject,
+      hasProject: (reference) => linking.canLink(reference.url),
+    },
+    t,
+  );
 
   const submit = async () => {
     if (submittingRef.current) return;
@@ -118,9 +121,9 @@ function LinkPullRequestDialog({
   const validation = !dirty
     ? null
     : reference.trim().length === 0
-      ? "Paste a pull request URL or enter 123 / #123."
+      ? t("Paste a pull request URL or enter 123 / #123.")
       : resolved === null
-        ? "Use a pull request URL, 123, or #123."
+        ? t("Use a pull request URL, 123, or #123.")
         : "error" in resolved
           ? resolved.error
           : null;

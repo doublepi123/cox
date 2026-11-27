@@ -4205,6 +4205,14 @@ export const en = {
   "{enabled} of {total} on": "{enabled} of {total} on",
   now: "now",
   "just now": "just now",
+  "Paste a pull request URL or enter 123 / #123.": "Paste a pull request URL or enter 123 / #123.",
+  "Use a pull request URL, 123, or #123.": "Use a pull request URL, 123, or #123.",
+  "No project in this environment can read {repository}.":
+    "No project in this environment can read {repository}.",
+  "Paste the full pull request URL; this thread has no repository to resolve the number against.":
+    "Paste the full pull request URL; this thread has no repository to resolve the number against.",
+  "Paste a full URL; this project's host has no known {kind} URL.":
+    "Paste a full URL; this project's host has no known {kind} URL.",
   "Could not download file": "Could not download file",
   "Reconnect to the environment and try again.": "Reconnect to the environment and try again.",
   "The file could not be loaded. Try again.": "The file could not be loaded. Try again.",

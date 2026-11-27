@@ -66,16 +66,19 @@ interface ResolvedLink {
   readonly url: string;
 }
 
-export function resolveLinkPullRequestInput(input: {
-  readonly reference: string;
-  readonly project: {
-    readonly host: string;
-    readonly repository: string;
-    readonly terminology: ChangeRequestTerminology;
-    readonly webUrl: (number: number) => string | null;
-  } | null;
-  readonly hasProject: (reference: ResolvedLink) => boolean;
-}): { link: ResolvedLink } | { error: string } | null {
+export function resolveLinkPullRequestInput(
+  input: {
+    readonly reference: string;
+    readonly project: {
+      readonly host: string;
+      readonly repository: string;
+      readonly terminology: ChangeRequestTerminology;
+      readonly webUrl: (number: number) => string | null;
+    } | null;
+    readonly hasProject: (reference: ResolvedLink) => boolean;
+  },
+  translate?: (key: string, values?: Readonly<Record<string, string>>) => string,
+): { link: ResolvedLink } | { error: string } | null {
   const parsed =
     sourceControlClients.parseChangeRequestUrl(input.reference.trim()) !== null
       ? input.reference.trim()
@@ -84,7 +87,12 @@ export function resolveLinkPullRequestInput(input: {
   const url = sourceControlClients.parseChangeRequestUrl(parsed)?.link;
   if (url !== undefined) {
     if (!input.hasProject({ ...url, url: parsed })) {
-      return { error: `No project in this environment can read ${url.host}/${url.repository}.` };
+      return {
+        error:
+          translate?.("No project in this environment can read {repository}.", {
+            repository: `${url.host}/${url.repository}`,
+          }) ?? `No project in this environment can read ${url.host}/${url.repository}.`,
+      };
     }
     return {
       link: {
@@ -100,6 +108,9 @@ export function resolveLinkPullRequestInput(input: {
   if (input.project === null) {
     return {
       error:
+        translate?.(
+          "Paste the full pull request URL; this thread has no repository to resolve the number against.",
+        ) ??
         "Paste the full pull request URL; this thread has no repository to resolve the number against.",
     };
   }
@@ -108,7 +119,11 @@ export function resolveLinkPullRequestInput(input: {
     webUrl === null ? undefined : sourceControlClients.parseChangeRequestUrl(webUrl)?.link;
   if (webUrl === null || webReference === undefined) {
     return {
-      error: `Paste a full URL; this project's host has no known ${input.project.terminology.singular} URL.`,
+      error:
+        translate?.("Paste a full URL; this project's host has no known {kind} URL.", {
+          kind: input.project.terminology.singular,
+        }) ??
+        `Paste a full URL; this project's host has no known ${input.project.terminology.singular} URL.`,
     };
   }
   return {
