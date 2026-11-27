@@ -258,6 +258,14 @@ const normalizeWorkspaceRootForProjectCommand = Effect.fn(
   "normalizeWorkspaceRootForProjectCommand",
 )(function* (workspaceRoot: string) {
   const workspacePaths = yield* WorkspacePaths.WorkspacePaths;
+  if (workspaceRoot !== workspaceRoot.trimStart()) {
+    const path = yield* Path.Path;
+    const home = yield* HostProcess.HomeDirectory;
+    if (path.parse(expandHomePath(workspaceRoot.trim(), home)).root === "") {
+      // Resolving the relative argument first keeps its leading space inside the absolute path.
+      return yield* workspacePaths.normalizeWorkspaceRoot(path.resolve(workspaceRoot.trimEnd()));
+    }
+  }
   return yield* workspacePaths.normalizeWorkspaceRoot(workspaceRoot);
 });
 
@@ -304,7 +312,7 @@ const findActiveProjectTarget = Effect.fn("findActiveProjectTarget")(function* (
   }
 
   const normalizedWorkspaceRootResult = yield* Effect.result(
-    normalizeWorkspaceRootForProjectCommand(trimmedIdentifier),
+    normalizeWorkspaceRootForProjectCommand(input.identifier),
   );
   const normalizedWorkspaceRoot =
     normalizedWorkspaceRootResult._tag === "Success"
