@@ -458,6 +458,10 @@ export function collectLimitNotices(presentations: LimitPresentations): readonly
     for (const source of presentation.serverConfig?.usageLimitSources ?? []) {
       if (source.error) {
         notices.add(`${label(environmentLabel, source.label)}: ${source.error}`);
+      } else if (source.accounts.length === 0 && source.unreadProviders?.length) {
+        notices.add(
+          `${label(environmentLabel, source.label)}: No Codex or Claude accounts. Skipped ${source.unreadProviders.join(", ")}.`,
+        );
       } else if (
         (source.kind === "http" ? (source.quotaAccounts?.length ?? 0) : source.accounts.length) ===
         0

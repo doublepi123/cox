@@ -91,7 +91,9 @@ export function AddUsageLimitSourceDialog({
               t("Read quotas from an endpoint on {environmentLabel}.", { environmentLabel })
             ) : (
               <>
-                {t("Show the quota of every account the hub pools, next to the providers on")}{" "}
+                {t(
+                  "Show the quota of every Codex or Claude account the hub pools, next to the providers on",
+                )}{" "}
                 {environmentLabel}
                 {t(". The key stays on that server.")}
               </>

@@ -1902,8 +1902,8 @@ export const en = {
   "Continue to sign-in": "Continue to sign-in",
   "Add instance": "Add instance",
   "Add a CLIProxyAPI hub": "Add a CLIProxyAPI hub",
-  "Show the quota of every account the hub pools, next to the providers on":
-    "Show the quota of every account the hub pools, next to the providers on",
+  "Show the quota of every Codex or Claude account the hub pools, next to the providers on":
+    "Show the quota of every Codex or Claude account the hub pools, next to the providers on",
   ". The key stays on that server.": ". The key stays on that server.",
   "Management key": "Management key",
   "Label (optional)": "Label (optional)",

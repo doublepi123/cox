@@ -1745,8 +1745,8 @@ export const zh = {
   "Continue to sign-in": "继续登录",
   "Add instance": "添加实例",
   "Add a CLIProxyAPI hub": "添加 CLIProxyAPI 中心",
-  "Show the quota of every account the hub pools, next to the providers on":
-    "在提供商旁显示中心管理的各账户额度，所在环境：",
+  "Show the quota of every Codex or Claude account the hub pools, next to the providers on":
+    "在提供商旁显示中心管理的各 Codex 和 Claude 账户额度，所在环境：",
   ". The key stays on that server.": "。密钥仅保存在该服务器上。",
   "Management key": "管理密钥",
   "Label (optional)": "标签（可选）",
