@@ -3,6 +3,11 @@ import { describe, expect, it, vi } from "vite-plus/test";
 import { render } from "../../../test/render";
 import { MarkdownThreadLink } from "./MarkdownThreadLink";
 import { makeThreadFixture } from "../../test-fixtures";
+import {
+  serializeTableElementToCsv,
+  serializeTableElementToHtml,
+  serializeTableElementToMarkdown,
+} from "../../markdown-clipboard";
 import "../../index.css";
 
 const state = vi.hoisted(() => ({
@@ -50,6 +55,37 @@ function resetState() {
 }
 
 describe("MarkdownThreadLink metadata", () => {
+  it("keeps the thread name when copying a table", async () => {
+    resetState();
+    state.shellId = "target";
+    await using screen = await render(
+      <table>
+        <thead>
+          <tr>
+            <th>Thread</th>
+            <th>Status</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>
+              <MarkdownThreadLink
+                environmentId={environmentId}
+                link={{ environmentId, threadId: ThreadId.make("target") }}
+                label="Linked thread"
+              />
+            </td>
+            <td>ready</td>
+          </tr>
+        </tbody>
+      </table>,
+    );
+    const table = screen.container.querySelector("table")!;
+    expect(serializeTableElementToCsv(table)).toBe("Thread,Status\nDecoded thread,ready");
+    expect(serializeTableElementToMarkdown(table)).toContain("[Decoded thread](");
+    expect(serializeTableElementToHtml(table)).toContain("Decoded thread");
+  });
+
   it("keeps a known-missing thread unresolved during refresh", async () => {
     resetState();
     state.pending = true;
