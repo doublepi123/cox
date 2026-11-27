@@ -2,6 +2,29 @@
 
 ## Unreleased
 
+## 0.2.47 — 2026-11-27
+
+- Port the November 26 T3 batch: 366 of 487 upstream commits ported and 12 already covered by
+  Cox; see `docs/upstream-audit-2026-11-26`.
+- Workflows (Labs) gain question kinds with described choices, required reasons and links, run
+  tags and subjects to filter and look runs up by, named pools that queue runs over a limit, and
+  withdrawing a question without cancelling its run. Answers record who gave them.
+- Worktree layout commands run only after a person approves the exact command text.
+- Run settle, pin, snooze and other thread actions from the command palette, hide the sidebar by
+  dragging it, cycle terminals with shortcuts and copy paths from the file sidebar. Thread search
+  matches a quoted phrase.
+- File previews read GBK and GB18030 text, and startup shows database migration progress.
+- Fixes for Claude, Codex, Cursor, OpenCode, Pi and Antigravity sessions, delegated worktrees, PR
+  reviews, terminal paste, Escape and IME handling, and many previews. Analytics honors
+  `DO_NOT_TRACK`.
+- Fix test races in the web browser suite, including a mid-run Vite dependency reload, and the
+  read-only file view's line reveal.
+
+## Desktop 0.2.44 — 2026-11-27
+
+- The packaged app ignores Node inspector flags.
+- The startup page shows database migration progress.
+
 ## 0.2.46 — 2026-11-26
 
 - Importing models through a gateway fills parameters and prices from models.dev for models that
