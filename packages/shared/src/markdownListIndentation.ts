@@ -11,6 +11,7 @@ interface MarkdownPosition {
 
 interface MarkdownAstNode {
   readonly type: string;
+  readonly identifier?: unknown;
   readonly value?: unknown;
   position?: MarkdownPosition;
   children?: MarkdownAstNode[];
@@ -61,11 +62,17 @@ function isSameLineOverIndentedCode(
   return sourceCharacter !== "`" && sourceCharacter !== "~";
 }
 
-function parseRecoveredMarkdown(value: string, parser: MarkdownParser): RecoveredMarkdown {
+function parseRecoveredMarkdown(
+  value: string,
+  parser: MarkdownParser,
+  refs: string,
+): RecoveredMarkdown {
   // Prefix block-looking input to parse inline extensions; retain later block children after blank lines.
-  const source = `${INLINE_PARSE_PREFIX}${value}`;
+  const source = `${refs}${INLINE_PARSE_PREFIX}${value}`;
   const document = parser.parse(source) as MarkdownAstNode;
-  const blocks = document.children;
+  const blocks = document.children?.filter(
+    (node) => (node.position?.start?.offset ?? 0) >= refs.length,
+  );
   const paragraph = blocks?.[0];
   const children = paragraph?.type === "paragraph" ? paragraph.children : undefined;
   const first = children?.[0];
@@ -120,9 +127,13 @@ function clearRecoveredListItemPositions(node: MarkdownAstNode): void {
   node.children?.forEach(clearRecoveredListItemPositions);
 }
 
-function blocksFromIndentedCode(node: MarkdownAstNode, parser: MarkdownParser): RecoveredMarkdown {
+function blocksFromIndentedCode(
+  node: MarkdownAstNode,
+  parser: MarkdownParser,
+  refs: string,
+): RecoveredMarkdown {
   const value = typeof node.value === "string" ? node.value.trim() : "";
-  const recovered = parseRecoveredMarkdown(value, parser);
+  const recovered = parseRecoveredMarkdown(value, parser, refs);
   if (keepsOrderedListNumbers(parser)) {
     for (const block of recovered.blocks) keepOrderedListNumbers(block, recovered.source);
   }
@@ -151,6 +162,29 @@ function attachListItemIndentationNormalizer(this: MarkdownParser) {
       return;
     }
     const markdown = file.value;
+    const identifiers: string[] = [];
+    const collect = (node: MarkdownAstNode) => {
+      if (node.type === "definition" && typeof node.identifier === "string") {
+        identifiers.push(node.identifier);
+      }
+      node.children?.forEach(collect);
+    };
+    collect(tree);
+    // micromark only parses `[text][label]` as a reference when the label is defined; the href
+    // still comes from the document's own definition when mdast becomes hast. Stubs are limited
+    // to labels the text can name, matched as mdast normalizes identifiers, to keep reparses small.
+    const definitionsFor = (value: string) => {
+      if (identifiers.length === 0) return "";
+      const text = value
+        .replace(/[\t\n\r ]+/g, " ")
+        .toLowerCase()
+        .toUpperCase()
+        .toLowerCase();
+      return identifiers
+        .filter((identifier) => text.includes(identifier))
+        .map((identifier) => `[${identifier}]: <>\n\n`)
+        .join("");
+    };
 
     const visit = (node: MarkdownAstNode, source: string) => {
       if (!node.children) {
@@ -164,7 +198,11 @@ function attachListItemIndentationNormalizer(this: MarkdownParser) {
         if (isSameLineOverIndentedCode(child, node, source)) {
           const start = node.position!.start!.offset!;
           const value = expandIndentedCodeTabs(String(child.value), source, start);
-          const recovered = blocksFromIndentedCode({ ...child, value }, this);
+          const recovered = blocksFromIndentedCode(
+            { ...child, value },
+            this,
+            definitionsFor(value),
+          );
           for (const block of recovered.blocks) {
             visit(block, recovered.source);
             clearRecoveredListItemPositions(block);

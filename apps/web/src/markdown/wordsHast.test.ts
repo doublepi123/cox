@@ -5,6 +5,7 @@ import { extractMarkdownLinkHrefs } from "@t3tools/shared/markdownLinks";
 
 import { serializeComposerFileLink } from "@t3tools/shared/composerTrigger";
 import { isMarkdownFileLinkLabel } from "@t3tools/shared/markdownLinks";
+import { searchableMessageSegments } from "@t3tools/shared/threadFindText";
 
 import {
   decodeMarkdownLinkEscapes,
@@ -197,6 +198,23 @@ const CASES: ReadonlyArray<readonly [markdown: string, html: string]> = [
 ];
 
 describe("wordsHast", () => {
+  it("uses document reference definitions in recovered items and search text", () => {
+    const markdown = "-       Read [the guide][guide].\n\n[guide]: https://example.com/guide";
+    const normal = markdown.replace("-       ", "- ");
+    expect(wordsHtml(markdown)).toBe(wordsHtml(normal));
+    expect(wordsHtml(markdown)).toContain('<a href="https://example.com/guide">the guide</a>');
+    const segments = (text: string) =>
+      searchableMessageSegments({ role: "assistant", text, streaming: false });
+    expect(segments(markdown)).toEqual(segments(normal));
+    expect(segments(markdown)?.join("")).toBe("Read the guide.");
+  });
+
+  it("keeps a recovered item's own reference definition ahead of the document's", () => {
+    const markdown =
+      "-       Read [the guide][guide].\n\n        [guide]: https://example.com/local\n\n[guide]: https://example.com/document";
+    expect(wordsHtml(markdown)).toContain('<a href="https://example.com/local">the guide</a>');
+  });
+
   it.each(CASES)("renders %j as the remark pipeline did", (markdown, html) => {
     expect(wordsHtml(markdown)).toBe(html);
   });
