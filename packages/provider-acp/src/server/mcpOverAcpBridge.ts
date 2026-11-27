@@ -6,6 +6,10 @@ import * as Stream from "effect/Stream";
 import type * as AcpSchema from "effect-acp/compat";
 
 import { responsePayloads } from "@t3tools/shared/mcpResponsePayloads";
+import {
+  MCP_TOOL_EXPOSURE_HEADER,
+  MCP_DEFERRED_PROXY,
+} from "@t3tools/provider-core/server/mcpSession";
 
 const MAX_CONNECTIONS = 16;
 const MAX_MESSAGE_BYTES = 8 * 1024 * 1024;
@@ -61,6 +65,7 @@ function errorMessage(error: unknown): string {
 export interface AcpMcpOverAcpBridgeOptions {
   readonly endpoint: string;
   readonly authorization: string;
+  readonly deferredProxy?: boolean | undefined;
   readonly allocateConnectionId: Effect.Effect<string>;
   readonly fetchImplementation?: (url: string, init?: RequestInit) => Promise<Response>;
 }
@@ -124,6 +129,9 @@ export const makeAcpMcpOverAcpBridge = Effect.fn("AcpMcpOverAcpBridge.make")(fun
                 "content-type": "application/json",
                 accept: "application/json, text/event-stream",
                 authorization: options.authorization,
+                ...(options.deferredProxy
+                  ? { [MCP_TOOL_EXPOSURE_HEADER]: MCP_DEFERRED_PROXY }
+                  : {}),
                 ...(connection.sessionId === null
                   ? {}
                   : { "mcp-session-id": connection.sessionId }),

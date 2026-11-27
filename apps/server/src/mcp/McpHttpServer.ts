@@ -57,6 +57,10 @@ import {
   MAX_TOOL_OUTPUT_IMAGES,
 } from "@t3tools/shared/toolOutput";
 import { resolveT3McpToolId } from "@t3tools/shared/t3McpToolPresentation";
+import {
+  MCP_TOOL_EXPOSURE_HEADER,
+  MCP_DEFERRED_PROXY,
+} from "@t3tools/provider-core/server/mcpSession";
 import * as McpProviderSessions from "@t3tools/provider-core/server/McpProviderSessions";
 import * as OrchestratorMcpService from "./OrchestratorMcpService.ts";
 import { PreviewControlsToolkit } from "./toolkits/previewControls/tools.ts";
@@ -244,7 +248,15 @@ const makeMcpAuthMiddleware = Effect.gen(function* () {
           Effect.orElseSucceed(() => false),
         )
       : false;
-    return { ...limited, origin, workflows, localFeedbackEnabled };
+    return {
+      ...limited,
+      origin,
+      workflows,
+      localFeedbackEnabled,
+      deferredProxy:
+        limited.thread !== undefined &&
+        request.headers[MCP_TOOL_EXPOSURE_HEADER] === MCP_DEFERRED_PROXY,
+    };
   });
   return Effect.fnUntraced(function* (httpEffect) {
     const request = yield* HttpServerRequest.HttpServerRequest;
@@ -1433,9 +1445,181 @@ export const layerMilestoneEvents = Layer.effectDiscard(
   Layer.provide(layerWebhookTransport),
 );
 
+const isProxyInvalidParams = Schema.is(McpSchema.InvalidParams);
+const isProxyInternalError = Schema.is(McpSchema.InternalError);
+const PROXY_SEARCH = "cox_tool_search";
+const PROXY_CALL = "cox_tool_call";
+const directProxyTools = new Set([
+  PROXY_SEARCH,
+  PROXY_CALL,
+  "orchestrator_capabilities",
+  "delegate_task",
+  "task_status",
+]);
+
+const layerDeferredProxyVisibility = McpServer.visibility(
+  Effect.succeed(({ method, target }) =>
+    Effect.gen(function* () {
+      if (method !== "tools/list") return true;
+      const scope = Option.getOrUndefined(
+        yield* Effect.serviceOption(McpInvocationContext.McpInvocationContext),
+      );
+      if (!scope?.deferredProxy) return target !== PROXY_SEARCH && target !== PROXY_CALL;
+      return directProxyTools.has(target);
+    }),
+  ),
+  { global: true },
+);
+
+const registerDeferredProxy = Effect.gen(function* () {
+  const server = yield* McpServer.McpServer;
+  const annotations = Context.make(
+    McpSchema.EnabledWhen,
+    McpInvocationContext.hiddenFromOutsideClients,
+  );
+  const scope = <A, E, R>(effect: Effect.Effect<A, E, R>) =>
+    Effect.withFiber(
+      (
+        fiber,
+      ): Effect.Effect<A, E | McpSchema.InvalidParams, Exclude<R, McpSchema.McpServerClient>> => {
+        const invocation = Context.getOrUndefined(
+          fiber.context,
+          McpInvocationContext.McpInvocationContext,
+        );
+        if (!invocation?.thread || !invocation.deferredProxy) {
+          return Effect.fail(
+            new McpSchema.InvalidParams({
+              message: "This tool requires a Cox deferred MCP session.",
+            }),
+          );
+        }
+        const request = Context.getOrUndefined(fiber.context, McpSchema.McpRequestContext);
+        const initializePayload = {
+          protocolVersion: "2025-06-18" as const,
+          capabilities: request?.clientCapabilities ?? {},
+          clientInfo: request?.clientInfo ?? { name: "cox", version: packageJson.version },
+        };
+        const client =
+          Context.getOrUndefined(fiber.context, McpSchema.McpServerClient) ??
+          McpSchema.McpServerClient.of({
+            clientId: 0,
+            clientCapabilities: initializePayload.capabilities,
+            clientInfo: initializePayload.clientInfo,
+            protocolVersion: initializePayload.protocolVersion,
+            initializePayload,
+            getClient: Effect.die("Stateless MCP requests do not expose a client RPC handle."),
+          });
+        return effect.pipe(Effect.provideService(McpSchema.McpServerClient, client));
+      },
+    );
+  yield* server.addTool({
+    tool: new McpSchema.Tool({
+      name: PROXY_SEARCH,
+      description:
+        "Find optional Cox tools and their argument schemas. Invoke a result using cox_tool_call.",
+      inputSchema: {
+        type: "object",
+        properties: { query: { type: "string" } },
+        required: ["query"],
+      },
+      annotations: { readOnlyHint: true },
+    }),
+    annotations,
+    handle: (payload) =>
+      scope(
+        Effect.gen(function* () {
+          const query: string =
+            typeof payload?.query === "string" ? payload.query.trim().toLowerCase() : "";
+          if (query.length === 0)
+            return yield* new McpSchema.InvalidParams({ message: "query is required." });
+          const client = yield* McpSchema.McpServerClient;
+          const terms = query.split(/[^a-z0-9_]+/u).filter(Boolean);
+          const matches = server.tools
+            .flatMap(({ tool, annotations }) => {
+              const enabled = Context.getOrUndefined(annotations, McpSchema.EnabledWhen);
+              if (directProxyTools.has(tool.name) || enabled?.(client.initializePayload) === false)
+                return [];
+              const name = tool.name.toLowerCase();
+              const description = tool.description ?? "";
+              const score = terms.reduce(
+                (total, term) =>
+                  total +
+                  (name.includes(term) ? 3 : description.toLowerCase().includes(term) ? 1 : 0),
+                0,
+              );
+              return score === 0 ? [] : [{ tool, score }];
+            })
+            .sort((a, b) => b.score - a.score)
+            .slice(0, 10);
+          const tools: Array<{ name: string; description: string; inputSchema?: unknown }> = [];
+          for (const { tool } of matches) {
+            const compact = { name: tool.name, description: tool.description ?? "" };
+            const full = { ...compact, inputSchema: tool.inputSchema };
+            const size = (item: typeof compact) =>
+              Buffer.byteLength(encodeJsonText({ tools: [...tools, item] }));
+            if (size(full) <= 8000) tools.push(full);
+            else if (size(compact) <= 8000) tools.push(compact);
+          }
+          const result = { tools };
+          return new McpSchema.CallToolResult({
+            content: [{ type: "text", text: encodeJsonText(result) }],
+            structuredContent: result,
+          });
+        }),
+      ),
+  });
+  yield* server.addTool({
+    tool: new McpSchema.Tool({
+      name: PROXY_CALL,
+      description:
+        "Invoke a Cox MCP tool by exact name. Use cox_tool_search to find optional tool schemas.",
+      inputSchema: {
+        type: "object",
+        properties: { name: { type: "string" }, arguments: { type: "object" } },
+        required: ["name"],
+      },
+      annotations: { readOnlyHint: false, openWorldHint: false },
+    }),
+    annotations,
+    handle: (payload) =>
+      scope(
+        Effect.gen(function* () {
+          const name = typeof payload?.name === "string" ? payload.name.trim() : "";
+          if (name.length === 0 || name === PROXY_CALL || name === PROXY_SEARCH)
+            return yield* new McpSchema.InvalidParams({
+              message: "Enter the exact name of a Cox tool.",
+            });
+          const args = payload?.arguments;
+          if (
+            args !== undefined &&
+            (typeof args !== "object" || args === null || Array.isArray(args))
+          )
+            return yield* new McpSchema.InvalidParams({
+              message: "arguments must be a JSON object.",
+            });
+          return yield* server
+            .callTool({ name, arguments: (args as Record<string, unknown> | undefined) ?? {} })
+            .pipe(
+              Effect.mapError((error) =>
+                isProxyInvalidParams(error) || isProxyInternalError(error)
+                  ? error
+                  : new McpSchema.InternalError({ message: error.message }),
+              ),
+            );
+        }),
+      ),
+  });
+});
+
+export const layerDeferredProxy = Layer.mergeAll(
+  Layer.effectDiscard(registerDeferredProxy),
+  layerDeferredProxyVisibility,
+);
+
 export const layer = layerMcpTransport(
   Layer.mergeAll(
     layerTools,
+    layerDeferredProxy,
     layerWorkflowEvents,
     layerMilestoneEvents,
     toolkitRegistration(LocalFeedback.LocalFeedbackToolkit, LocalFeedback.layer),

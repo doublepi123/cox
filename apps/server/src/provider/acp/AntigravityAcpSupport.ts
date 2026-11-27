@@ -125,6 +125,15 @@ const ANTIGRAVITY_COX_MCP_TITLE = /^Run mcp_cox_(?<tool>[A-Za-z0-9_]+)\??$/;
 
 const ANTIGRAVITY_PROXIED_MCP_TITLE = /^MCP Tool (?<tool>[A-Za-z0-9_]+)\??$/;
 
+function isCoxProxyTarget(tool: string, args: Record<string, unknown> | undefined): boolean {
+  if (tool === "cox_tool_search" || COX_MCP_TOOL_NAMES.has(tool)) return true;
+  return (
+    tool === "cox_tool_call" &&
+    typeof args?.name === "string" &&
+    COX_MCP_TOOL_NAMES.has(args.name.trim())
+  );
+}
+
 function isAntigravityCoxMcpRequest(request: EffectAcpSchema.RequestPermissionRequest): boolean {
   const title = request.toolCall.title?.trim() ?? "";
   const rawInput = unknownRecord(request.toolCall.rawInput);
@@ -133,12 +142,12 @@ function isAntigravityCoxMcpRequest(request: EffectAcpSchema.RequestPermissionRe
     return (
       rawInput?.ServerName === "cox" &&
       rawInput.ToolName === proxiedTool &&
-      COX_MCP_TOOL_NAMES.has(proxiedTool)
+      isCoxProxyTarget(proxiedTool, unknownRecord(rawInput.Arguments))
     );
   }
   if (typeof rawInput?.CommandLine === "string") return false;
   const tool = ANTIGRAVITY_COX_MCP_TITLE.exec(title)?.groups?.tool;
-  return tool !== undefined && COX_MCP_TOOL_NAMES.has(tool);
+  return tool !== undefined && isCoxProxyTarget(tool, rawInput);
 }
 
 export function antigravityPermissionDisposition(

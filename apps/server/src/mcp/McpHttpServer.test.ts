@@ -147,6 +147,7 @@ it.effect("gives outside clients an upload URL on the origin their request reach
 );
 const threadId = ThreadId.make("thread-mcp-test");
 const alternateTabId = PreviewTabId.make("tab-mcp-alternate");
+const encodeProxyRequest = Schema.encodeSync(Schema.fromJsonString(Schema.Unknown));
 const decodeJsonText = Schema.decodeUnknownSync(Schema.fromJsonString(Schema.Unknown));
 const invocation = {
   environmentId,
@@ -1151,6 +1152,133 @@ it.effect("admits provider and OAuth client credentials and points only clients 
       expect(preflight.headers["access-control-allow-credentials"]).toBe("true");
     }),
   ).pipe(Effect.provide(NodeHttpServer.layerTest)),
+);
+
+it.effect(
+  "lists a fixed proxy toolbox and enforces tool visibility during discovery and invocation",
+  () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const scopeFor = (
+          token: string,
+          subagent: boolean,
+        ): McpInvocationContext.McpThreadInvocationScope => ({
+          environmentId,
+          requestNamespace: token,
+          thread: {
+            threadId: ThreadId.make(`thread-${token}`),
+            providerSessionId: token,
+            providerInstanceId: ProviderInstanceId.make("codex"),
+            subagent,
+          },
+          client: undefined,
+          capabilities: new Set(["pull-requests"]),
+          issuedAt: 1,
+        });
+        const scopes = new Map([
+          ["parentToken", scopeFor("parentToken", false)],
+          ["childToken", scopeFor("childToken", true)],
+        ]);
+        const serverLayer = McpHttpServer.layerMcpTransport(
+          Layer.mergeAll(McpHttpServer.layerPullRequestsToolkit, McpHttpServer.layerDeferredProxy),
+        ).pipe(
+          Layer.provide(ServerSettings.layerTest()),
+          Layer.provide(
+            Layer.mock(McpSessionRegistry.McpSessionRegistry)({
+              resolve: (token) => Effect.succeed(scopes.get(token)),
+            }),
+          ),
+          Layer.provide(
+            Layer.mergeAll(
+              McpToolAccessTestkit.liveThreadsLayer,
+              Layer.mock(ProjectService.ProjectService)({}),
+              Layer.mock(PullRequestService.PullRequestService)({}),
+              Layer.mock(PullRequestReviewGuideService.PullRequestReviewGuideService)({}),
+              Layer.mock(Orchestrator.OrchestratorV2)({}),
+              Layer.mock(ProjectionStore.ProjectionStoreV2)({}),
+              Layer.mergeAll(NodeServices.layer, NodeCrypto.layer),
+            ),
+          ),
+        );
+        yield* HttpRouter.serve(serverLayer, { disableListenLog: true, disableLogger: true }).pipe(
+          Layer.build,
+        );
+        const httpClient = yield* HttpClient.HttpClient;
+        const proxySession = (token: string) =>
+          Effect.gen(function* () {
+            const headers = {
+              accept: "application/json, text/event-stream",
+              authorization: `Bearer ${token}`,
+              "cox-tool-exposure": "deferred-proxy",
+            };
+            const initialize = yield* httpClient.post("/mcp", {
+              headers,
+              body: HttpBody.text(
+                `{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"probe","version":"1.0.0"}}}`,
+                "application/json",
+              ),
+            });
+            return (method: string, params: Record<string, unknown>) =>
+              httpClient
+                .post("/mcp", {
+                  headers: {
+                    ...headers,
+                    "mcp-session-id": initialize.headers["mcp-session-id"]!,
+                    "mcp-protocol-version": "2025-06-18",
+                  },
+                  body: HttpBody.text(
+                    encodeProxyRequest({ jsonrpc: "2.0", id: 2, method, params }),
+                    "application/json",
+                  ),
+                })
+                .pipe(Effect.flatMap((response) => response.json));
+          });
+        const parent = yield* proxySession("parentToken");
+        const listed = yield* parent("tools/list", {});
+        expect(listed).toMatchObject({
+          result: {
+            tools: expect.arrayContaining(
+              [{ name: "cox_tool_search" }, { name: "cox_tool_call" }].map((tool) =>
+                expect.objectContaining(tool),
+              ),
+            ),
+          },
+        });
+        expect(JSON.stringify(listed)).not.toContain("watch_pull_request");
+        const searchParams = {
+          name: "cox_tool_search",
+          arguments: { query: "watch_pull_request" },
+        };
+        expect(yield* parent("tools/call", searchParams)).toMatchObject({
+          result: {
+            structuredContent: {
+              tools: expect.arrayContaining([
+                expect.objectContaining({
+                  name: "watch_pull_request",
+                  inputSchema: expect.any(Object),
+                }),
+              ]),
+            },
+          },
+        });
+        const child = yield* proxySession("childToken");
+        expect(yield* child("tools/call", searchParams)).toMatchObject({
+          result: { structuredContent: { tools: [] } },
+        });
+        expect(
+          yield* child("tools/call", {
+            name: "cox_tool_call",
+            arguments: { name: "watch_pull_request" },
+          }),
+        ).toMatchObject({ error: expect.any(Object) });
+        expect(
+          yield* parent("tools/call", {
+            name: "cox_tool_call",
+            arguments: { name: "cox_tool_call" },
+          }),
+        ).toMatchObject({ error: expect.any(Object) });
+      }),
+    ).pipe(Effect.provide(NodeHttpServer.layerTest)),
 );
 
 it.effect("lists pull request watch tools only to threads that are not delegated children", () =>

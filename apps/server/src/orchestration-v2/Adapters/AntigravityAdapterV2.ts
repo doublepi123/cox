@@ -216,6 +216,7 @@ export function makeAntigravityAcpAdapterFlavor(
     runtimeHarness: "Antigravity",
     capabilities: AntigravityProviderCapabilitiesV2,
     makeRuntime,
+    deferMcpTools: true,
     buildPrompt: ({ text, attachments, promptCapabilities }) =>
       buildAntigravityPrompt({
         input: text,

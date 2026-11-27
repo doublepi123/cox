@@ -392,6 +392,7 @@ export interface AcpAdapterV2Flavor {
     EffectAcpSchema.InitializeRequest["clientCapabilities"]
   >["_meta"];
   readonly mcpOverHttp?: boolean;
+  readonly deferMcpTools?: boolean;
   readonly normalizeSessionUpdate?: (
     notification: EffectAcpSchema.SessionNotification,
   ) => EffectAcpSchema.SessionNotification;
@@ -832,6 +833,7 @@ interface AcpMcpContext {
   readonly processEnvironment?: NodeJS.ProcessEnv;
   readonly endpoint?: string;
   readonly authorization?: string;
+  readonly deferredProxy?: boolean;
 }
 
 // A GUI-subsystem executable (packaged Windows desktop) does not hold the console, so PowerShell
@@ -872,6 +874,7 @@ function acpMcpContext(
   self: SelfInvocation,
   mcpOverHttp: boolean | undefined,
   callLauncher: string | undefined,
+  deferredProxy = false,
 ): AcpMcpContext {
   if (session === undefined) {
     return { servers: [], acpServers: [], httpServers: [] };
@@ -886,6 +889,9 @@ function acpMcpContext(
         env: [
           { name: "T3_ACP_MCP_ENDPOINT", value: session.endpoint },
           { name: "T3_ACP_MCP_AUTHORIZATION", value: session.authorizationHeader },
+          ...(deferredProxy
+            ? [{ name: "COX_ACP_MCP_TOOL_EXPOSURE", value: McpProviderSession.MCP_DEFERRED_PROXY }]
+            : []),
         ],
       },
     ],
@@ -897,12 +903,23 @@ function acpMcpContext(
               type: "http",
               name: "cox",
               url: session.endpoint,
-              headers: [{ name: "Authorization", value: session.authorizationHeader }],
+              headers: [
+                { name: "Authorization", value: session.authorizationHeader },
+                ...(deferredProxy
+                  ? [
+                      {
+                        name: McpProviderSession.MCP_TOOL_EXPOSURE_HEADER,
+                        value: McpProviderSession.MCP_DEFERRED_PROXY,
+                      },
+                    ]
+                  : []),
+              ],
             },
           ]
         : [],
     endpoint: session.endpoint,
     authorization: session.authorizationHeader,
+    deferredProxy,
     processEnvironment: {
       T3CODE_THREAD_ID: session.threadId,
       T3_ACP_MCP_ENDPOINT: session.endpoint,
@@ -2010,7 +2027,9 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
       : mcpSessions
           .read(threadId)
           .pipe(
-            Effect.map((session) => acpMcpContext(session, self, flavor.mcpOverHttp, callLauncher)),
+            Effect.map((session) =>
+              acpMcpContext(session, self, flavor.mcpOverHttp, callLauncher, flavor.deferMcpTools),
+            ),
           );
   const driver = flavor.driver;
   const continuationRequests = options.continuationRequests;
@@ -7812,6 +7831,7 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
           const mcpBridge = yield* makeAcpMcpOverAcpBridge({
             endpoint: mcpContext.endpoint,
             authorization: mcpContext.authorization,
+            deferredProxy: mcpContext.deferredProxy,
             allocateConnectionId: random.uuidV4(),
           });
           yield* Scope.addFinalizer(scope, mcpBridge.dispose);
@@ -8898,6 +8918,7 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
           const instructionState = {
             interactionMode: turnInput.runtimePolicy.interactionMode,
             hasT3Mcp: mcpSession !== undefined,
+            deferredMcpProxy: flavor.deferMcpTools === true,
           } satisfies T3AcpInstructionState;
           const previousInstructionState = (yield* Ref.get(promptInstructionStates)).get(sessionId);
           const compactionMarker = (yield* Ref.get(compactionMarkers)).get(sessionId);

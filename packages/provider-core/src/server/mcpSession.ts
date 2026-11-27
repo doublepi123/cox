@@ -1,5 +1,8 @@
 import type { EnvironmentId, ProviderInstanceId, ThreadId } from "@t3tools/contracts";
 
+export const MCP_TOOL_EXPOSURE_HEADER = "cox-tool-exposure";
+export const MCP_DEFERRED_PROXY = "deferred-proxy";
+
 export interface McpProviderSessionConfig {
   readonly environmentId: EnvironmentId;
   readonly threadId: ThreadId;

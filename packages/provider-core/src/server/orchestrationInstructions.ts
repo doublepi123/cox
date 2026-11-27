@@ -71,6 +71,7 @@ Investigate with read-only actions and do not edit files or otherwise execute th
 export interface T3AcpInstructionState {
   readonly interactionMode: ProviderInteractionMode;
   readonly hasT3Mcp: boolean;
+  readonly deferredMcpProxy?: boolean;
 }
 
 /** ACP lacks system/developer fields; inject context on first prompt and tool/mode changes. */
@@ -83,7 +84,8 @@ export function t3AcpPromptWithInstructions(input: {
   if (input.prompt.trimStart().startsWith("/")) return input.prompt;
   if (
     input.previousState?.interactionMode === input.state.interactionMode &&
-    input.previousState.hasT3Mcp === input.state.hasT3Mcp
+    input.previousState.hasT3Mcp === input.state.hasT3Mcp &&
+    input.previousState.deferredMcpProxy === input.state.deferredMcpProxy
   ) {
     return input.prompt;
   }
@@ -95,7 +97,9 @@ export function t3AcpPromptWithInstructions(input: {
       ? [
           T3_CODE_BROWSER_TOOL_INSTRUCTIONS.trim(),
           T3_CODE_ORCHESTRATION_INSTRUCTIONS.trim(),
-          T3_CODE_ACP_MCP_FALLBACK_INSTRUCTIONS,
+          input.state.deferredMcpProxy
+            ? "Use cox_tool_search to discover optional Cox tools and their input schemas. Invoke a result with cox_tool_call, supplying its exact name and arguments."
+            : T3_CODE_ACP_MCP_FALLBACK_INSTRUCTIONS,
         ]
       : []),
   ];

@@ -106,6 +106,7 @@ export interface McpInvocationScope {
   readonly issuedAt: number;
   readonly requestNamespace: string;
   readonly thread: McpThreadCaller | undefined;
+  readonly deferredProxy?: boolean;
   readonly client: McpClientCaller | undefined;
   readonly origin?: string | undefined;
   readonly workflows?: boolean;

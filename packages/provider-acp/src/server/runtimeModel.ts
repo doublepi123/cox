@@ -1133,6 +1133,26 @@ const HISTORICAL_MCP_TOOL_NAMES = [...T3_MCP_TOOL_NAMES].map((tool) =>
  */
 const T3_MCP_BARE_TITLE_CALL = /^(?:Running )?(?<tool>[A-Za-z0-9_]+)(?::\s*\{|$)/;
 
+function unwrapCoxToolProxy(
+  identity: AcpMcpToolCallIdentity,
+  input: Record<string, unknown> | undefined,
+): AcpMcpToolCallIdentity {
+  if (!APP_MCP_SERVER.test(identity.server) || identity.tool !== "cox_tool_call") return identity;
+  const envelope =
+    typeof input?.name === "string"
+      ? input
+      : isRecord(input?.arguments)
+        ? input.arguments
+        : undefined;
+  const name = typeof envelope?.name === "string" ? envelope.name.trim() : "";
+  if (!name || name === "cox_tool_call" || name === "cox_tool_search") return identity;
+  return {
+    server: "cox",
+    tool: name,
+    input: isRecord(envelope?.arguments) ? envelope.arguments : {},
+  };
+}
+
 /** ACP lacks typed MCP calls; recognize provider metadata and terminal fallback commands. */
 export function extractMcpToolCallIdentity(
   toolCall: AcpToolCallState,
@@ -1145,7 +1165,7 @@ export function extractMcpToolCallIdentity(
   const server = typeof rawInput?.server === "string" ? rawInput.server.trim() : "";
   const tool = typeof rawInput?.tool === "string" ? rawInput.tool.trim() : "";
   if (meta?.is_mcp_tool_call === true && server.length > 0 && tool.length > 0) {
-    return { server, tool };
+    return unwrapCoxToolProxy({ server, tool }, rawInput);
   }
   // Antigravity reaches MCP tools its context budget left out through call_mcp_tool, an execute
   // call titled "MCP Tool <tool>" whose rawInput names the server, tool, and arguments.
@@ -1153,7 +1173,10 @@ export function extractMcpToolCallIdentity(
   const proxiedTool = typeof rawInput?.ToolName === "string" ? rawInput.ToolName.trim() : "";
   if (proxiedServer.length > 0 && proxiedTool.length > 0) {
     const input = isRecord(rawInput?.Arguments) ? rawInput.Arguments : undefined;
-    return { server: proxiedServer, tool: proxiedTool, ...(input === undefined ? {} : { input }) };
+    return unwrapCoxToolProxy(
+      { server: proxiedServer, tool: proxiedTool, ...(input === undefined ? {} : { input }) },
+      input,
+    );
   }
   const claudeCode = isRecord(meta?.claudeCode) ? meta.claudeCode : undefined;
   const gooseToolCall = isRecord(meta?.goose)
@@ -1201,6 +1224,8 @@ export function extractMcpToolCallIdentity(
   ].filter((value): value is string => typeof value === "string");
   for (const candidate of candidates) {
     const trimmed = candidate.trim();
+    if (/^(?:Run )?(?:mcp[_-]+)?cox[_.:/-]+cox_tool_call\??$/i.test(trimmed))
+      return unwrapCoxToolProxy({ server: "cox", tool: "cox_tool_call" }, rawInput);
     const qualified = /^mcp__(.+?)__(.+)$/i.exec(trimmed);
     if (
       qualified?.[1] &&
