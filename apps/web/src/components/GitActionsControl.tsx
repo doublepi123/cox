@@ -1062,7 +1062,7 @@ function CheckoutGitActionsControl({
   // the worktree root from the same status snapshot, not the project cwd.
   const workingTreeRoot = gitStatusForActions?.workingTree.rootPath ?? null;
   const selectedFiles = allFiles.filter((f) => !excludedFiles.has(f.path));
-  const allSelected = excludedFiles.size === 0;
+  const allSelected = selectedFiles.length === allFiles.length;
   const noneSelected = selectedFiles.length === 0;
 
   const initAction = useVcsInitAction(sourceControlScope);
@@ -1254,7 +1254,7 @@ function CheckoutGitActionsControl({
     setDialogCommitMessage((current) => current || commitMessage);
   };
 
-  const runDialogActionOnNewBranch = () => {
+  const runDialogActionOnNewBranch = async () => {
     if (!isCommitDialogOpen) return;
     const commitMessage = dialogCommitMessage.trim();
 
@@ -1262,13 +1262,16 @@ function CheckoutGitActionsControl({
     setDialogCommitMessage("");
     setIsEditingFiles(false);
 
-    void runGitActionWithToast({
+    const committed = await runGitActionWithToast({
       action: "commit",
       ...(commitMessage ? { commitMessage } : {}),
       ...(!allSelected ? { filePaths: selectedFiles.map((f) => f.path) } : {}),
       featureBranch: true,
       skipDefaultBranchPrompt: true,
-    }).then(restoreDialogCommitMessageOnFailure(commitMessage));
+    });
+    if (!committed && commitMessage) {
+      setDialogCommitMessage((current) => current || commitMessage);
+    }
   };
 
   const runQuickAction = () => {
