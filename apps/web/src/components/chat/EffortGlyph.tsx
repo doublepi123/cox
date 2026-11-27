@@ -21,8 +21,9 @@ const OFF_LEVELS = new Set(["off", "none"]);
  */
 export function resolveEffortGlyph(descriptor: SelectDescriptor, current: string | null) {
   const special = new Set([...(descriptor.promptInjectedValues ?? []), ...NAMED_LEVELS]);
-  const levels = descriptor.options.filter((option) => !special.has(option.id));
-  if (levels.length < 2 || current === null) return null;
+  const listed = descriptor.options.filter((option) => !special.has(option.id));
+  if (listed.length < 2 || current === null) return null;
+  const levels = OFF_LEVELS.has(listed.at(-1)!.id) ? listed.toReversed() : listed;
   const startsAtOff = OFF_LEVELS.has(levels[0]!.id);
   const count = startsAtOff ? levels.length - 1 : levels.length;
   if (special.has(current)) {
