@@ -10,8 +10,6 @@ import { expect, it, vi } from "vite-plus/test";
 import { userEvent } from "vite-plus/test/browser";
 
 import { act, render } from "../../../test/render";
-import { DraftId, useComposerDraftStore } from "~/composerDraftStore";
-import { readPendingWorkspaceDefault } from "~/lib/draftWorkspaceDefaults";
 import { ToastProvider } from "../ui/toast";
 import { usePullRequestActionRunner, usePullRequestHandoffs } from "./usePullRequestActions";
 

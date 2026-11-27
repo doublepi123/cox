@@ -14,7 +14,6 @@ import {
 } from "../../themePalette";
 import type { OpenVsxThemeExtension } from "../../openVsxThemes";
 import { ThemeImportDialog } from "./ThemeImportDialog";
-import { setLanguagePreference } from "../../i18n";
 
 it.each([
   ["Dusk", "a".repeat(47), "a".repeat(47)],
