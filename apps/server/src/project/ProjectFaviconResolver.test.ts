@@ -49,6 +49,29 @@ const makeResolverWithFileSystem = (fileSystem: FileSystem.FileSystem) =>
 
 it.layer(layerTest)("ProjectFaviconResolverLive", (it) => {
   describe("resolvePath", () => {
+    it.effect("resolves relative hrefs in src/index.html against src after public and root", () =>
+      Effect.gen(function* () {
+        const resolver = yield* ProjectFaviconResolver.ProjectFaviconResolver;
+        const path = yield* Path.Path;
+        const cwd = yield* makeTempDir;
+        yield* writeTextFile(
+          cwd,
+          "src/index.html",
+          '<link rel="icon" href="/brand/root.svg"><link rel="icon" type="image/png" href="assets/brand/icon.png">',
+        );
+        yield* writeTextFile(cwd, "src/brand/root.svg", "<svg>src</svg>");
+        yield* writeTextFile(cwd, "src/assets/brand/icon.png", "png");
+        expect(yield* resolver.resolvePath(cwd)).toBe(
+          path.join(cwd, "src", "assets", "brand", "icon.png"),
+        );
+        yield* writeTextFile(cwd, "public/assets/brand/icon.png", "public");
+        yield* resolver.invalidate(cwd);
+        expect(yield* resolver.resolvePath(cwd)).toBe(
+          path.join(cwd, "public", "assets", "brand", "icon.png"),
+        );
+      }),
+    );
+
     it.effect("finds a favicon added after a cached miss once the workspace is invalidated", () =>
       Effect.gen(function* () {
         const resolver = yield* ProjectFaviconResolver.ProjectFaviconResolver;
