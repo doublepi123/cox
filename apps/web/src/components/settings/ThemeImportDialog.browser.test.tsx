@@ -14,6 +14,7 @@ import {
 } from "../../themePalette";
 import type { OpenVsxThemeExtension } from "../../openVsxThemes";
 import { ThemeImportDialog } from "./ThemeImportDialog";
+import { setLanguagePreference } from "../../i18n";
 
 it.each([
   ["Dusk", "a".repeat(47), "a".repeat(47)],
@@ -116,6 +117,28 @@ const extension: OpenVsxThemeExtension = {
 };
 
 describe("ThemeImportDialog", () => {
+  it.each([
+    ["en", 1, "acme · 1 download"],
+    ["zh", 10, "acme · 10 次下载"],
+  ] as const)("localizes download counts in %s", async (locale, downloadCount, line) => {
+    searchOpenVsxThemes.mockReset().mockResolvedValue([{ ...extension, downloadCount }]);
+    setLanguagePreference(locale);
+    try {
+      await using _screen = await render(
+        <ThemeImportDialog
+          open
+          onOpenChange={() => {}}
+          onImported={() => true}
+          onImportedMany={() => {}}
+        />,
+      );
+      await userEvent.fill(page.getByRole("searchbox"), "night");
+      await expect.element(page.getByText(line, { exact: true })).toBeVisible();
+    } finally {
+      setLanguagePreference("system");
+    }
+  });
+
   // StrictMode replays ref attach/detach on mount, which must not end the session.
   it("searches Open VSX under StrictMode", async () => {
     searchOpenVsxThemes.mockReset();
