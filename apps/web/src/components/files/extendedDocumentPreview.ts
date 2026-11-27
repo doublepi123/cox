@@ -28,6 +28,7 @@ const escape = (value: string) =>
 
 const namespacePrefixes: Record<string, string> = {
   "urn:oasis:names:tc:opendocument:xmlns:office:1.0": "office",
+  "urn:oasis:names:tc:opendocument:xmlns:style:1.0": "style",
   "urn:oasis:names:tc:opendocument:xmlns:table:1.0": "table",
   "urn:oasis:names:tc:opendocument:xmlns:text:1.0": "text",
   "urn:oasis:names:tc:opendocument:xmlns:drawing:1.0": "draw",
@@ -191,8 +192,10 @@ function boundedMarkup(value: string): string {
 async function odfHtml(
   node: XmlNode,
   archive: JSZip,
+  listStyles: ReadonlyMap<string, XmlNode>,
   imageAlt = "",
   inRepeatedRow = false,
+  list: readonly [string, number] = ["", 0],
 ): Promise<string> {
   if (node.name === "#text") return pipe(text(node), escape, boundedMarkup);
   if (node.name === "text:s" || node.name === "text:tab")
@@ -240,13 +243,29 @@ async function odfHtml(
     node.name === "table:table-row"
       ? Number(node.attrs["table:number-rows-repeated"]) > 1
       : inRepeatedRow;
+  const nextList: readonly [string, number] =
+    node.name === "text:list"
+      ? [node.attrs["text:style-name"] || list[0], list[1] + 1]
+      : node.name === "text:list-item" || node.name === "text:list-header"
+        ? list
+        : ["", 0];
   for (const child of node.children)
-    children += await odfHtml(child, archive, childImageAlt, repeatedRow);
+    children += await odfHtml(child, archive, listStyles, childImageAlt, repeatedRow, nextList);
+  const numbered =
+    node.name === "text:list" &&
+    listStyles
+      .get(nextList[0])
+      ?.children.some(
+        (level) =>
+          level.name === "text:list-level-style-number" &&
+          level.attrs["text:level"] === String(nextList[1]) &&
+          !!level.attrs["style:num-format"],
+      );
   const tags: Record<string, string> = {
     "text:p": "p",
     "text:h": "h2",
     "text:span": "span",
-    "text:list": "ul",
+    "text:list": numbered ? "ol" : "ul",
     "text:list-item": "li",
     "table:table": "table",
     "table:table-row": "tr",
@@ -360,11 +379,28 @@ export async function openDocument(
   const pages = kind === "odp" ? find(root, "draw:page") : find(root, "office:text");
   if (!pages.length || pages.length > 500)
     throw new Error("This document has no pages or too many pages to preview.");
+  const listStyles = new Map<string, XmlNode>();
+  if (find(root, "text:list").length) {
+    const styles = await archive.file("styles.xml")?.async("string");
+    let named: XmlNode[] = [];
+    if (styles) {
+      try {
+        named = find(parseXml(styles), "office:styles");
+      } catch (cause) {
+        if (!(cause instanceof Error)) throw cause;
+      }
+    }
+    for (const style of [...named, root].flatMap((part) =>
+      find(part, "text:list-style", "office:body"),
+    )) {
+      if (style.attrs["style:name"]) listStyles.set(style.attrs["style:name"], style);
+    }
+  }
   const rendered = [];
   for (const [index, page] of pages.entries()) {
     rendered.push({
       title: page.attrs["draw:name"] || `Page ${index + 1}`,
-      html: await odfHtml(page, archive),
+      html: await odfHtml(page, archive, listStyles),
     });
   }
   return { type: "document", navigation: kind === "odp" ? "slide" : "page", pages: rendered };
