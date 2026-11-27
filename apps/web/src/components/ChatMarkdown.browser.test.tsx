@@ -515,6 +515,30 @@ describe("ChatMarkdown skill chips", () => {
   });
 });
 
+describe("ChatMarkdown markdown fences", () => {
+  it("reads Arabic and Hebrew lines right to left while text fences stay left to right", async () => {
+    setup();
+    await using screen = await renderText(
+      "```md\nمرحبا بالعالم.\nHello world.\n```\n\n```text\n| a | b |\n```",
+    );
+    const style = (language: string) => {
+      const pre = screen.container.querySelector<HTMLElement>(
+        `.chat-markdown-codeblock[data-language="${language}"] pre`,
+      );
+      if (!pre) throw new Error(`Missing ${language} fence`);
+      const computed = getComputedStyle(pre);
+      return { bidi: computed.unicodeBidi, ligatures: computed.fontVariantLigatures };
+    };
+    await expect
+      .poll(() => style("md"))
+      .toEqual({
+        bidi: "plaintext",
+        ligatures: "none",
+      });
+    expect(style("text").bidi).not.toBe("plaintext");
+  });
+});
+
 describe("ChatMarkdown headings", () => {
   it("never gives two headings the same id, even when a suffix matches another heading", async () => {
     setup();
