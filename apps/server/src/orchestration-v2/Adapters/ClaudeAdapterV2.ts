@@ -144,6 +144,7 @@ import * as SecureRandom from "effect/crypto/SecureRandom";
 import * as DateTime from "effect/DateTime";
 import * as Deferred from "effect/Deferred";
 import * as Duration from "effect/Duration";
+import { compareSemverVersions } from "@t3tools/shared/semver";
 import * as Effect from "effect/Effect";
 import * as Equal from "effect/Equal";
 import * as Exit from "effect/Exit";
@@ -5349,6 +5350,19 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
     Effect.map((catalog) => scopeClaudeModelCatalog(catalog, adapterOptions.settings.customModels)),
   );
   let subagentModelCatalog = yield* loadModelCatalog;
+  // Claude Code restores a resumed session's model ledger from this version on; earlier ones
+  // restart it at zero per process (the claude_idle_resume recording, 2.1.111).
+  const CLAUDE_RESUME_RESTORES_MODEL_LEDGER_VERSION = "2.1.280";
+
+  function claudeResumeRestoresModelLedger(version: string | undefined): boolean {
+    return (
+      version !== undefined &&
+      compareSemverVersions(version, CLAUDE_RESUME_RESTORES_MODEL_LEDGER_VERSION) >= 0
+    );
+  }
+
+  // A resumed session's result totals include its earlier turns; this anchor outlives idle release.
+  const modelLedgers = new Map<string, ClaudeModelLedger>();
   const reportedContextWindows = new Map<string, number>();
   const claudeContextWindow = (modelSelection: ModelSelection): number | null =>
     resolveClaudeCatalogContextWindowTokens(subagentModelCatalog, modelSelection) ??
@@ -12291,7 +12305,7 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
                 (subagent) => subagent.task.status === "running",
               ),
             ),
-            modelLedger: shouldResume ? undefined : new Map(),
+            modelLedger: shouldResume ? modelLedgers.get(nativeThreadId) : new Map(),
             taskOutputRoot: claudeTaskOutputRoot(
               adapterOptions.environment,
               path,
@@ -12332,6 +12346,12 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
                       message.permissionMode ?? context.openedPermissionMode;
                     context.receivedInit = true;
                     context.capabilities = new Set(message.capabilities ?? []);
+                    if (
+                      shouldResume &&
+                      !claudeResumeRestoresModelLedger(message.claude_code_version)
+                    ) {
+                      context.modelLedger = new Map();
+                    }
                   }
                   if (message.type === "system" && message.subtype === "init") {
                     for (const server of message.mcp_servers ?? []) {
@@ -12372,6 +12392,13 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
                       growth === undefined && context.modelLedger !== undefined
                         ? undefined
                         : ledger;
+                    // A stopping process's late result must not replace its successor's anchor.
+                    if (!context.stopping) {
+                      const sessionId =
+                        clearedNativeSessions.get(context.nativeThreadId) ?? context.nativeThreadId;
+                      if (context.modelLedger === undefined) modelLedgers.delete(sessionId);
+                      else modelLedgers.set(sessionId, context.modelLedger);
+                    }
                     for (const [model, window] of claudeReportedContextWindows(
                       message.modelUsage,
                     )) {
