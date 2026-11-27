@@ -2984,6 +2984,51 @@ it.effect("a step of a paused run waits for the resume, even when the engine rep
   }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
 );
 
+it.effect("about keeps the waiting run when 500 newer skipped runs are about the same item", () =>
+  Effect.gen(function* () {
+    const { boot, database } = yield* harness();
+    yield* boot(
+      Effect.gen(function* () {
+        const workflows = yield* Workflows.Workflows;
+        const pullRequest = {
+          projectId: ProjectId.make("p1"),
+          host: "github.com",
+          repository: "acme/app",
+          number: 412,
+          url: "https://github.com/acme/app/pull/412",
+        };
+        const target = yield* workflows.start(
+          "about",
+          { subjects: [pullRequest] },
+          { idempotencyKey: "t" },
+        );
+        yield* workflows.waitFor(target.runId, status("waiting"));
+        // Skipped runs about the same pull request, all newer than the waiting one.
+        yield* Effect.flatMap(
+          SqlClient.SqlClient,
+          (sql) => sql`
+            WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i + 1 FROM n WHERE i < 500)
+            INSERT INTO workflow_runs (run_id, workflow, version, engine_tag, idempotency_key,
+              title, status, pauses, started_at, updated_at, ended_at, held, tags_json,
+              subject_kind, subject_key, subject_url, subject_json)
+            SELECT 'skip-' || i, workflow, version, engine_tag, 'skip-' || i, title, 'skipped',
+              0, '2999-01-01T00:00:00.000Z', '2999-01-01T00:00:00.000Z',
+              '2999-01-01T00:00:00.000Z', 0, tags_json,
+              subject_kind, subject_key, subject_url, subject_json
+            FROM n, workflow_runs WHERE run_id = ${target.runId}
+          `,
+        ).pipe(Effect.provide(database));
+        const about = yield* workflows.about({ subject: pullRequest.url + "/", pullRequest });
+        assert.equal(about.runs.length, 501);
+        assert.include(
+          about.runs.map((run) => run.runId),
+          target.runId,
+        );
+      }),
+    );
+  }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
+);
+
 it.effect("a list by tag keeps the runs that did something apart from skipped ones", () =>
   Effect.gen(function* () {
     const { boot, database } = yield* harness();

@@ -1301,17 +1301,29 @@ const make = Effect.fn("WorkflowEngine.make")(function* (
         item.pullRequest !== undefined
           ? pullRequestReferenceOf(item.pullRequest, { url: item.subject })
           : undefined;
-      const found = [
-        ...(yield* store.runsWhere({ subject: item.subject })),
-        ...(identity === undefined
-          ? []
-          : yield* store.runsWhere({ subject: { kind: identity.kind, key: identity.key } })),
-      ];
+      // Each partition is capped on its own, as in `list`, so skipped runs cannot push out the rest.
+      const newestFirst = (left: { started_at: string }, right: { started_at: string }) =>
+        right.started_at.localeCompare(left.started_at);
+      const found = [];
+      for (const skippedTopLevel of [false, true]) {
+        const rows = yield* store.runsWhere({ subject: item.subject, skippedTopLevel });
+        if (identity !== undefined) {
+          const matchingIdentity = yield* store.runsWhere({
+            subject: { kind: identity.kind, key: identity.key },
+            skippedTopLevel,
+          });
+          found.push(
+            ...[...new Map([...rows, ...matchingIdentity].map((row) => [row.run_id, row])).values()]
+              .toSorted(newestFirst)
+              .slice(0, 500),
+          );
+        } else {
+          found.push(...rows);
+        }
+      }
+      // The two partitions are separate reads, so a run that turned skipped can appear in both.
       const runs = [...new Map(found.map((row) => [row.run_id, row])).values()]
-        .toSorted((left, right) =>
-          left.started_at === right.started_at ? 0 : left.started_at < right.started_at ? 1 : -1,
-        )
-        .slice(0, 500)
+        .toSorted(newestFirst)
         .map(toRun);
       const about = new Set(runs.map((run) => run.runId));
       const open = yield* questions;
