@@ -480,6 +480,27 @@ describe("wordsHast", () => {
       );
     },
   );
+
+  it.each([
+    ["Use <a> for links.\n\nSee /Users/me/app.ts:42", ["/Users/me/app.ts:42"]],
+    [
+      'Use <a> for /Users/me/a.ts and <a href="https://example.com">/Users/me/b.ts</a> then /Users/me/c.ts',
+      ["/Users/me/a.ts", "https://example.com", "/Users/me/c.ts"],
+    ],
+    [
+      "<a>/Users/me/closed.ts</a> <a/>/Users/me/also-closed.ts</a> /Users/me/after.ts",
+      ["/Users/me/after.ts"],
+    ],
+    ["Use <textarea><a></textarea> and /Users/me/app.ts:42", ["/Users/me/app.ts:42"]],
+    [
+      '[<a href="x">label](https://example.com) /Users/me/app.ts:42',
+      ["https://example.com", "x", "/Users/me/app.ts:42"],
+    ],
+  ])("bare <a> placeholders do not disable absolute path linking: %s", (markdown, hrefs) => {
+    expect([...wordsHtml(markdown).matchAll(/href="([^"]*)"/g)].map((match) => match[1])).toEqual(
+      hrefs,
+    );
+  });
 });
 
 it("loads with a plain-text fallback when WebAssembly is disabled", async () => {

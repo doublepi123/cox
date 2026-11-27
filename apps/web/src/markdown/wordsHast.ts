@@ -158,7 +158,12 @@ function tokenize(html: string, offsetOf: (byte: number) => number): Tokenized {
     const tagName = match[2]?.toLowerCase();
     if (!tagName) continue;
     if (match[1]) {
-      if (tagName === "a") anchors.pop();
+      if (
+        tagName === "a" &&
+        stack.some((node) => node.type === "element" && node.tagName === "a")
+      ) {
+        anchors.pop();
+      }
       if (tagName === "p" && openParagraph(stack) < 0) {
         // A stray `</p>` is an empty paragraph to an HTML parser.
         (stack.at(-1)!.children as ElementContent[]).push({
@@ -198,6 +203,19 @@ function tokenize(html: string, offsetOf: (byte: number) => number): Tokenized {
         end: { line: 1, column: end! + 1, offset: end! },
       };
       positioned.push(element);
+    }
+    if (tagName === "a") {
+      // An HTML parser closes an open anchor when another starts, so a raw anchor inside a link
+      // label never nests: what follows the Markdown link stays outside it and can still link.
+      // A bare placeholder closed this way still reads as its tag text.
+      const at = stack.findLastIndex((node) => node.type === "element" && node.tagName === "a");
+      if (at > 0) {
+        for (let index = at; index < stack.length; index++) {
+          if ((stack[index] as Element).tagName === "svg") svgDepth--;
+        }
+        stack.length = at;
+        if (anchors.at(-1) === null) anchors.pop();
+      }
     }
     const parent = stack.at(-1)!;
     (parent.children as ElementContent[]).push(element);
