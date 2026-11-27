@@ -2380,10 +2380,6 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
       const unpinMenuItem = buildBulkUnpinContextMenuItem({
         pinnedCount: pinnedSelectedThreads.length,
       });
-      const markUnreadThreads = selectedThreads.filter(
-        (thread) =>
-          thread.latestRun?.completedAt != null && threadRuntimeCanArchive(thread.runtime),
-      );
       // Presets sync across environments, so the first selected thread's stand for all.
       // oxlint-disable-next-line react/purity -- runs in an event handler (oxc#27309)
       const menuOpenedAt = new Date();
