@@ -4392,8 +4392,8 @@ export const zh = {
   "Show mouse presses in recordings": "在录制中显示鼠标点击",
   "Show reasoning effort in the composer as its name, such as High, or as bars.":
     "在输入框中以名称（如“高”）或条形图显示推理强度。",
-  "Show the floating preview when an agent opens a browser unless the agent says otherwise.":
-    "Agent 打开浏览器时显示浮动预览，除非 Agent 明确要求不显示。",
+  "Show the floating preview when an agent opens a browser unless the agent says otherwise, and when you close the right panel.":
+    "智能体打开浏览器时（除非智能体另有要求）以及关闭右侧面板时，显示浮动预览。",
   "Shown in the provider list and model picker.": "显示在提供商列表和模型选择器中。",
   "Shows context window usage as a circular indicator in the composer.":
     "在输入框中以圆形指示器显示上下文窗口用量。",

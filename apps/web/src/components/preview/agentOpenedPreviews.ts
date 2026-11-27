@@ -100,6 +100,15 @@ function followThread(threadKey: string, threadRef: ScopedThreadRef): () => void
   });
 }
 
+export function floatPanelSurfaceOnClose(
+  threadRef: ScopedThreadRef,
+  tabId: string,
+  autoShowFloatingPreview: boolean,
+): void {
+  if (!autoShowFloatingPreview) return;
+  usePreviewMiniPlayerStore.getState().open(threadRef, browserMiniPlayerSource(tabId));
+}
+
 export function startAgentOpenedPreviews(): () => void {
   const followed = new Map<string, () => void>();
   const followNewThreads = (refs: ReadonlyMap<string, ScopedThreadRef>) => {

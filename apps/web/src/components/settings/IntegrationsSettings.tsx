@@ -197,7 +197,7 @@ function BrowserAutoShowFloatingPreviewSetting({ disabled }: { readonly disabled
     <SettingsRow
       {...searchableSetting("browser-auto-show-floating-preview")}
       description={translateUi(
-        "Show the floating preview when an agent opens a browser unless the agent says otherwise.",
+        "Show the floating preview when an agent opens a browser unless the agent says otherwise, and when you close the right panel.",
       )}
       resetAction={
         !disabled && autoShow !== DEFAULT_BROWSER_AUTO_SHOW_FLOATING_PREVIEW ? (

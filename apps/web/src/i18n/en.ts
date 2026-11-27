@@ -4547,8 +4547,8 @@ export const en = {
   "Show mouse presses in recordings": "Show mouse presses in recordings",
   "Show reasoning effort in the composer as its name, such as High, or as bars.":
     "Show reasoning effort in the composer as its name, such as High, or as bars.",
-  "Show the floating preview when an agent opens a browser unless the agent says otherwise.":
-    "Show the floating preview when an agent opens a browser unless the agent says otherwise.",
+  "Show the floating preview when an agent opens a browser unless the agent says otherwise, and when you close the right panel.":
+    "Show the floating preview when an agent opens a browser unless the agent says otherwise, and when you close the right panel.",
   "Shown in the provider list and model picker.": "Shown in the provider list and model picker.",
   "Shows context window usage as a circular indicator in the composer.":
     "Shows context window usage as a circular indicator in the composer.",

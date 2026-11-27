@@ -11,6 +11,7 @@ import {
 } from "../../previewStateStore";
 import { useRightPanelStore } from "../../rightPanelStore";
 import {
+  floatPanelSurfaceOnClose,
   followPreviewSessions,
   revealServerTabs,
   startAgentOpenedPreviews,
@@ -29,6 +30,21 @@ function setup() {
   useRightPanelStore.setState({ byThreadKey: {} });
 }
 const miniPlayerSource = () => usePreviewMiniPlayerStore.getState().byThreadKey[threadKey]?.source;
+
+it.each([
+  { autoShow: true, alreadyOpen: false, expected: "tab_panel" },
+  { autoShow: false, alreadyOpen: false, expected: null },
+  { autoShow: false, alreadyOpen: true, expected: "tab_existing" },
+])(
+  "respects Auto-show on panel close ($autoShow, $alreadyOpen)",
+  ({ autoShow, alreadyOpen, expected }) => {
+    setup();
+    if (alreadyOpen)
+      usePreviewMiniPlayerStore.getState().open(ref, browserMiniPlayerSource("tab_existing"));
+    floatPanelSurfaceOnClose(ref, "tab_panel", autoShow);
+    expect(miniPlayerSource()).toEqual(expected ? browserMiniPlayerSource(expected) : undefined);
+  },
+);
 
 describe("revealServerTabs", () => {
   const tab = (tabId: string, force?: boolean): PreviewSessionSnapshot => ({

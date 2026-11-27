@@ -26,7 +26,8 @@ import { BrowserSettingsReadError } from "../../browser/openFileInPreview";
 import { addBrowserSurface } from "../preview/addBrowserSurface";
 import { focusActivePanelTerminal, focusTerminal } from "../../lib/terminalFocus";
 import { subscribePreviewAction } from "../preview/previewActionBus";
-import { browserMiniPlayerSource, usePreviewMiniPlayerStore } from "../../previewMiniPlayerStore";
+import { getClientSettings } from "../../hooks/useSettings";
+import { floatPanelSurfaceOnClose } from "../preview/agentOpenedPreviews";
 import type { threadPullRequestPanelTarget } from "../pullRequest/pullRequestDetail.logic";
 import { stackedThreadToast, toastManager } from "../ui/toast";
 import { previewEnvironment } from "../../state/preview";
@@ -162,9 +163,11 @@ export function useRightPanelActions(input: RightPanelActionsInput) {
         activeRightPanelSurface?.kind === "preview" &&
         activeRightPanelSurface.resourceId
       ) {
-        usePreviewMiniPlayerStore
-          .getState()
-          .open(activeThreadRef, browserMiniPlayerSource(activeRightPanelSurface.resourceId));
+        floatPanelSurfaceOnClose(
+          activeThreadRef,
+          activeRightPanelSurface.resourceId,
+          getClientSettings().browserAutoShowFloatingPreview,
+        );
       }
       useRightPanelStore.getState().setMaximized(activeThreadRef, false);
       useRightPanelStore.getState().close(activeThreadRef);
