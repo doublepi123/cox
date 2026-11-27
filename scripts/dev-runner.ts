@@ -3,6 +3,7 @@ import { createServer } from "node:net";
 import * as NodePath from "node:path";
 import { pathToFileURL } from "node:url";
 import { loadRepoEnv } from "./lib/public-config.ts";
+import { acquireDevRunnerLock } from "./lib/dev-runner-lock.ts";
 
 const repoRoot = NodePath.resolve(import.meta.dirname, "..");
 const modes = ["dev", "dev:server", "dev:web"] as const;
@@ -72,6 +73,13 @@ export const assertLocalPortAvailable = (port: number) =>
 export async function runDev(config: ReturnType<typeof createDevConfig>): Promise<number> {
   if (config.mode !== "dev:web") await assertLocalPortAvailable(config.serverPort);
   if (config.mode !== "dev:server") await assertLocalPortAvailable(config.webPort);
+  const releaseLock =
+    config.mode === "dev:web"
+      ? undefined
+      : acquireDevRunnerLock(
+          NodePath.join(config.env.COX_HOME!, "userdata"),
+          `pid ${process.pid}, ${config.mode}, server port ${config.serverPort}, web port ${config.webPort}`,
+        );
   const children: ChildProcess[] = [];
   const closed: Promise<void>[] = [];
   let stop: ((exitCode: number) => void) | undefined;
@@ -157,6 +165,7 @@ export async function runDev(config: ReturnType<typeof createDevConfig>): Promis
     await Promise.all(closed);
     process.removeListener("SIGINT", onInterrupt);
     process.removeListener("SIGTERM", onTerminate);
+    releaseLock?.();
   }
 }
 
