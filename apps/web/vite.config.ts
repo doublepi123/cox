@@ -99,6 +99,7 @@ const browserTestProject = {
       "@tiptap/react",
       "@tiptap/starter-kit",
       "effect/encoding/Base64Url",
+      "effect/reactivity/Atom",
       "effect/testing",
       "hast-util-to-html",
       "hast-util-to-jsx-runtime",
