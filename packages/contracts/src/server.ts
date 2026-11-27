@@ -278,6 +278,8 @@ export const ServerProvider = Schema.Struct({
   availability: Schema.optional(ServerProviderAvailability),
   unavailableReason: Schema.optional(TrimmedNonEmptyString),
   models: Schema.Array(ServerProviderModel),
+  // Set by a ready check whose `models` may lack some the provider still offers, so they are kept.
+  modelsIncomplete: Schema.optionalKey(Schema.Boolean),
   modelCatalogSource: Schema.optionalKey(Schema.Literals(["provider", "model-service"])),
   // Kept apart from `models` so clients that predate it never offer them.
   updateRequiredModels: Schema.optionalKey(Schema.Array(ServerProviderUpdateRequiredModel)),

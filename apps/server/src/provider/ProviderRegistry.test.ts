@@ -1027,6 +1027,59 @@ it.layer(
       );
     });
 
+    it("drops a Claude gateway model the same gateway no longer lists", () => {
+      const auth = {
+        status: "authenticated",
+        type: "customEndpoint",
+        label: "Custom API endpoint",
+        endpoint: "http://127.0.0.1:15721",
+      } as const;
+      const previousProvider = {
+        instanceId: ProviderInstanceId.make("claudeAgent"),
+        driver: ProviderDriverKind.make("claudeAgent"),
+        status: "ready",
+        enabled: true,
+        installed: true,
+        auth,
+        checkedAt: "2026-11-25T00:00:00.000Z",
+        version: "2.1.332",
+        models: [
+          { slug: "claude-sonnet-5-5", name: "Sonnet 5.5", isCustom: false, capabilities: null },
+          {
+            slug: "gw--model:free[1m]",
+            name: "gw--model:free",
+            isCustom: false,
+            capabilities: null,
+          },
+          { slug: "gw--model:free", name: "gw--model:free", isCustom: false, capabilities: null },
+        ],
+        slashCommands: [],
+        skills: [],
+      } as const satisfies ServerProvider;
+      const refreshedProvider = {
+        ...previousProvider,
+        checkedAt: "2026-11-26T00:00:00.000Z",
+        models: [previousProvider.models[0], previousProvider.models[1]],
+      } satisfies ServerProvider;
+      const incompleteProvider = {
+        ...refreshedProvider,
+        modelsIncomplete: true,
+      } satisfies ServerProvider;
+
+      assert.deepStrictEqual(
+        ProviderRegistry.mergeProviderSnapshot(previousProvider, refreshedProvider).models.map(
+          (model) => model.slug,
+        ),
+        ["claude-sonnet-5-5", "gw--model:free[1m]"],
+      );
+      assert.deepStrictEqual(
+        ProviderRegistry.mergeProviderSnapshot(previousProvider, incompleteProvider).models.map(
+          (model) => model.slug,
+        ),
+        ["claude-sonnet-5-5", "gw--model:free[1m]", "gw--model:free"],
+      );
+    });
+
     it("retains stale OpenCode models when a refresh fails", () => {
       const previousProvider = {
         instanceId: ProviderInstanceId.make("opencode"),
@@ -3603,6 +3656,7 @@ it.layer(
             ["gateway/kimi-3[1m]", "Kimi (mine)", true],
           ],
         );
+        assert.strictEqual(status.modelsIncomplete, undefined);
         assert.deepStrictEqual(added[0]?.capabilities?.optionDescriptors, [
           { id: "ultracode", label: "Ultracode", type: "boolean" },
         ]);
@@ -3808,6 +3862,7 @@ it.layer(
         assert.strictEqual(status.auth.status, "authenticated");
         assert.strictEqual(status.auth.type, "customEndpoint");
         assert.strictEqual(status.auth.label, "Custom API endpoint");
+        assert.strictEqual(status.modelsIncomplete, true);
       }).pipe(
         Effect.provide(
           layerMockSpawner((args) => {

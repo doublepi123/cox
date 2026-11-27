@@ -214,6 +214,13 @@ const shouldRetainMissingProviderModels = (provider: ServerProvider): boolean =>
     return !(provider.installed && provider.status === "ready");
   }
 
+  if (provider.driver === ProviderDriverKind.make("claudeAgent")) {
+    // Claude Code keeps one gateway model cache per Claude home, for one base URL at a time, so a
+    // ready probe can omit this instance's gateway models after another instance or a terminal
+    // `claude` on a different gateway rewrote that cache.
+    return provider.status !== "ready" || provider.modelsIncomplete === true;
+  }
+
   const isAntigravity = provider.driver === ProviderDriverKind.make("antigravity");
   const isCodex = provider.driver === ProviderDriverKind.make("codex");
   if (!isAntigravity && !isCodex && provider.driver !== ProviderDriverKind.make("opencode")) {
