@@ -376,6 +376,23 @@ describe("wordsHast", () => {
     expect(html).toContain('src="https://forge.dev/api/attachments/1"');
   });
 
+  it("links change request references after a leading BOM", () => {
+    const autolinks = (text: string) =>
+      [...text.matchAll(/#(\d+)/g)].map((match) => ({
+        index: match.index,
+        text: match[0],
+        label: match[0],
+        url: `https://forge.dev/o/r/pull/${match[1]}`,
+        kind: "reference" as const,
+      }));
+    const html = wordsHtml("\uFEFFSee #12", {
+      extensions: { changeRequest: { repositoryUrl: "https://forge.dev/o/r", autolinks } },
+    });
+    expect(html).toContain(
+      '<a href="https://forge.dev/o/r/pull/12" data-pull-request-autolink="reference">#12</a>',
+    );
+  });
+
   it("renders math as SVG, and keeps money as text", () => {
     const html = toHtml(
       wordsHast("Costs $34.58 and $15.00, and $x^2 \\text{ for } n$ is math.\n\n$$\na\n$$", {
