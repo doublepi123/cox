@@ -1,10 +1,13 @@
 import assert from "node:assert/strict";
-import { once } from "node:events";
+import { spawn, type ChildProcess } from "node:child_process";
+import { on, once } from "node:events";
 import { mkdtemp, mkdir, readFile, readdir, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
+import { createInterface } from "node:readline";
+import type { Readable } from "node:stream";
 import { setTimeout as delay } from "node:timers/promises";
-import { _electron, type ElectronApplication } from "playwright-core";
+import { chromium } from "playwright-core";
 import { MacAppUpdate } from "../src/mac-update.ts";
 import { macCommand } from "../src/mac-update-platform.ts";
 import {
@@ -12,6 +15,7 @@ import {
   processIsAlive,
   type MacUpdateTransaction,
 } from "../src/mac-update-transaction.ts";
+import { assertInspectorFuseDisabled } from "./smoke-fuses.ts";
 
 assert.equal(process.platform, "darwin", "The macOS update smoke requires macOS.");
 const root = resolve(import.meta.dirname, "../../..");
@@ -25,6 +29,7 @@ const userHome = join(temporary, "用户 home");
 const home = join(userHome, ".cox/desktop");
 const application = join(userHome, "Applications/Cox.app");
 const source = join(output, process.arch === "arm64" ? "mac-arm64" : "mac", "Cox.app");
+await assertInspectorFuseDisabled(source);
 await mkdir(join(userHome, "Applications"), { recursive: true });
 await macCommand("ditto", [source, application]);
 const environment = {
@@ -34,8 +39,7 @@ const environment = {
   XDG_CONFIG_HOME: join(userHome, "config"),
   XDG_CACHE_HOME: join(userHome, "cache"),
 };
-let previous: ElectronApplication | undefined;
-let previousProcess: ReturnType<ElectronApplication["process"]> | undefined;
+let previousProcess: ChildProcess | undefined;
 let restartedPid: number | undefined;
 const updater = new MacAppUpdate({
   home,
@@ -60,26 +64,54 @@ async function stopOwnedProcess(pid: number) {
     "Test-owned process must stop before deleting its data.",
   );
 }
+async function waitForRendererEndpoint(stderr: Readable): Promise<string> {
+  const lines = createInterface({ input: stderr });
+  try {
+    for await (const [line] of on(lines, "line", {
+      close: ["close"],
+      signal: AbortSignal.timeout(30_000),
+    })) {
+      const endpoint =
+        /^DevTools listening on (ws:\/\/127\.0\.0\.1:\d+\/devtools\/browser\/\S+)$/.exec(
+          String(line),
+        )?.[1];
+      if (endpoint) return endpoint;
+      process.stderr.write(String(line) + "\n");
+    }
+    throw new Error("The signed Cox application stopped before opening renderer CDP.");
+  } finally {
+    lines.close();
+    stderr.pipe(process.stderr, { end: false });
+  }
+}
 try {
-  previous = await _electron.launch({
-    executablePath: join(application, "Contents/MacOS/Cox"),
-    env: environment,
-    args: flavor === "client-only" ? [] : ["--offline"],
-    timeout: 30_000,
-  });
-  previousProcess = previous.process();
-  let page = await previous.firstWindow();
+  const child = spawn(
+    join(application, "Contents/MacOS/Cox"),
+    ["--remote-debugging-port=0", ...(flavor === "client-only" ? [] : ["--offline"])],
+    { env: environment, stdio: ["ignore", "inherit", "pipe"] },
+  );
+  previousProcess = child;
+  const [endpoint] = await Promise.all([
+    waitForRendererEndpoint(child.stderr),
+    once(child, "spawn"),
+  ]);
+  assert.ok(child.pid);
+  const browser = await chromium.connectOverCDP(endpoint, { timeout: 30_000 });
+  const [context] = browser.contexts();
+  assert.ok(context, "Expected the signed Cox application's renderer context.");
+  let page = context.pages()[0] ?? (await context.waitForEvent("page", { timeout: 30_000 }));
   if (flavor === "client-only") {
     const connections = page.url().startsWith("data:")
       ? page
-      : (previous.windows().find((candidate) => candidate !== page) ??
-        (await previous.waitForEvent("window", {
+      : (context.pages().find((candidate) => candidate !== page) ??
+        (await context.waitForEvent("page", {
           predicate: (candidate) => candidate !== page,
         })));
-    const closed = connections.waitForEvent("close", { timeout: 600_000 });
-    await connections.getByRole("button", { name: /^(Use local mode|使用本地模式)$/ }).click();
-    await closed;
-    const main = previous.windows().find((candidate) => candidate !== connections);
+    await Promise.all([
+      connections.waitForEvent("close", { timeout: 600_000 }),
+      connections.getByRole("button", { name: /^(Use local mode|使用本地模式)$/ }).click(),
+    ]);
+    const main = context.pages().find((candidate) => candidate !== connections);
     assert.ok(main, "Local mode must open the main window, not reuse Connections.");
     page = main;
   }
@@ -103,11 +135,16 @@ try {
   ) as MacUpdateTransaction;
   await writeFile(
     join(paths.directory, "transaction.json"),
-    JSON.stringify({ ...transaction, oldPid: previousProcess.pid }),
+    JSON.stringify({ ...transaction, oldPid: child.pid }),
   );
-  const exited = once(previousProcess, "exit", { signal: AbortSignal.timeout(30_000) });
-  await previous.evaluate(({ app }) => app.quit());
-  assert.equal((await exited)[0], 0);
+  const session = await browser.newBrowserCDPSession();
+  const [[exitCode]] = await Promise.all([
+    once(child, "exit", { signal: AbortSignal.timeout(30_000) }),
+    session.send("Browser.close").catch((error: unknown) => {
+      if (browser.isConnected()) throw error;
+    }),
+  ]);
+  assert.equal(exitCode, 0);
   await updater.apply();
   const deadline = performance.now() + 180_000;
   while (true) {
