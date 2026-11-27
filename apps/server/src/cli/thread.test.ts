@@ -258,6 +258,13 @@ it.effect("reports all equally deep projects for an unregistered worktree", () =
       worktree,
     );
     assert.equal(result.id, ProjectId.make("repo"));
+    const worktreeAlias = path.join(dir, "worktree-alias");
+    yield* fs.symlink(worktree, worktreeAlias);
+    const missing = yield* resolveProject(
+      scriptedTools({ cox_project_list: [{ projects: [projects[0]!], nextCursor: null }] }).tools,
+      path.join(worktreeAlias, "pkg/not-created/yet.ts"),
+    );
+    assert.equal(missing.id, ProjectId.make("repo"));
   }).pipe(
     Effect.provide(NodeServices.layer),
     Effect.provideService(HostProcess.WorkingDirectory, process.cwd()),
