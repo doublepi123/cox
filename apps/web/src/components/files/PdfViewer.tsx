@@ -8,7 +8,8 @@ import {
   type CSSProperties,
   type MouseEvent,
 } from "react";
-import { TextLayer, type PDFDocumentProxy } from "pdfjs-dist";
+import { PasswordResponses, TextLayer, type PDFDocumentProxy } from "pdfjs-dist";
+import { FilePasswordPrompt } from "./FilePasswordPrompt";
 import { ChevronDownIcon, ChevronUpIcon, MinusIcon, PlusIcon, ScanIcon } from "lucide-react";
 import { Input } from "~/components/ui/input";
 import { observeResize } from "~/lib/observeResize";
@@ -239,6 +240,8 @@ export default function PdfViewer(props: {
   );
   const [pdf, setPdf] = useState<PDFDocumentProxy | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [incorrectPassword, setIncorrectPassword] = useState<boolean | null>(null);
+  const submitPassword = useRef<((password: string) => void) | null>(null);
   const [revision, setRevision] = useState(0);
   const [ratios, setRatios] = useState<number[]>([]);
   const [zoom, setZoom] = useState(initialView.zoom);
@@ -259,11 +262,13 @@ export default function PdfViewer(props: {
     const controller = new AbortController();
     let disposed = false;
     let task: ReturnType<typeof openPdf> | undefined;
-    const timeout = setTimeout(() => {
-      setError("This PDF took too long to load. Try again.");
-      controller.abort();
-      void task?.destroy();
-    }, 30_000);
+    const startTimeout = () =>
+      setTimeout(() => {
+        setError("This PDF took too long to load. Try again.");
+        controller.abort();
+        void task?.destroy();
+      }, 30_000);
+    let timeout = startTimeout();
     void readBoundedDocument(
       props.src,
       controller.signal,
@@ -273,6 +278,16 @@ export default function PdfViewer(props: {
       .then(async (bytes) => {
         controller.signal.throwIfAborted();
         task = openPdf(bytes);
+        task.onPassword = (updatePassword: (password: string) => void, reason: number) => {
+          if (controller.signal.aborted) return;
+          clearTimeout(timeout);
+          submitPassword.current = (password) => {
+            submitPassword.current = null;
+            timeout = startTimeout();
+            updatePassword(password);
+          };
+          setIncorrectPassword(reason === PasswordResponses.INCORRECT_PASSWORD);
+        };
         const document = await task.promise;
         if (document.numPages > MAX_PAGES)
           throw new Error("Preview limited to 2,000 pages. Save this PDF to read it in full.");
@@ -300,6 +315,7 @@ export default function PdfViewer(props: {
       .finally(() => clearTimeout(timeout));
     return () => {
       disposed = true;
+      submitPassword.current = null;
       controller.abort();
       clearTimeout(timeout);
       void task?.destroy();
@@ -558,6 +574,14 @@ export default function PdfViewer(props: {
               setError(null);
               setPdf(null);
               setRevision((value) => value + 1);
+            }}
+          />
+        ) : incorrectPassword !== null ? (
+          <FilePasswordPrompt
+            incorrect={incorrectPassword}
+            onSubmit={(password) => {
+              setIncorrectPassword(null);
+              submitPassword.current?.(password);
             }}
           />
         ) : !pdf ? (

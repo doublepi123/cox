@@ -1,4 +1,12 @@
 const messages = {
+  "epub-drm": "This EPUB uses unsupported DRM.",
+  "password-required": "This file requires a password.",
+  "password-incorrect": "Incorrect password. Try again.",
+  "encryption-unsupported": "This file uses unsupported encryption.",
+  "office-invalid": "This file is damaged, encrypted, or not a valid Office document.",
+  "office-not-open-xml": "This file is not an Open XML document.",
+  "office-decryption-limit": "This document exceeds the preview decryption limit.",
+  "office-too-large-expanded": "The expanded document is too large to preview safely.",
   "xml-invalid": "The document contains invalid XML.",
   "xml-too-deep": "The document XML is nested too deeply.",
   "xml-too-much-content": "The document contains too much XML content.",

@@ -1,3 +1,4 @@
+import type { PreviewPassword, PreviewUnlock } from "./previewUnlock";
 import type { OfficePreviewKind } from "@t3tools/shared/filePreview";
 
 export const OFFICE_PREVIEW_MAX_BYTES = 50 * 1024 * 1024;
@@ -5,6 +6,7 @@ export const OFFICE_PREVIEW_MAX_ROWS = 250_000;
 export const OFFICE_PREVIEW_MAX_COLUMNS = 1024;
 
 export type OfficeWorkerRequest =
+  | PreviewUnlock
   | { readonly type: "open"; readonly kind: OfficePreviewKind; readonly bytes: ArrayBuffer }
   | { readonly type: "epub-page"; readonly index: number }
   | { readonly type: "sheet-page"; readonly sheet: number; readonly index: number };
@@ -27,6 +29,7 @@ export type EpubPage = {
 };
 
 export type OfficeWorkerResult =
+  | PreviewPassword
   | {
       readonly type: "epub";
       readonly first: number;

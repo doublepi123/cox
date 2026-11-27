@@ -10,6 +10,7 @@ import {
 import { XMLParser, XMLValidator } from "fast-xml-parser";
 import { decodeHTMLAttribute, decodeHTMLStrict as decodeEntities } from "entities";
 import type JSZip from "jszip";
+import { officeXmlDecoder } from "./officeArchive";
 
 import { type OfficeWorkerResult, type NotebookCell } from "./officePreviewProtocol";
 
@@ -285,9 +286,9 @@ export async function openDocument(
   kind: "odt" | "ods" | "odp",
 ): Promise<OfficeWorkerResult> {
   markupBytes = 0;
-  const source = await archive.file("content.xml")?.async("string");
-  if (!source) throw new Error("This OpenDocument file has no readable content.");
-  const root = parseXml(source);
+  const content = await archive.file("content.xml")?.async("uint8array");
+  if (!content?.length) throw new Error("This OpenDocument file has no readable content.");
+  const root = parseXml(officeXmlDecoder(content).decode(content));
   if (kind === "ods") {
     const tables = find(root, "table:table");
     if (!tables.length || tables.length > 100)

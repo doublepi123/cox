@@ -1,5 +1,6 @@
 import JSZip from "jszip";
 import { checkZipDirectory } from "./zipDirectory.ts";
+import { ZipError } from "./zipError.ts";
 
 const CP437_HIGH_BYTES =
   "ÇüéâäàåçêëèïîìÄÅÉæÆôöòûùÿÖÜ¢£¥₧ƒ" +
@@ -36,14 +37,32 @@ export async function boundedZip(
     xmlLimit?: number;
     ratioFloor?: number;
     markupLimit?: number;
+    password?: string | undefined;
+    maxEntries?: number;
   } = {},
 ) {
   if (bytes.byteLength > ARCHIVE_MAX_BYTES)
     throw new Error("Preview limited to files under 50 MB.");
-  checkZipDirectory(bytes, ARCHIVE_MAX_ENTRIES);
+  const maxEntries = limits.maxEntries ?? ARCHIVE_MAX_ENTRIES;
+  const { encrypted } = checkZipDirectory(bytes, maxEntries);
+  if (encrypted) {
+    if (!limits.password) throw new ZipError({ code: "password-required" });
+    const { readEncryptedZip } = await import("./encryptedZip.ts");
+    return readEncryptedZip(bytes, limits.password, {
+      entryLimit,
+      totalLimit: Math.min(
+        limits.totalLimit ?? ARCHIVE_MAX_BYTES,
+        Math.max(limits.ratioFloor ?? 0, bytes.byteLength * ARCHIVE_MAX_RATIO),
+      ),
+      xmlLimit: limits.xmlLimit ?? 8 * 1024 * 1024,
+      markupLimit: limits.markupLimit,
+      signal: undefined,
+      decodeFileName,
+    });
+  }
   const zip = await JSZip.loadAsync(bytes, { decodeFileName });
   const entries = Object.values(zip.files);
-  if (entries.length > ARCHIVE_MAX_ENTRIES)
+  if (entries.length > maxEntries)
     throw new Error("This archive contains more than 2,048 entries.");
   const files = new Map<
     string,
