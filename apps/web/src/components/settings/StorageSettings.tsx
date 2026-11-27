@@ -152,7 +152,7 @@ function RetentionControl({
                 align="right"
               />
               <span aria-hidden="true" className="self-center pr-2 text-xs">
-                {t("days")}
+                {t(draft === 1 ? "day" : "days")}
               </span>
               <NumberFieldIncrement aria-label={t("Increase {name}", { name: label })} />
             </NumberFieldGroup>

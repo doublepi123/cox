@@ -3,6 +3,7 @@ import { RegistryProvider } from "@effect/atom-react";
 import { DEFAULT_SERVER_SETTINGS, type StorageCleanupReport } from "@t3tools/contracts";
 import { type ReactNode } from "react";
 import { expect, it, vi } from "vite-plus/test";
+import { setLanguagePreference } from "../../i18n";
 
 const state = vi.hoisted(() => ({
   settings: {} as typeof DEFAULT_SERVER_SETTINGS,
@@ -143,6 +144,25 @@ const deleteButton = (container: HTMLElement) =>
   Array.from(container.querySelectorAll("button")).find(
     (button) => button.textContent === "Delete now",
   )!;
+
+it.each([
+  { locale: "en", one: "day", other: "days" },
+  { locale: "zh", one: "天", other: "天" },
+] as const)("localizes retention units in $locale", async ({ locale, one, other }) => {
+  setup();
+  setRetentionValues([1], [8]);
+  setLanguagePreference(locale);
+  try {
+    await using screen = await render(panel());
+    const unit = (age: string) =>
+      Array.from(screen.container.querySelectorAll("input")).find((input) => input.value === age)
+        ?.nextElementSibling?.textContent;
+    await expect.poll(() => unit("1")).toBe(one);
+    expect(unit("8")).toBe(other);
+  } finally {
+    setLanguagePreference("system");
+  }
+});
 
 it("keeps cleanup disabled when settled retention and all other rules are off", async () => {
   setup();
