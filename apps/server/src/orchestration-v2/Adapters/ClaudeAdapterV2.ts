@@ -4574,10 +4574,10 @@ function providerFailureFromResult(
         ? /^API Error: 503 \[[^\]\r\n]+\] \[429\]: \{"type":"error","error":\{"type":"rate_limit_error",[^\r\n]*\} \(reset after (?:(\d+)h ?)?(?:(\d+)m ?)?(?:(\d+)s)?\)/.exec(
             message.result,
           )
-        : (/^API Error: Request rejected \(429\) · All credentials for model [^\s]+ are cooling down \(reset after (?:(\d+)h ?)?(?:(\d+)m ?)?(?:(\d+)s)?\)/.exec(
+        : (/^API Error: Request rejected \(429\) · All credentials for model [^\s]+ are cooling down(?: via provider [^\s()]+)? \(reset after (?:(\d+)h ?)?(?:(\d+)m ?)?(?:(\d+)s)?\)/.exec(
             message.result,
           ) ??
-          /^API Error: (?:Request rejected \(429\)|Server is temporarily limiting requests \(not your usage limit\)) · All credentials for model [^\s]+ are cooling down \(last error: [^\r\n]*\) \(reset after (?:(\d+)h ?)?(?:(\d+)m ?)?(?:(\d+)s)?\)$/.exec(
+          /^API Error: (?:Request rejected \(429\)|Server is temporarily limiting requests \(not your usage limit\)) · All credentials for model [^\s]+ are cooling down(?: via provider [^\s()]+)? \(last error: [^\r\n]*\) \(reset after (?:(\d+)h ?)?(?:(\d+)m ?)?(?:(\d+)s)?\)$/.exec(
             message.result,
           ))
       : null;

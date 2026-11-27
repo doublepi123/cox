@@ -9391,6 +9391,15 @@ describe("ClaudeAdapterV2 background wake turns", () => {
   it.effect.each([
     { cooldown: " (reset after 1h2m3s)", seconds: 3723 },
     { cooldown: " (reset after 4m 6s) (last error: rate limited)", seconds: 246 },
+    {
+      cooldown:
+        " via provider claude (last error: rate_limit_error: This request would exceed your account's rate limit. Please try again later.) (reset after 2h16m10s)",
+      seconds: 8170,
+    },
+    {
+      cooldown: " via provider claude (reset after 4m 6s) (last error: rate limited)",
+      seconds: 246,
+    },
     { cooldown: "", seconds: 0 },
     { cooldown: " (last error: retry upstream (reset after 1h))", seconds: 0 },
     {
