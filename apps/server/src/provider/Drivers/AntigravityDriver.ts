@@ -65,7 +65,10 @@ import * as ProviderContinuationRequests from "@t3tools/provider-core/server/Pro
 import { makeAntigravityAdapterV2 } from "../../orchestration-v2/Adapters/AntigravityAdapterV2.ts";
 import { makeAcpNativeLoggerFactory } from "@t3tools/provider-acp/server/nativeLogging";
 import { ProviderDriverError } from "../Errors.ts";
-import { makeAntigravityProvider } from "../AntigravityProvider.ts";
+import {
+  AntigravityProbeIncompatibility,
+  makeAntigravityProvider,
+} from "../AntigravityProvider.ts";
 import * as ProviderEventLoggers from "@t3tools/provider-core/server/ProviderEventLoggers";
 import * as ModelCatalog from "@t3tools/provider-core/server/ModelCatalog";
 import {
@@ -80,6 +83,8 @@ import { discoverAntigravitySkills, resolveAntigravityUserHome } from "./Antigra
 const DRIVER = ProviderDriverKind.make("antigravity");
 const decodeSettings = Schema.decodeSync(AntigravitySettings);
 const isNodeRuntimeUnavailableError = Schema.is(NodeRuntimeUnavailableError);
+const isAcpTransportError = Schema.is(AcpErrors.AcpTransportError);
+const isProviderSetupError = Schema.is(ProviderSetupError);
 const isAcpRequestError = Schema.is(AcpErrors.AcpRequestError);
 const isAcpErrorDetails = Schema.is(Schema.Struct({ details: Schema.String }));
 const RememberedRuntimeModes = Schema.fromJsonString(
@@ -211,8 +216,45 @@ export const AntigravityDriver: ProviderDriver<
         Effect.map((catalog) => stampIdentity(ModelCatalog.applyModelCatalog(draft, catalog))),
       );
 
+    const runtimeIncompatibility = (
+      executable: AntigravityInstallation.AntigravityExecutable,
+      version: string,
+    ) => {
+      if (antigravityServesCox(version)) return undefined;
+      const action =
+        executable.source === "managed"
+          ? "Update it in Antigravity setup"
+          : `Update the Antigravity executable at ${executable.executablePath}`;
+      return new ProviderSetupError({
+        instanceId,
+        operation: "runtime",
+        detail: `Antigravity ${version} only serves allowlisted editors. ${action} to ${OPEN_MODEL_ACCESS_RELEASE} or newer, then retry.`,
+      });
+    };
+    const externalIdentity = Effect.fn("AntigravityDriver.externalIdentity")(
+      function* (executablePath: string) {
+        const target = yield* fileSystem.realPath(executablePath);
+        const info = yield* fileSystem.stat(target);
+        return [
+          executablePath,
+          target,
+          info.dev,
+          info.ino.valueOrUndefined,
+          info.size,
+          info.mtime.valueOrUndefined?.getTime(),
+        ]
+          .map(String)
+          .join("\0");
+      },
+      Effect.orElseSucceed(() => undefined),
+    );
+    let nextAttempt = 0;
+    let completedAttempt = 0;
+    let rejectedRuntime: { readonly identity: string; readonly version: string } | undefined;
+
     const makeRuntime = Effect.fn("AntigravityDriver.makeRuntime")(function* (
       input: Omit<AntigravityAcpRuntimeInput, "spawn" | "childProcessSpawner">,
+      observeExternalVersion = false,
     ): Effect.fn.Return<
       AcpSessionRuntime.AcpSessionRuntime["Service"],
       AcpErrors.AcpError | ProviderSetupError,
@@ -295,16 +337,17 @@ export const AntigravityDriver: ProviderDriver<
         }),
       }).pipe(Effect.provideService(SecureRandom.SecureRandom, random));
       const startCompatible = Effect.fn("AntigravityDriver.startCompatible")(function* () {
+        const observe = observeExternalVersion && executable.version === null;
+        const attempt = observe ? ++nextAttempt : 0;
+        const identity = observe ? yield* externalIdentity(executable.executablePath) : undefined;
         const version = (yield* runtime.initialize()).agentInfo?.version;
-        if (version && !antigravityServesCox(version)) {
-          const action =
-            executable.source === "managed"
-              ? "Update it in Antigravity setup"
-              : `Update the Antigravity executable at ${executable.executablePath}`;
-          const detail = `Antigravity ${version} only serves allowlisted editors. ${action} to ${OPEN_MODEL_ACCESS_RELEASE} or newer, then retry.`;
-          const cause = new ProviderSetupError({ instanceId, operation: "runtime", detail });
-          return yield* new AcpErrors.AcpTransportError({ detail, cause });
+        const cause = version ? runtimeIncompatibility(executable, version) : undefined;
+        if (version && version !== "unknown" && identity && attempt > completedAttempt) {
+          completedAttempt = attempt;
+          rejectedRuntime = cause ? { identity, version } : undefined;
         }
+        if (cause !== undefined)
+          return yield* new AcpErrors.AcpTransportError({ detail: cause.detail, cause });
         return yield* runtime.start();
       });
       return {
@@ -356,11 +399,14 @@ export const AntigravityDriver: ProviderDriver<
           Effect.provideService(Path.Path, path),
         ),
       );
-      const runtime = yield* makeRuntime({
-        cwd,
-        mcpServers: [],
-        ...(input.onAuthorizationUrl ? { onAuthorizationUrl: input.onAuthorizationUrl } : {}),
-      });
+      const runtime = yield* makeRuntime(
+        {
+          cwd,
+          mcpServers: [],
+          ...(input.onAuthorizationUrl ? { onAuthorizationUrl: input.onAuthorizationUrl } : {}),
+        },
+        true,
+      );
       return {
         ...runtime,
         start: () =>
@@ -435,8 +481,32 @@ export const AntigravityDriver: ProviderDriver<
             }),
         ),
       );
+      const previousRejection = rejectedRuntime;
+      const identity =
+        executable.version === null && previousRejection !== undefined
+          ? yield* externalIdentity(executable.executablePath)
+          : undefined;
+      const rememberedVersion =
+        identity !== undefined && rejectedRuntime?.identity === identity
+          ? rejectedRuntime.version
+          : undefined;
+      const invalidatedVersion =
+        previousRejection === rejectedRuntime &&
+        identity !== undefined &&
+        rememberedVersion === undefined
+          ? previousRejection?.version
+          : undefined;
+      if (invalidatedVersion !== undefined || executable.version !== null)
+        rejectedRuntime = undefined;
+      const version = executable.version ?? rememberedVersion;
+      if (version) {
+        const refusal = runtimeIncompatibility(executable, version);
+        if (refusal !== undefined)
+          return yield* new AntigravityProbeIncompatibility({ version, detail: refusal.detail });
+      }
       return {
         protocolVersion: 1,
+        ...(invalidatedVersion === undefined ? {} : { invalidatedVersion }),
         agentCapabilities: {
           loadSession: true,
           promptCapabilities: { image: true, audio: true, embeddedContext: true },
@@ -446,7 +516,7 @@ export const AntigravityDriver: ProviderDriver<
         agentInfo: {
           name: "antigravity-acp",
           title: "Google Antigravity",
-          version: executable.version ?? "unknown",
+          version: version ?? "unknown",
         },
       };
     });
@@ -563,7 +633,11 @@ export const AntigravityDriver: ProviderDriver<
                       cause.operation === "resolve" ||
                       cause.operation === "start")
                   ? cause.detail
-                  : refreshFailureDetail(cause),
+                  : isAcpTransportError(cause) &&
+                      isProviderSetupError(cause.cause) &&
+                      cause.cause.operation === "runtime"
+                    ? cause.cause.detail
+                    : refreshFailureDetail(cause),
               cause,
             }),
       ),
