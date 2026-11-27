@@ -1441,6 +1441,7 @@ type PromptOutcomeCheck = (
       readonly failure: OrchestrationV2ProviderFailure;
       readonly threadDisposition: "reusable" | "broken";
     }
+  | "completed"
   | undefined
 >;
 
@@ -8896,6 +8897,10 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
                 { stopReason: "end_turn" },
                 true,
               );
+              if (recorded === "completed") {
+                yield* finalizeTurn(context, "completed");
+                return "retired" as const;
+              }
               const minutes = Math.max(1, Math.round(timeoutMillis / 60_000));
               yield* finalizeTurn(
                 context,
@@ -9451,10 +9456,11 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
                   promptGeneration,
                   Effect.gen(function* () {
                     if (context.finalized) return;
-                    const recorded =
+                    const outcome =
                       context.interrupted || result.stopReason === "cancelled" || result.error
                         ? undefined
                         : yield* checkRecordedOutcome(checkPromptOutcome, result);
+                    const recorded = outcome === "completed" ? undefined : outcome;
                     if (recorded !== undefined) {
                       yield* Ref.set(runtimeRestartRequired, true);
                       yield* terminalizeOpenForegroundTools(context, "failed");
