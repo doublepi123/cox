@@ -17,6 +17,48 @@ const rate = (input: number, cacheRead?: number) => ({
 });
 
 describe("usage pricing", () => {
+  it("bills the long-context tier only above its threshold, filling missing tier fields from base", () => {
+    const table = parseRateTable({
+      "gpt-6-sol": {
+        input_cost_per_token: 2e-6,
+        output_cost_per_token: 1e-5,
+        cache_read_input_token_cost: 2e-7,
+        input_cost_per_token_priority: 4e-6,
+        output_cost_per_token_priority: 2e-5,
+        input_cost_per_token_above_272k_tokens: 4e-6,
+      },
+    });
+    const cost = (prompt: number, speed: UsageSpeed = "standard", modelCalls?: number) =>
+      priceUsage(table, {
+        model: "gpt-6-sol",
+        speed,
+        ...(modelCalls === undefined ? {} : { modelCalls }),
+        reportedCostUsd: null,
+        totals: {
+          uncachedInputTokens: prompt - 200_000,
+          cachedInputTokens: 200_000,
+          cacheCreationTokens: 0,
+          outputTokens: 1_000,
+          reasoningTokens: 0,
+        },
+      }).costUsd;
+
+    expect(cost(272_000)).toBeCloseTo(72_000 * 2e-6 + 200_000 * 2e-7 + 1_000 * 1e-5, 12);
+    // Output keeps the base rate; cache reads keep the base discount relative to input.
+    expect(cost(272_001)).toBeCloseTo(72_001 * 4e-6 + 200_000 * 4e-7 + 1_000 * 1e-5, 12);
+    // Without a priority long-context rate, priority requests keep the priority rate.
+    expect(cost(272_001, "fast")).toBeCloseTo(72_001 * 4e-6 + 200_000 * 4e-7 + 1_000 * 2e-5, 12);
+    // A turn summing several calls compares the average prompt per call to the threshold.
+    expect(cost(544_000, "standard", 2)).toBeCloseTo(
+      344_000 * 2e-6 + 200_000 * 2e-7 + 1_000 * 1e-5,
+      12,
+    );
+    expect(cost(544_002, "standard", 2)).toBeCloseTo(
+      344_002 * 4e-6 + 200_000 * 4e-7 + 1_000 * 1e-5,
+      12,
+    );
+  });
+
   it("prices a bare Bedrock Claude model at the base rate", () => {
     const table = parseRateTable({
       "us.anthropic.claude-mythos-5-2": { input_cost_per_token: 9e-6, output_cost_per_token: 5e-5 },
