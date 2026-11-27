@@ -109,12 +109,33 @@ export function getFilesystemBrowseTabCompletion(
   visibleEntries: ReadonlyArray<FilesystemBrowseEntry>,
   filterQuery: string,
 ): { readonly name: string; readonly isComplete: boolean } | null {
+  const lowerQuery = filterQuery.toLowerCase();
   const [first, ...rest] = visibleEntries;
   if (first === undefined) return null;
   if (rest.length === 0) return { name: first.name, isComplete: true };
-  let prefix = Array.from(first.name);
+  const rawName = sharedNamePrefix(visibleEntries, lowerQuery, (entryName) => entryName);
+  if (rawName !== null) return { name: rawName, isComplete: false };
+  // A shared accented prefix spelled decomposed (macOS) and composed has no raw match;
+  // compare composed forms, which must still extend the composed query.
+  const lowerNormalizedQuery = filterQuery.normalize("NFC").toLowerCase();
+  const composedName = sharedNamePrefix(visibleEntries, lowerNormalizedQuery, (entryName) =>
+    entryName.normalize("NFC"),
+  );
+  return composedName?.toLowerCase().startsWith(lowerNormalizedQuery)
+    ? { name: composedName, isComplete: false }
+    : null;
+}
+
+function sharedNamePrefix(
+  entries: ReadonlyArray<FilesystemBrowseEntry>,
+  lowerQuery: string,
+  spell: (name: string) => string,
+): string | null {
+  const [first, ...rest] = entries;
+  if (first === undefined) return null;
+  let prefix = Array.from(spell(first.name));
   for (const entry of rest) {
-    const characters = Array.from(entry.name);
+    const characters = Array.from(spell(entry.name));
     let length = 0;
     while (
       length < prefix.length &&
@@ -122,12 +143,13 @@ export function getFilesystemBrowseTabCompletion(
     )
       length += 1;
     prefix = prefix.slice(0, length);
+    if (prefix.length === 0) return null;
   }
   const name = prefix.join("");
   const lowerName = name.toLowerCase();
-  return lowerName.length > filterQuery.toLowerCase().length &&
-    visibleEntries.every((entry) => entry.name.toLowerCase().startsWith(lowerName))
-    ? { name, isComplete: false }
+  return lowerName.length > lowerQuery.length &&
+    entries.every((entry) => spell(entry.name).toLowerCase().startsWith(lowerName))
+    ? name
     : null;
 }
 
