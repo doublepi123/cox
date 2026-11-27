@@ -45,6 +45,7 @@ it.each([
   { kind: "file", edit: "undo" },
   { kind: "file", edit: "retain" },
   { kind: "file", edit: "switch" },
+  { kind: "image", edit: "switch" },
   { kind: "file", edit: "cached" },
   { kind: "file", edit: "question" },
   { kind: "image", edit: "question" },
@@ -75,19 +76,16 @@ it.each([
     composerDraftTarget: target,
     attachmentDraftTarget: target,
     attachmentTargetKey: target,
-    attachmentTargetKeyRef: { current: target },
     questionAttachmentTarget: edit === "question" ? target : null,
     pendingUserInputs: [],
     composerContextRecords: new Map(),
     composerImages: [],
-    composerFilesRef: { current: [] },
     pendingThreadImportsRef: { current: new Map() },
-    promptRef,
     addComposerFilesToDraft: (files: Parameters<typeof store.addFiles>[1]) =>
       store.addFiles(target, files, { appendReference: edit !== "question" }),
-  } satisfies ImportInput & { promptRef: { current: string } };
+  } satisfies ImportInput;
   let importer!: Importer;
-  await using _screen = await render(
+  await using screen = await render(
     <Harness
       input={input}
       ready={(value) => {
@@ -165,13 +163,29 @@ it.each([
       promptRef.current = pastedPrompt;
       store.setPrompt(target, pastedPrompt);
     }
-    if (edit === "switch") input.attachmentTargetKeyRef.current = DraftId.make("other-draft");
   });
+  const other = DraftId.make("other-draft");
+  if (edit === "switch") {
+    await screen.rerender(
+      <Harness
+        input={{
+          ...input,
+          composerDraftTarget: other,
+          attachmentDraftTarget: other,
+          attachmentTargetKey: other,
+          addComposerFilesToDraft: (files) => store.addFiles(other, files),
+        }}
+        ready={() => {}}
+      />,
+    );
+  }
   await act(async () => {
     downloaded.resolve(new Response("notes", { headers: { "Content-Type": attachment.mimeType } }));
     await settled.promise;
   });
   expect(pendingDraftWork.has(target)).toBe(false);
+  expect(store.getComposerDraft(other)?.files ?? []).toEqual([]);
+  expect(store.getComposerDraft(other)?.images ?? []).toEqual([]);
   const draft = store.getComposerDraft(target)!;
   expect(draft.prompt).toBe(promptRef.current);
   const attachments = kind === "file" ? draft.files : draft.images;
@@ -180,7 +194,8 @@ it.each([
       edit === "retain" ||
       edit === "annotation" ||
       edit === "cached" ||
-      edit === "question"
+      edit === "question" ||
+      edit === "switch"
       ? ["notes.txt"]
       : [],
   );
