@@ -123,6 +123,36 @@ function isXhtmlElement(
   );
 }
 
+function hasImportantDisplayNone(style: string): boolean {
+  // Stylesheet rules can override non-important inline display.
+  if (!style || style.includes("\\") || !/display/i.test(style) || !/important/i.test(style))
+    return false;
+  let badString = false;
+  const declarations = style.replaceAll(
+    /\/\*[\s\S]*?(?:\*\/|$)|"[^"]*(?:"|$)|'[^']*(?:'|$)/g,
+    (token) => {
+      if (token.startsWith("/")) return " ";
+      // CSS ends a string at a newline, so later declarations can still apply.
+      if (/[\n\r\f]/.test(token)) badString = true;
+      return '""';
+    },
+  );
+  // Semicolons in blocks can be part of a declaration's value.
+  if (badString || /[()[\]{}]/.test(declarations)) return false;
+  let hidden = false;
+  for (const [declaration] of declarations.matchAll(/[^;]+/g)) {
+    const match =
+      /^[\t\n\f\r ]*(display|all)[\t\n\f\r ]*:([^!]+)![\t\n\f\r ]*important[\t\n\f\r ]*$/i.exec(
+        declaration,
+      );
+    if (!match) continue;
+    const [, property, value] = match;
+    if (!value?.trim()) continue;
+    hidden = property?.toLowerCase() === "display" && /^[\t\n\f\r ]*none[\t\n\f\r ]*$/i.test(value);
+  }
+  return hidden;
+}
+
 function xml(source: string, extension: string): XmlNode {
   const odfSpaces = [".odt", ".ods", ".odp"].includes(extension);
   const htmlEntities = extension === ".epub";
@@ -214,8 +244,9 @@ function xml(source: string, extension: string): XmlNode {
       (htmlEntities && node.name === "head" && stack[1]?.name === "html") ||
       (htmlEntities &&
         (stack[1] ?? node).name === "html" &&
-        Object.hasOwn(tag.attributes, "hidden") &&
-        !/^until-found$/i.test(String(tag.attributes.hidden))) ||
+        ((Object.hasOwn(tag.attributes, "hidden") &&
+          !/^until-found$/i.test(String(tag.attributes.hidden))) ||
+          hasImportantDisplayNone(tag.attributes.style ?? ""))) ||
       (isCompatibilityChoice && parent.hasSelectedChoice) ||
       (node.name === "Fallback" && parent.hasTextChoice) ||
       (word &&
