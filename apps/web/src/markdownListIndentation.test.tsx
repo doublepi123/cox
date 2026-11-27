@@ -4,16 +4,25 @@ import remarkGfm from "remark-gfm";
 import { describe, expect, it } from "vite-plus/test";
 
 import { remarkNormalizeListItemIndentation } from "@t3tools/shared/markdownListIndentation";
+import { remarkCodexDirectives } from "@t3tools/shared/codexMarkdownDirectives";
 
 function renderMarkdown(markdown: string): string {
   return renderToStaticMarkup(
-    <ReactMarkdown remarkPlugins={[remarkGfm, remarkNormalizeListItemIndentation]}>
+    <ReactMarkdown
+      remarkPlugins={[remarkGfm, remarkNormalizeListItemIndentation, remarkCodexDirectives]}
+    >
       {markdown}
     </ReactMarkdown>,
   );
 }
 
 describe("remarkNormalizeListItemIndentation", () => {
+  it("renders a leading directive in over-indented list content", () => {
+    expect(renderMarkdown('-       :codex-file-citation{path="src/a.ts"}')).toContain(
+      '<li><a href="src/a.ts">a.ts</a></li>',
+    );
+  });
+
   it("renders same-line over-indented list content as list text", () => {
     const html = renderMarkdown(`why did you do this?
 
