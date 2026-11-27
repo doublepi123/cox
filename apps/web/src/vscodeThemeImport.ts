@@ -1,3 +1,4 @@
+import { splitsSurrogatePair } from "@t3tools/shared/assistantCitations";
 import { parse, type ParseError } from "jsonc-parser";
 
 import {
@@ -168,7 +169,8 @@ function resolveName(value: Record<string, unknown>): string {
   for (const candidate of [value.displayName, value.name]) {
     if (typeof candidate !== "string") continue;
     const humanized = humanizeThemeName(candidate);
-    if (humanized.length > 0) return humanized.slice(0, 48);
+    if (humanized.length > 0)
+      return humanized.slice(0, splitsSurrogatePair(humanized, 48) ? 47 : 48);
   }
   return "VS Code theme";
 }
@@ -461,7 +463,7 @@ export function resolveThemeLabelCollisions(
     try {
       return parseThemeFile({
         version: THEME_FILE_VERSION,
-        name: name.slice(0, 48),
+        name: name.slice(0, splitsSurrogatePair(name, 48) ? 47 : 48),
         appearance: theme.appearance,
         colors: theme.colors,
         ...(theme.variants ? { variants: theme.variants } : {}),
