@@ -30,6 +30,14 @@ describe("remarkGithubAlerts", () => {
     expect(html).toContain("Changes live transcript routing.");
   });
 
+  it("recognizes an alert whose marker line ends in a lone CR", () => {
+    const html = renderMarkdown("> [!NOTE]\r> **Bold** body.");
+
+    expect(html).toContain('data-alert="note"');
+    expect(html).not.toContain("[!NOTE]");
+    expect(html).toContain("<strong>Bold</strong> body.");
+  });
+
   it("leaves a quote alone when the marker shares its line with anything else", () => {
     const html = renderMarkdown("> [!NOTE] an ordinary quote");
 

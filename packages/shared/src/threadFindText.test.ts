@@ -117,6 +117,10 @@ it("keeps insight line breaks for backticked openers on their own line, not in p
   ).toEqual(["★ Insight ─────\u2028opens a callout. first line second line"]);
 });
 
+it("does not index the hidden marker of an alert written with CR-only line endings", () => {
+  expect(assistantSegments("> [!NOTE]\r> hi")).toEqual(["hi"]);
+});
+
 it("indexes nested disclosure summaries and bodies in rendered order", () => {
   expect(
     assistantSegments(
