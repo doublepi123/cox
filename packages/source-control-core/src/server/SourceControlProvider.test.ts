@@ -6,6 +6,10 @@ import {
 } from "./SourceControlProvider.ts";
 
 it.each([
+  ["git@github.com:/example/cox.git", "example/cox"],
+  ["github.com:/example/cox.git", "example/cox"],
+  ["hg::user@host:Owner/Repo.git", null],
+  ["file:///workspace/example/cox.git", null],
   ["https://github.com/T3Tools/t3code.git?view=compact", "T3Tools/t3code"],
   ["https://github.com/T3Tools/t3code.git#section", "T3Tools/t3code"],
   ["ssh://git@code.example.test/T3Tools/t3code.git?transport=ssh", "T3Tools/t3code"],
