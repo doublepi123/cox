@@ -58,6 +58,9 @@ function markStandaloneImages(node: MarkdownImageHastNode) {
 
 const COLOR_SCHEME_MEDIA = /^\(\s*prefers-color-scheme\s*:\s*(dark|light)\s*\)$/i;
 
+function normalizeUrlScheme(url: string): string {
+  return url.replace(/^(?:https?|file):/i, (scheme) => scheme.toLowerCase());
+}
 /**
  * The renderer resolves an `<img>`'s `src` (workspace files, host media) but never a `<source>`'s
  * `srcset`, which would load unresolved whenever its media matched. A color-scheme source moves
@@ -100,6 +103,10 @@ export function rehypePreserveImageSourceMeta() {
           ...(typeof src === "string" && isWindowsDrivePathHref(src) ? { dataLocalSrc: src } : {}),
           ...(typeof title === "string" ? { dataMarkdownTitle: title } : {}),
         };
+        for (const key of ["src", "dataDarkSrc", "dataLightSrc"]) {
+          const value = node.properties[key];
+          if (typeof value === "string") node.properties[key] = normalizeUrlScheme(value);
+        }
       }
       node.children?.forEach(visit);
     };
@@ -110,10 +117,6 @@ export function rehypePreserveImageSourceMeta() {
 }
 
 const IMAGE_SRC_PROTOCOLS = [...(defaultSchema.protocols?.src ?? []), "file", "t3-context"];
-
-function normalizeHttpScheme(url: string): string {
-  return url.replace(/^https?:/i, (scheme) => scheme.toLowerCase());
-}
 
 // The sanitizer compares schemes case-sensitively, so lowercase accepted file link schemes first.
 function normalizeLocalFileHref(href: string): string {
@@ -134,7 +137,7 @@ export function rehypeNormalizeLocalFileLinks() {
     const visit = (node: MarkdownImageHastNode) => {
       const href = node.properties?.href;
       if (node.type === "element" && node.tagName === "a" && typeof href === "string") {
-        const normalized = normalizeLocalFileHref(normalizeHttpScheme(href));
+        const normalized = normalizeLocalFileHref(normalizeUrlScheme(href));
         if (normalized !== href) node.properties = { ...node.properties, href: normalized };
       }
       node.children?.forEach(visit);

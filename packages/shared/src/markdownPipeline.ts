@@ -163,8 +163,9 @@ function moveColorSchemeSourcesToImage(picture: MarkdownImageHastNode) {
 }
 
 function normalizeHttpScheme(url: string): string {
-  return url.replace(/^https?:/i, (scheme) => scheme.toLowerCase());
+  return url.replace(/^(?:https?|file):/i, (scheme) => scheme.toLowerCase());
 }
+
 
 function rehypePreserveImageSourceMeta() {
   return (tree: MarkdownImageHastNode) => {

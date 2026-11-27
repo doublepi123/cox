@@ -50,10 +50,7 @@ describe("resolveCodexFileCitationLink", () => {
       if (!citation) return;
       const copiedHref = extractMarkdownLinkHrefs(codexFileCitationMarkdown(citation))[0];
       for (const href of [citation.href, copiedHref]) {
-        expect(resolveMarkdownFileLink(href, cwd)).toMatchObject({
-          targetPath: `${cwd}\\src\\app.ts:7`,
-          position: { path: `${cwd}\\src\\app.ts`, line: 7 },
-        });
+        expect(resolveMarkdownFileLinkTarget(href, cwd)).toBe(`${cwd}\\src\\app.ts:7`);
       }
     }
   });
@@ -65,7 +62,7 @@ describe("resolveCodexFileCitationLink", () => {
       "//localhost/team/repo/src/app.ts",
     ]) {
       const citation = resolveCodexFileCitationLink({ path, line_range_start: "7" });
-      expect(resolveMarkdownFileLink(citation?.href, "\\\\files\\team\\repo")).toBeNull();
+      expect(resolveMarkdownFileLinkTarget(citation?.href, "\\\\files\\team\\repo")).toBeNull();
     }
     expect(resolveCodexFileCitationLink({ path: "///Users/me/repo/src/app.ts" })?.href).toBe(
       "///Users/me/repo/src/app.ts",
