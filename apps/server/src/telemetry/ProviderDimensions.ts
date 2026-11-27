@@ -38,8 +38,13 @@ export function providerDimensions(
     provider.auth.type === "bedrock"
   )
     return custom;
+  const baseModel =
+    provider.driver === "antigravity"
+      ? selection.model.replace(/-(?:minimal|low|medium|high|xhigh|max)$/u, "")
+      : selection.model;
   const model =
     provider.models.find((candidate) => candidate.slug === selection.model) ??
+    provider.models.find((candidate) => !candidate.isCustom && candidate.slug === baseModel) ??
     provider.models.find(
       (candidate) => !candidate.isCustom && candidate.aliases?.includes(selection.model),
     );

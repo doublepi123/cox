@@ -1,4 +1,5 @@
 // @effect-diagnostics nodeBuiltinImport:off -- node:sqlite and lstat read the native session log.
+import { constants } from "node:fs";
 import * as NodeFSP from "node:fs/promises";
 import * as NodePath from "node:path";
 import * as NodeSqlite from "node:sqlite";
@@ -275,6 +276,56 @@ function turnFailure(
     ? { failure, threadDisposition: "reusable", resumeWith: "continue" }
     : reusable(failure);
 }
+
+const decodeExecutedModelStep = Schema.decodeUnknownOption(
+  Schema.fromJsonString(
+    Schema.Struct({
+      type: Schema.String,
+      model: Schema.optionalKey(Schema.String),
+    }),
+  ),
+);
+
+export const readAntigravityExecutedModel = Effect.fn("AntigravityTurnOutcome.executedModel")(
+  function* (profileDirectory: string, sessionId: string) {
+    if (!NATIVE_SESSION_ID.test(sessionId)) return undefined;
+    return yield* Effect.tryPromise({
+      try: async () => {
+        const root = await antigravityProfileRoot(profileDirectory);
+        if (root === undefined) return undefined;
+        const file = await antigravityManagedPath(
+          root,
+          ["antigravity-acp", "brain", sessionId, ".system_generated", "logs", "transcript.jsonl"],
+          "file",
+        );
+        if (file === undefined) return undefined;
+        const handle = await NodeFSP.open(
+          file.path,
+          constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0),
+        );
+        try {
+          const info = await handle.stat();
+          if (!info.isFile() || info.dev !== file.info.dev || info.ino !== file.info.ino)
+            return undefined;
+          const buffer = Buffer.alloc(Math.min(info.size, 256 * 1024));
+          const offset = info.size - buffer.length;
+          const { bytesRead } = await handle.read(buffer, 0, buffer.length, offset);
+          const lines = buffer.toString("utf8", 0, bytesRead).split("\n");
+          for (let index = lines.length - 1; index >= (offset > 0 ? 1 : 0); index--) {
+            const step = Option.getOrUndefined(decodeExecutedModelStep(lines[index]!));
+            if (step?.type === "USER_INPUT") return undefined;
+            const model = step?.type === "PLANNER_RESPONSE" ? step.model?.trim() : undefined;
+            if (model) return model;
+          }
+          return undefined;
+        } finally {
+          await handle.close();
+        }
+      },
+      catch: sessionLogError,
+    }).pipe(Effect.orElseSucceed(() => undefined));
+  },
+);
 
 const conversationSegments = ["antigravity-acp", "conversations"];
 

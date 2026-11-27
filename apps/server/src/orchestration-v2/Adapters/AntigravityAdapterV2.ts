@@ -26,7 +26,10 @@ import {
   type AntigravityAcpRuntimeInput,
 } from "../../provider/acp/AntigravityAcpSupport.ts";
 import { readAntigravityClientTextFile } from "../../provider/acp/AntigravityClientFiles.ts";
-import { watchAntigravityPromptOutcome } from "../../provider/acp/AntigravityTurnOutcome.ts";
+import {
+  readAntigravityExecutedModel,
+  watchAntigravityPromptOutcome,
+} from "../../provider/acp/AntigravityTurnOutcome.ts";
 import {
   antigravityApprovalOptions,
   antigravitySwarmAddChildSessionId,
@@ -262,6 +265,8 @@ export function makeAntigravityAcpAdapterFlavor(
       : {
           watchPromptOutcome: (sessionId: string) =>
             watchAntigravityPromptOutcome(options.profileDirectory!, sessionId),
+          executedModel: (sessionId: string) =>
+            readAntigravityExecutedModel(options.profileDirectory!, sessionId),
         }),
   };
 }

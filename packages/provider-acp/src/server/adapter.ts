@@ -520,6 +520,7 @@ export interface AcpAdapterV2Flavor {
     notification: EffectAcpSchema.SessionNotification,
   ) => boolean;
   readonly deferFinalizeForBackgroundWork?: boolean;
+  readonly executedModel?: (sessionId: string) => Effect.Effect<string | undefined>;
   readonly assertComplete?: Effect.Effect<void, EffectAcpErrors.AcpError>;
   /** Interrupt the local prompt fiber before `session/cancel` (Grok wedged prompts). */
   readonly interruptPromptOnCancel?: boolean;
@@ -8001,7 +8002,23 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
             });
           }
           yield* reportAgentModeChanges(context.input.threadId);
-          const turn = providerTurnPayload(context, settledStatus, now);
+          const settledTurn = providerTurnPayload(context, settledStatus, now);
+          const executedModel =
+            flavor.executedModel === undefined
+              ? undefined
+              : yield* flavor.executedModel(context.nativeThreadId);
+          const turn: OrchestrationV2ProviderTurn =
+            executedModel === undefined
+              ? settledTurn
+              : {
+                  ...settledTurn,
+                  model: executedModel,
+                  ...(settledTurn.turnTokenUsage === undefined
+                    ? {}
+                    : {
+                        turnTokenUsage: { ...settledTurn.turnTokenUsage, models: [executedModel] },
+                      }),
+                };
           yield* emitProviderEvent({
             type: "provider_turn.updated",
             driver,

@@ -607,6 +607,25 @@ describe("AntigravityAdapterV2 html_render pages", () => {
       );
       type RuntimeService = AcpSessionRuntime.AcpSessionRuntime["Service"];
       let sessionUpdate: Parameters<RuntimeService["handleSessionUpdate"]>[0] | undefined;
+      const fs = yield* FileSystem.FileSystem;
+      const profileDirectory = yield* fs.makeTempDirectoryScoped({ prefix: "cox-agy-model-" });
+      const logs = path.join(
+        profileDirectory,
+        "antigravity-acp",
+        "brain",
+        "mock-session-1",
+        ".system_generated",
+        "logs",
+      );
+      yield* fs.makeDirectory(logs, { recursive: true });
+      yield* fs.writeFileString(
+        path.join(logs, "transcript.jsonl"),
+        [
+          JSON.stringify({ type: "PLANNER_RESPONSE", model: "stale-model" }),
+          JSON.stringify({ type: "USER_INPUT" }),
+          JSON.stringify({ type: "PLANNER_RESPONSE", model: "gemini-test-high" }),
+        ].join("\n"),
+      );
       const instanceId = ProviderInstanceId.make("antigravity-html-render-test");
       const threadId = ThreadId.make("thread-antigravity-html-render");
       const page = (name: string) => ({
@@ -620,6 +639,7 @@ describe("AntigravityAdapterV2 html_render pages", () => {
       const failed = { ...report, html: "<p>Revenue</p>" };
       const errored = { ...report, html: "<p>Revenue error</p>" };
       const adapter = yield* makeAntigravityAdapterV2({
+        profileDirectory,
         instanceId,
         selfInvocation: yield* resolveSelfInvocation(),
         makeRuntime: (input) =>
@@ -807,6 +827,16 @@ describe("AntigravityAdapterV2 html_render pages", () => {
           Stream.takeUntil((event) => event.type === "turn.terminal"),
           Stream.runCollect,
         ),
+      );
+      const completed = events.findLast(
+        (event) =>
+          event.type === "provider_turn.updated" && event.providerTurn.status === "completed",
+      );
+      assert.deepEqual(
+        completed?.type === "provider_turn.updated"
+          ? completed.providerTurn.turnTokenUsage?.models
+          : undefined,
+        ["gemini-test-high"],
       );
       const tool = (nativeId: string) => {
         const event = events.findLast(
