@@ -12,6 +12,7 @@ import {
 } from "@t3tools/contracts";
 import { useAtomValue } from "@effect/atom-react";
 import { normalizeProviderAccentColor } from "@t3tools/client-runtime/state/provider-instance-display";
+import { resetCreditFailureText } from "@t3tools/client-runtime/state/usage";
 import {
   formatDuration,
   formatResetsIn,
@@ -268,11 +269,7 @@ export function useResetCredit(
       setStatus(result.value.warning ?? OUTCOME_TEXT[result.value.outcome]);
       return;
     }
-    setStatus(
-      "error" in result.cause && result.cause.error instanceof Error
-        ? result.cause.error.message
-        : "Could not use the reset credit.",
-    );
+    setStatus(resetCreditFailureText(result));
   };
 
   return { canManageProviders, confirming, setConfirming, busy, status, redeem };

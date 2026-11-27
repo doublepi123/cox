@@ -1,4 +1,5 @@
 import type { EnvironmentId, UsageSummaryInput } from "@t3tools/contracts";
+import * as Cause from "effect/Cause";
 import * as Schema from "effect/Schema";
 import type { AtomRegistry } from "effect/reactivity";
 
@@ -8,6 +9,14 @@ import { executeAtomQuery, runAtomCommand, squashAtomCommandFailure } from "./ru
 import type { createServerEnvironmentAtoms } from "./server.ts";
 
 const isEnvironmentRpcUnavailable = Schema.is(EnvironmentRpcUnavailableError);
+
+export function resetCreditFailureText(result: { readonly cause: Cause.Cause<unknown> }): string {
+  const failed = Cause.hasFails(result.cause) || Cause.hasDies(result.cause);
+  const error = failed ? squashAtomCommandFailure(result) : null;
+  return error instanceof Error && error.message.trim() !== ""
+    ? error.message
+    : "Could not use the reset credit.";
+}
 
 const limitsRefreshAfter = new Map<EnvironmentId, number>();
 const limitsRefreshes = new Map<EnvironmentId, Promise<unknown>>();
