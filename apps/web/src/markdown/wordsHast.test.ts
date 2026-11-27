@@ -523,6 +523,12 @@ describe("wordsHast", () => {
     expect(wordsHtml(`${content}\n\n${definitions.join("\n")}`)).toBe(wordsHtml(markdown));
   });
 
+  it("keeps reference definitions positioned after a leading byte order mark", () => {
+    expect(markdownReferenceDefinitions("\uFEFF[ref]: https://x.dev")).toEqual([
+      "[ref]: <https://x.dev>",
+    ]);
+  });
+
   it("keeps authored SVG and ids out of the math it restores", () => {
     const html = wordsHtml(
       '<svg width="99999" viewBox="0 0 1 1"><rect x="0" y="0" width="1" height="1"/></svg> <svg data-sourcepos="0-3" height="99999"></svg> <span id="t3-math-0">kept</span> $x$',
