@@ -16,7 +16,8 @@ import { ScrollArea } from "../ui/scroll-area";
 
 import { reportMarkdownActionFailure, type TableCopyFormat } from "./markdownActionFailure";
 
-const TABLE_COPY_SERIALIZERS: Record<TableCopyFormat, (table: Element) => string> = {
+type TableTextFormat = Exclude<TableCopyFormat, "png">;
+const TABLE_COPY_SERIALIZERS: Record<TableTextFormat, (table: Element) => string> = {
   markdown: serializeTableElementToMarkdown,
   csv: serializeTableElementToCsv,
   html: serializeTableElementToHtml,
@@ -25,14 +26,20 @@ const TABLE_COPY_SERIALIZERS: Record<TableCopyFormat, (table: Element) => string
 export function MarkdownTable({ children, ...props }: ComponentProps<"table">) {
   const { t: translateUi } = useTranslation();
   const containerRef = useRef<HTMLDivElement | null>(null);
-  const { copyToClipboard, isCopied: copied } = useCopyToClipboard<TableCopyFormat>({
+  const {
+    copyToClipboard,
+    copyPngToClipboard,
+    isCopied: copied,
+  } = useCopyToClipboard<TableCopyFormat>({
     timeout: 1200,
     onError: (cause, format) =>
       reportMarkdownActionFailure({ operation: "copy-table", format }, cause),
   });
   const copyLabel = copied ? "Copied" : "Copy table";
 
-  const handleCopy = (format: TableCopyFormat) => {
+  const canCopyPng =
+    typeof ClipboardItem !== "undefined" && typeof navigator.clipboard?.write === "function";
+  const handleCopy = (format: TableTextFormat) => {
     const table = containerRef.current?.querySelector("table");
     if (!table) return;
     const text = TABLE_COPY_SERIALIZERS[format](table);
@@ -77,6 +84,20 @@ export function MarkdownTable({ children, ...props }: ComponentProps<"table">) {
             </MenuItem>
             <MenuItem onClick={() => handleCopy("csv")}>{translateUi("Copy as CSV")}</MenuItem>
             <MenuItem onClick={() => handleCopy("html")}>{translateUi("Copy as HTML")}</MenuItem>
+            {canCopyPng ? (
+              <MenuItem
+                onClick={() => {
+                  const table = containerRef.current?.querySelector("table");
+                  if (table)
+                    copyPngToClipboard(
+                      () => import("./tablePng").then((module) => module.renderTablePng(table)),
+                      "png",
+                    );
+                }}
+              >
+                {translateUi("Copy as PNG")}
+              </MenuItem>
+            ) : null}
           </MenuPopup>
         </Menu>
       </div>

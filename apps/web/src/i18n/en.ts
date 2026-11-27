@@ -1,4 +1,5 @@
 export const en = {
+  "Copy as PNG": "Copy as PNG",
   "Skipped runs kept": "Skipped runs kept",
   "How many skipped runs each workflow keeps in its history. Older skipped runs are deleted; runs that did something are always kept.":
     "How many skipped runs each workflow keeps in its history. Older skipped runs are deleted; runs that did something are always kept.",
