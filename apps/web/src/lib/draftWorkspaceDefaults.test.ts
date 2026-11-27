@@ -19,11 +19,9 @@ const project = scopeProjectRef(EnvironmentId.make("environment"), ProjectId.mak
 describe("pending draft checkouts", () => {
   it("lets a waiting send resume only after the current checkout was applied", async () => {
     const draftId = DraftId.make("draft");
-    useComposerDraftStore.getState().setLogicalProjectDraftThreadId(
-      scopedProjectKey(project),
-      project,
-      draftId,
-    );
+    useComposerDraftStore
+      .getState()
+      .setLogicalProjectDraftThreadId(scopedProjectKey(project), project, draftId);
     const first = deferred<boolean>();
     const second = deferred<boolean>();
     trackPendingDraftCheckout(draftId, project, first.promise);
@@ -45,11 +43,9 @@ describe("pending draft checkouts", () => {
 
   it("reports a rejected checkout as not applied", async () => {
     const draftId = DraftId.make("draft");
-    useComposerDraftStore.getState().setLogicalProjectDraftThreadId(
-      scopedProjectKey(project),
-      project,
-      draftId,
-    );
+    useComposerDraftStore
+      .getState()
+      .setLogicalProjectDraftThreadId(scopedProjectKey(project), project, draftId);
     const rejected = deferred<boolean>();
     trackPendingDraftCheckout(draftId, project, rejected.promise);
     const pending = readPendingWorkspaceDefault(draftId);
