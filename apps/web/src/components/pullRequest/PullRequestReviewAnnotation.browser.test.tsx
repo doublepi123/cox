@@ -2,6 +2,7 @@ import { EnvironmentId, ProjectId, type PullRequestReviewThread } from "@t3tools
 import { expect, it, vi } from "vite-plus/test";
 import { page, userEvent } from "vite-plus/test/browser";
 
+import { setLanguagePreference } from "~/i18n";
 import { registerCommands } from "~/shortcuts/dispatcher";
 import { act, render } from "../../../test/render";
 import { RightPanelSheet } from "../RightPanelSheet";
@@ -125,4 +126,30 @@ it("Escape cancels a review reply without closing the right panel sheet", async 
 
   await userEvent.keyboard("{Escape}");
   expect(onCloseSheet).toHaveBeenCalledOnce();
+});
+
+it("renders the outdated label in the UI language", async () => {
+  setLanguagePreference("zh");
+  using _locale = { [Symbol.dispose]: () => setLanguagePreference("system") };
+  await using screen = await render(
+    <ReviewThreadCard
+      thread={{ ...thread, isOutdated: true }}
+      workspaceRoot="/workspace"
+      canReply
+      canResolve={false}
+      canReact={false}
+      environmentId={EnvironmentId.make("environment")}
+      reference={{ projectId: ProjectId.make("project"), repository: "owner/repo", number: 1 }}
+      completionScope={null}
+      pending={false}
+      onReply={async () => true}
+      onLoadMore={async () => null}
+      canEditComment={() => false}
+      onEditComment={async () => false}
+      onToggleResolved={() => {}}
+      onReacted={() => {}}
+    />,
+  );
+
+  await expect.element(screen.getByText("已过时", { exact: true })).toBeVisible();
 });
