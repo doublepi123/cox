@@ -47,6 +47,28 @@ describe("inlineCodeFilePathCandidate", () => {
     ["/tmp/.../scratchpad/notes.md", null],
     ["~/projects/…/notes.md", null],
     ["src/.../main.ts", null],
+    // regression: #37740 absolute paths with spaces are files, commands are not
+    ["/Users/me/Path Test/notes with spaces.md", "/Users/me/Path Test/notes with spaces.md"],
+    ["~/Library/Mobile Documents/notes.md", "~/Library/Mobile Documents/notes.md"],
+    [
+      "/Users/me/Library/CloudStorage/OneDrive-Org/Alex/Partners/Acme/Finance Use Cases/working/2026-11-16 message - draft.md",
+      "/Users/me/Library/CloudStorage/OneDrive-Org/Alex/Partners/Acme/Finance Use Cases/working/2026-11-16 message - draft.md",
+    ],
+    ["cd /tmp && ls", null],
+    ["/usr/bin/python3 -m venv .venv", null],
+    ["/usr/local/bin/node server.js", null],
+    ["/usr/bin/env python3 foo.py", null],
+    ["/opt/homebrew/bin/python3 manage.py", null],
+    ["/bin/echo hello world.txt", null],
+    ["~/bin/run tests.sh", null],
+    ["/Users/me/notes with spaces.md", "/Users/me/notes with spaces.md"],
+    [
+      "\\\\server\\share\\Project\\Guide Notes.md:10-20",
+      "\\\\server\\share\\Project\\Guide Notes.md:10-20",
+    ],
+    ["\\\\server\\Shared Docs\\Guide.md", "\\\\server\\Shared Docs\\Guide.md"],
+    ["\\\\server name\\share\\Guide Notes.md", null],
+    ["\\\\server\\Guide Notes.md", null],
     ["~/Videos/clips/<thread-slug>/shot.png", null],
     ["clips/<name>.mp4", null],
   ])("distinguishes file paths from code and hostnames in %s", (source, candidate) => {
