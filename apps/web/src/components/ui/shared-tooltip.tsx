@@ -235,7 +235,11 @@ function SharedTooltipHost({ children }: { children: ReactNode }) {
             textFormat={state.textFormat ?? "default"}
             interactive
             onMouseEnter={() => api.holdOpen()}
-            onMouseLeave={() => api.hide(state.anchor)}
+            onMouseLeave={(event) => {
+              const next = event.relatedTarget;
+              if (next instanceof Node && state.anchor.contains(next)) return;
+              api.hide(state.anchor);
+            }}
           >
             {state.render()}
           </TooltipPopup>
