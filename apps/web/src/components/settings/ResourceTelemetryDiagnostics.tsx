@@ -1085,10 +1085,7 @@ function ResourceTelemetryDiagnosticsBody({
               value={allT3 ? String(allT3.processCount) : "..."}
               detail={
                 allT3
-                  ? translateUi("{starts} starts · {exits} exits", {
-                      starts: allT3.processStarts,
-                      exits: allT3.processExits,
-                    })
+                  ? `${translateUi(allT3.processStarts === 1 ? "{count} start" : "{count} starts", { count: allT3.processStarts })} · ${translateUi(allT3.processExits === 1 ? "{count} exit" : "{count} exits", { count: allT3.processExits })}`
                   : undefined
               }
             />

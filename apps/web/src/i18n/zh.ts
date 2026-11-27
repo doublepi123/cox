@@ -1,4 +1,8 @@
 export const zh = {
+  "{count} start": "启动 {count} 个",
+  "{count} starts": "启动 {count} 个",
+  "{count} exit": "退出 {count} 个",
+  "{count} exits": "退出 {count} 个",
   "{count} download": "{count} 次下载",
   "{count} downloads": "{count} 次下载",
   "Copy as PNG": "复制为 PNG",

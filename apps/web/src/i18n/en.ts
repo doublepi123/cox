@@ -1,4 +1,8 @@
 export const en = {
+  "{count} start": "{count} start",
+  "{count} starts": "{count} starts",
+  "{count} exit": "{count} exit",
+  "{count} exits": "{count} exits",
   "{count} download": "{count} download",
   "{count} downloads": "{count} downloads",
   "Copy as PNG": "Copy as PNG",
