@@ -3,6 +3,7 @@ import { encodeComposerContextFragment } from "@t3tools/shared/composerContextCl
 import { ComposerContextId, EnvironmentId, MessageId } from "@t3tools/contracts";
 import {
   readPastedComposerContext,
+  readPastedPlainText,
   rememberCopiedComposerContext,
 } from "./composerInlineTokenPaste";
 
@@ -42,4 +43,8 @@ it("recovers a sent image only while the Android clipboard still matches the cop
   shell.platform = "android";
   expect(readPastedComposerContext(plain("different text"))).toBeNull();
   expect(readPastedComposerContext(plain(text))).toBeNull();
+});
+
+it("removes a leading BOM and normalizes pasted line endings", () => {
+  expect(readPastedPlainText({ getData: () => "\uFEFFfenced\r\ntext\r" })).toBe("fenced\ntext\n");
 });

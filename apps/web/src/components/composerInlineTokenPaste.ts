@@ -19,6 +19,13 @@ export function rememberCopiedComposerContext(text: string, fragment: string | n
     getMobileShellInfo()?.platform === "android" && fragment ? { text, fragment } : null;
 }
 
+export function readPastedPlainText(clipboardData: Pick<DataTransfer, "getData">): string {
+  return clipboardData
+    .getData("text/plain")
+    .replace(/^\uFEFF/, "")
+    .replace(/\r\n?/g, "\n");
+}
+
 export function readPastedComposerContext(
   clipboardData: Pick<DataTransfer, "getData">,
 ): ComposerContextClipboardFragment | null {
@@ -56,7 +63,7 @@ export function importPastedComposerText(
     fragment: ComposerContextClipboardFragment,
   ) => ReadonlyMap<string, string>,
 ): string {
-  const pastedText = clipboardData.getData("text/plain");
+  const pastedText = readPastedPlainText(clipboardData);
   const fragment = importContextFragment ? readPastedComposerContext(clipboardData) : null;
   const rewrittenIds =
     fragment && fragment.records.length > 0 ? importContextFragment!(fragment) : null;
