@@ -1076,6 +1076,10 @@ describe("rightPanelStore", () => {
 
     store.reconcileBrowserSurfaces(refA, ["tab-a", "tab-b"]);
     expect(surfaceIds()).toEqual(["browser:tab-a", "terminal:term-1", "diff", "browser:tab-b"]);
+    store.moveSurfaces(refA, ["terminal:term-1", "diff"], "browser:tab-b");
+    expect(surfaceIds()).toEqual(["browser:tab-a", "browser:tab-b", "terminal:term-1", "diff"]);
+    store.moveSurfaces(refA, ["terminal:term-1", "diff"], "browser:tab-a");
+    expect(surfaceIds()).toEqual(["terminal:term-1", "diff", "browser:tab-a", "browser:tab-b"]);
     expect(store.getUserActionRevision(refA)).toBe(revision);
   });
 });

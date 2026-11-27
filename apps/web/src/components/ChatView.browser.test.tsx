@@ -14,6 +14,7 @@ import { page, userEvent } from "vite-plus/test/browser";
 import "./ThreadRouteView";
 
 import { AppRoot } from "~/AppRoot";
+import { useRightPanelStore } from "~/rightPanelStore";
 import { DraftId, useComposerDraftStore } from "~/composerDraftStore";
 import { __setClientSettingsForTests } from "~/hooks/useSettings";
 import { getRouter } from "~/router";
@@ -445,6 +446,41 @@ it("holds Enter while an image compresses and cancels on edit or Escape", async 
   await expect.element(waiting).toBeVisible();
   await userEvent.keyboard("{Escape}");
   await expect.element(waiting).not.toBeInTheDocument();
+});
+
+it("Cmd+W closes the selected right-panel tabs together", async () => {
+  await page.viewport(1280, 800);
+  const thread = threadWithHistory("thread-close-selected-tabs", 1);
+  using _environment = installFakeEnvironment([thread]);
+  using _platform = vi.spyOn(navigator, "platform", "get").mockReturnValue("MacIntel");
+  __setClientSettingsForTests({
+    ...DEFAULT_CLIENT_SETTINGS,
+    onboardingCompletedAt: "2026-01-01T00:00:00.000Z",
+  });
+  const threadRef = scopeThreadRef(ENVIRONMENT_ID, thread.id);
+  const panels = useRightPanelStore.getState();
+  panels.open(threadRef, "diff");
+  panels.openFile(threadRef, "notes.md");
+  panels.openFile(threadRef, "routes.ts");
+  const router = getRouter(
+    createMemoryHistory({ initialEntries: [`/${ENVIRONMENT_ID}/${thread.id}`] }),
+  );
+  await router.load();
+  await using _app = await render(<AppRoot router={router} />, {
+    // AppRoot brings its own router.
+    router: false,
+  });
+
+  const tab = (name: string) => page.getByRole("button", { name, exact: true });
+  await userEvent.click(tab("notes.md"), { modifiers: ["Shift"] });
+  await expect.element(tab("notes.md")).toHaveAttribute("aria-pressed", "true");
+  await userEvent.keyboard("{Meta>}w{/Meta}");
+  await expect.element(tab("notes.md")).not.toBeInTheDocument();
+  await expect.element(tab("routes.ts")).not.toBeInTheDocument();
+  await expect.element(tab("Diff")).toHaveAttribute("aria-pressed", "true");
+
+  await userEvent.keyboard("{Meta>}w{/Meta}");
+  await expect.element(tab("Diff")).not.toBeInTheDocument();
 });
 
 it("opening Settings without a page event closes the composer model picker and permissions menu", async () => {

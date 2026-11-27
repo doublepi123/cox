@@ -450,6 +450,7 @@ function ChatDiffPanel({
           terminalLabelsById={new Map()}
           onActivate={() => {}}
           onCloseSurface={() => {}}
+          onCloseSelectedSurfaces={() => {}}
           onCloseOtherSurfaces={() => {}}
           onCloseSurfacesToRight={() => {}}
           onCloseAllSurfaces={() => {}}
