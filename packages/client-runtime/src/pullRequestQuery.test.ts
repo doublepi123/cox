@@ -165,10 +165,14 @@ describe("changing a menu filter after typing its qualifier", () => {
 
   it("keeps a typed query and stored menu values when another filter changes", () => {
     expect(
-      applyPullRequestFilterChange("draft:false fix", { draft: "only" }, {
-        draft: "hide",
-        checks: "passing",
-      }),
+      applyPullRequestFilterChange(
+        "draft:false fix",
+        { draft: "only" },
+        {
+          draft: "hide",
+          checks: "passing",
+        },
+      ),
     ).toEqual({ query: "draft:false fix", filters: { draft: "only", checks: "passing" } });
   });
 
@@ -178,22 +182,32 @@ describe("changing a menu filter after typing its qualifier", () => {
       filters: { checks: "failing" },
     });
     expect(
-      applyPullRequestFilterChange('status:success "checks:passing" fix', { checks: "failing" }, {}),
+      applyPullRequestFilterChange(
+        'status:success "checks:passing" fix',
+        { checks: "failing" },
+        {},
+      ),
     ).toEqual({ query: '"checks:passing" fix', filters: {} });
     expect(
-      applyPullRequestFilterChange("review:approved checks:failing draft:true fix", {}, {
-        review: "none",
-        checks: "failing",
-        draft: "only",
-      }),
+      applyPullRequestFilterChange(
+        "review:approved checks:failing draft:true fix",
+        {},
+        {
+          review: "none",
+          checks: "failing",
+          draft: "only",
+        },
+      ),
     ).toEqual({ query: "checks:failing draft:true fix", filters: { review: "none" } });
   });
 
   it("preserves text the tokenizer skips while removing a qualifier", () => {
-    expect(applyPullRequestFilterChange('checks:passing "size:XL', {}, { checks: "failing" }).query)
-      .toBe('"size:XL');
-    expect(applyPullRequestFilterChange("fix  review:approved   wip", {}, { review: "none" }).query)
-      .toBe("fix  wip");
+    expect(
+      applyPullRequestFilterChange('checks:passing "size:XL', {}, { checks: "failing" }).query,
+    ).toBe('"size:XL');
+    expect(
+      applyPullRequestFilterChange("fix  review:approved   wip", {}, { review: "none" }).query,
+    ).toBe("fix  wip");
   });
 
   it("shows typed qualifiers in place of stored menu values", () => {
