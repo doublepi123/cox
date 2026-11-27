@@ -194,6 +194,43 @@ const page = (
 );
 
 describe("WorkflowRunsView", () => {
+  it("counts the skipped runs of the workflow picked, not of every workflow", async () => {
+    setup({
+      workflows: [
+        { name: "release", version: 1, triggers: [] },
+        { name: "report", version: 1, triggers: ["webhook pings"] },
+      ],
+      runs: [
+        run({ runId: "rel", title: "Release 1.3", status: "completed", endedAt: at(3) }),
+        run({
+          runId: "s1",
+          workflow: "report",
+          title: "Ping 1",
+          status: "skipped",
+          endedAt: at(1),
+        }),
+        run({
+          runId: "s2",
+          workflow: "report",
+          title: "Ping 2",
+          status: "skipped",
+          endedAt: at(2),
+        }),
+      ],
+      questions: [],
+    });
+    await using _desktop = await desktop();
+    await using screen = await render(page());
+
+    await screen.getByRole("button", { name: "All", exact: true }).click();
+    await expect.element(screen.getByRole("button", { name: "Show 2 skipped" })).toBeVisible();
+    await screen.getByRole("combobox", { name: "Workflow" }).click();
+    await screen.getByRole("option", { name: "release" }).click();
+    await expect
+      .element(screen.getByRole("navigation", { name: "Workflow runs" }))
+      .not.toMatchTextContent(/skipped/);
+  });
+
   it("opens on the question that waits, and answers it with the reason given", async () => {
     setup(
       {

@@ -210,6 +210,13 @@ export function WorkflowRunsView({
   const lists = workflowRunLists(groups);
   const all = allWorkflowRunNodes(groups);
   const section = groups.workflows.find((candidate) => candidate.name === workflow) ?? null;
+  const skipped =
+    section === null
+      ? visible.skipped
+      : listedWorkflowRuns(
+          snapshot.runs.filter((run) => run.workflow === section.name),
+          false,
+        ).skipped;
   // A run that another invoked is not in the list itself; the one it is part of stands for it.
   const listedFor = (node: WorkflowRunNode | null): string | null => {
     if (node === null) return null;
@@ -398,12 +405,12 @@ export function WorkflowRunsView({
                     ))}
                   </ul>
                 )}
-                {tab === "all" && visible.skipped > 0 && !openedSkipped ? (
+                {tab === "all" && skipped > 0 && !openedSkipped ? (
                   <div className="flex justify-center pt-2">
                     <Button size="xs" variant="ghost" onClick={() => setShowSkipped(!showSkipped)}>
                       {showSkipped
                         ? gt("Hide skipped")
-                        : gt("Show {count} skipped", { count: visible.skipped })}
+                        : gt("Show {count} skipped", { count: skipped })}
                     </Button>
                   </div>
                 ) : null}
