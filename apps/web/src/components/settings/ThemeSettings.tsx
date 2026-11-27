@@ -911,7 +911,7 @@ export function ThemeLibrary({
             stackedThreadToast({
               type: "success",
               title: t("{name} added", { name: importedTheme.label }),
-              description: "It’s now active.",
+              description: t("It’s now active."),
             }),
           );
           return true;
