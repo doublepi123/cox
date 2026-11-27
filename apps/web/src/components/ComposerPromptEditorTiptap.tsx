@@ -26,7 +26,13 @@ import {
   type Transaction,
 } from "@tiptap/pm/state";
 import { Decoration, DecorationSet, type EditorView } from "@tiptap/pm/view";
-import type { NodeType, ResolvedPos } from "@tiptap/pm/model";
+import {
+  Fragment,
+  Slice,
+  type Node as ProseMirrorNode,
+  type NodeType,
+  type ResolvedPos,
+} from "@tiptap/pm/model";
 import type {
   AssistantCitation,
   ComposerContextClipboardFragment,
@@ -1146,12 +1152,14 @@ function ComposerPromptEditorTiptapInner(
     // Shown Markdown source is parsed when the caret leaves, so paste one line into it as text.
     const sourceType = view.state.schema.marks[MARKDOWN_SOURCE_MARK];
     const { from: pasteFrom, to: pasteTo, $from: $pasteFrom } = view.state.selection;
-    if (
+    const pastesIntoShownSource =
       !onNewLine &&
-      sourceType &&
+      sourceType !== undefined &&
       (sourceType.isInSet($pasteFrom.nodeBefore?.marks ?? []) ||
         sourceType.isInSet($pasteFrom.nodeAfter?.marks ?? []) ||
-        view.state.doc.rangeHasMark(pasteFrom, pasteTo, sourceType)) &&
+        view.state.doc.rangeHasMark(pasteFrom, pasteTo, sourceType));
+    if (
+      pastesIntoShownSource &&
       !pastedText.includes("\n") &&
       collectComposerPromptInlineTokens(`${pastedText}\n`).length === 0
     ) {
@@ -1210,7 +1218,24 @@ function ComposerPromptEditorTiptapInner(
             })
             // Pasted chips and lines would split shown Markdown, so parse it first.
             .command(collapseShownMarkdownSource)
-            .insertContent(content)
+            .command(({ tr, commands }) => {
+              const nodes = Array.isArray(content)
+                ? content.map((json) => tr.doc.type.schema.nodeFromJSON(json))
+                : [];
+              if (
+                pastesIntoShownSource ||
+                nodes.length < 2 ||
+                !nodes.every((node) => node.isBlock)
+              ) {
+                return commands.insertContent(content);
+              }
+              // Open paragraph edges join the caret's line and the text after it, as typed lines do.
+              const open = (node: ProseMirrorNode) => (node.type.name === "paragraph" ? 1 : 0);
+              tr.replaceSelection(
+                new Slice(Fragment.from(nodes), open(nodes[0]!), open(nodes.at(-1)!)),
+              );
+              return true;
+            })
             .command(({ tr }) => {
               // Move after a pasted rule so the next keystroke cannot replace it; add a trailing line
               // if needed.
