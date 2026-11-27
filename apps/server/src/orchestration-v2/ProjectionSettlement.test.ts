@@ -482,3 +482,20 @@ it.effect("sql: an unsettled-only shell read skips settled threads", () =>
     assert.equal(all.threads.length, 4);
   }).pipe(Effect.provide(layerSql)),
 );
+
+it.effect("sql: a finished subagent thread settles while its parent stays active", () =>
+  Effect.gen(function* () {
+    const store = yield* ProjectionStore.ProjectionStoreV2;
+    const parent = yield* createThread("active-parent");
+    const child = yield* createThread("finished-child", {
+      lineage: { parentThreadId: parent, relationshipToParent: "subagent", rootThreadId: parent },
+    });
+    yield* createRun(parent, "running");
+    yield* createRun(child, "completed");
+
+    const ids = yield* store
+      .getSettlementCandidates()
+      .pipe(Effect.map((rows) => rows.map((row) => row.id)));
+    assert.deepEqual(ids, [child]);
+  }).pipe(Effect.provide(layerSql)),
+);
