@@ -31,6 +31,10 @@ describe("textDirection", () => {
     expect(textDirection(text)).toBe(direction);
   });
 
+  it("does not count a byte order mark as a right-to-left letter", () => {
+    expect(textDirection("\uFEFFHello")).toBe("ltr");
+  });
+
   it("leaves text without letters to its surroundings", () => {
     expect(textDirection("42 — 7 ✓")).toBeUndefined();
   });
