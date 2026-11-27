@@ -13,6 +13,7 @@ import {
   buildKeybindingRows,
   commandLabel,
   filterKeybindingRows,
+  groupKeybindingRows,
   keybindingConflictLabels,
   keybindingFromKeyboardEvent,
   parseWhenExpressionDraft,
@@ -27,6 +28,19 @@ describe("KeybindingsSettings.logic", () => {
   it("translates the previous and next terminal shortcuts", () => {
     expect(translate("zh", commandLabel("terminal.previous"))).toBe("终端：上一个");
     expect(translate("zh", commandLabel("terminal.next"))).toBe("终端：下一个");
+  });
+
+  it("lists back and forward under Navigation", () => {
+    const groups = groupKeybindingRows(
+      buildKeybindingRows(
+        compileResolvedKeybindingsConfig([
+          { command: "navigation.back", key: "mod+[" },
+          { command: "navigation.forward", key: "mod+]" },
+        ]),
+        "MacIntel",
+      ),
+    );
+    expect(groups.map((group) => group.id)).toEqual(["navigation"]);
   });
 
   it("finds a shortcut by the label its row shows", () => {
