@@ -21,6 +21,26 @@ import {
   type SettingsSearchItem,
 } from "./settingsSearch";
 
+it("ranks exact localized titles ahead of partial matches and search terms", () => {
+  const items: ReadonlyArray<SettingsSearchItem> = [
+    {
+      id: "other",
+      title: "Appearance",
+      to: "/settings/general",
+      searchTerms: ["language", "语言"],
+    },
+    { id: "interface", title: "Interface language", to: "/settings/general" },
+    { id: "language", title: "Language", to: "/settings/general" },
+  ];
+  for (const query of ["语言", "Language"]) {
+    expect(searchSettings(query, items, "zh").map(({ id }) => id)).toEqual([
+      "language",
+      "interface",
+      "other",
+    ]);
+  }
+});
+
 const ITEMS: ReadonlyArray<SettingsSearchItem> = [
   {
     id: "word-wrap",
