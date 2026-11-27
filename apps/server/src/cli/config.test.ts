@@ -211,6 +211,34 @@ it.layer(NodeServices.layer)("local CLI configuration", (it) => {
       ),
     );
   }
+  it.effect("uses the same unbracketed IPv6 wildcard for port selection and startup", () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem;
+      const baseDir = yield* fs.makeTempDirectoryScoped({ prefix: "cox-config-ipv6-host-" });
+      const config = yield* resolveServerConfig(
+        { ...flags(baseDir), port: Option.none() },
+        Option.none(),
+      ).pipe(
+        Effect.provide(
+          Layer.merge(
+            Layer.succeed(NetService.NetService, {
+              ...NetService.make(),
+              findAvailablePort: (_preferred, host) =>
+                Effect.sync(() => (host === "::" ? 50_123 : 50_124)),
+            }),
+            ConfigProvider.layer(
+              ConfigProvider.fromEnv({
+                env: { T3CODE_HOST: "[::]", COX_AUTH_PASSWORD: "cox-password" },
+              }),
+            ),
+          ),
+        ),
+      );
+
+      expect(config.host).toBe("::");
+      expect(config.port).toBe(50_123);
+    }),
+  );
   it.effect("rejects an invalid injected password even on loopback", () =>
     Effect.flip(validateListenHost("127.0.0.1", Redacted.make("short"))).pipe(
       Effect.map((error) => expect(error.message).toContain("at least 8 characters")),

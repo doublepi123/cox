@@ -1,5 +1,6 @@
 import { isIP } from "node:net";
 import * as NetService from "@t3tools/shared/Net";
+import { isWildcardHost, normalizeHostname } from "@t3tools/shared/hostClassification";
 import {
   OtlpHeadersFromString,
   OtlpProtocol,
@@ -238,7 +239,7 @@ export const resolveServerConfig = Effect.fn("config.resolveServerConfig")(funct
   const explicitHost = resolveOptionPrecedence(
     normalizedFlags.host,
     Option.fromUndefinedOr(env.host),
-  );
+  ).pipe(Option.map((host) => (isWildcardHost(host) ? normalizeHostname(host) : host)));
   const authPassword = yield* AuthPasswordConfig;
   const host = yield* validateListenHost(
     Option.getOrElse(explicitHost, () => "127.0.0.1"),

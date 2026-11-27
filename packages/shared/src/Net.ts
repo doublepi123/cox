@@ -6,7 +6,9 @@ import * as Layer from "effect/Layer";
 import * as Context from "effect/Context";
 import * as Predicate from "effect/Predicate";
 
-import { isLocalLoopbackHost } from "./hostClassification.ts";
+import { isLocalLoopbackHost, isWildcardHost, normalizeHostname } from "./hostClassification.ts";
+
+const WILDCARD_PORT_ATTEMPTS = 8;
 
 export class NetError extends Data.TaggedError("NetError")<{
   readonly message: string;
@@ -208,10 +210,27 @@ export const make = () => {
     hasListenerOnHost,
     reserveLoopbackPort,
     findAvailablePort: Effect.fn("Net.findAvailablePort")(function* (preferred, host) {
-      if (preferred > 0 && (yield* isPortAvailableForHost(preferred, host))) {
+      const wildcardHost =
+        host !== undefined && (host === "" || isWildcardHost(host))
+          ? normalizeHostname(host)
+          : undefined;
+      if (
+        preferred > 0 &&
+        (yield* isPortAvailableForHost(preferred, host)) &&
+        (wildcardHost === undefined || (yield* canListenOnHost(preferred, wildcardHost)))
+      ) {
         return preferred;
       }
-      return yield* reserveLoopbackPort(host);
+      if (wildcardHost === undefined) {
+        return yield* reserveLoopbackPort(host);
+      }
+
+      // A wildcard bind can succeed while another address family owns the localhost port.
+      for (let attempt = 0; attempt < WILDCARD_PORT_ATTEMPTS; attempt += 1) {
+        const port = yield* reserveLoopbackPort(wildcardHost);
+        if (yield* isPortAvailableOnLoopback(port)) return port;
+      }
+      return yield* new NetError({ message: "Failed to find an available wildcard port" });
     }),
   } satisfies NetServiceShape;
 };
