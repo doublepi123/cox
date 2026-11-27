@@ -9,6 +9,7 @@ import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Path from "effect/Path";
+import * as Predicate from "effect/Predicate";
 import * as Schema from "effect/Schema";
 import * as Sink from "effect/Sink";
 import * as Stream from "effect/Stream";
@@ -50,7 +51,12 @@ import * as ServerSettings from "../serverSettings.ts";
 import * as McpWebhookTransport from "./McpWebhookTransport.ts";
 import * as McpToolAccess from "./McpToolAccess.ts";
 import { HTML_RENDER_TOOL_NAME } from "@t3tools/shared/htmlRender";
-import { compactCoxMcpToolOutput } from "@t3tools/shared/toolOutput";
+import {
+  compactCoxMcpToolOutput,
+  MAX_TOOL_OUTPUT_IMAGE_BASE64_LENGTH,
+  MAX_TOOL_OUTPUT_IMAGES,
+} from "@t3tools/shared/toolOutput";
+import { resolveT3McpToolId } from "@t3tools/shared/t3McpToolPresentation";
 import * as McpProviderSessions from "@t3tools/provider-core/server/McpProviderSessions";
 import * as OrchestratorMcpService from "./OrchestratorMcpService.ts";
 import { PreviewControlsToolkit } from "./toolkits/previewControls/tools.ts";
@@ -1074,6 +1080,34 @@ const withToolAnalytics =
  * completion. Recording each thread-scoped call's compact result before returning lets adapters
  * recover sent messages, IDs, counts, and error flags without depending on output passthrough.
  */
+const SCREENSHOT_TOOLS: ReadonlySet<string> = new Set([
+  "preview_snapshot",
+  "device_screenshot",
+  "html_preview",
+]);
+
+/** A screenshot tool's images and details, in the shape an MCP result takes on a tool item. */
+const isCallToolResult = Schema.is(McpSchema.CallToolResult);
+
+function screenshotToolOutput(result: unknown): Record<string, unknown> | undefined {
+  if (!isCallToolResult(result) || result.isError === true) return undefined;
+  const images = result.content.flatMap((block) => {
+    if (block.type !== "image") return [];
+    const data = Buffer.from(block.data).toString("base64");
+    return data.length <= MAX_TOOL_OUTPUT_IMAGE_BASE64_LENGTH
+      ? [{ type: "image", mimeType: block.mimeType, data }]
+      : [];
+  });
+  const details = Predicate.isObject(result.structuredContent)
+    ? (result.structuredContent as Record<string, unknown>)
+    : undefined;
+  if (images.length === 0) return details;
+  return {
+    content: images.slice(0, MAX_TOOL_OUTPUT_IMAGES),
+    ...(details === undefined ? {} : { structuredContent: details }),
+  };
+}
+
 const withToolResultCapture = Effect.fn("McpHttpServer.withToolResultCapture")(function* <A, E, R>(
   registration: Effect.Effect<A, E, R>,
 ) {
@@ -1103,25 +1137,35 @@ const withToolResultCapture = Effect.fn("McpHttpServer.withToolResultCapture")(f
               ? undefined
               : yield* mcpSessions.value.toolResultEpoch(thread.threadId);
           return yield* options.handle(payload).pipe(
-            Effect.onExit((exit) => {
-              if (thread === undefined) return Effect.void;
-              if (exit._tag === "Success" && exit.value instanceof McpSchema.InputRequired) {
-                return Effect.void;
-              }
-              if (exit._tag === "Failure" && Cause.hasInterruptsOnly(exit.cause)) {
-                return Effect.void;
-              }
-              const output =
-                exit._tag === "Success"
-                  ? compactCoxMcpToolOutput(toolName, exit.value)
-                  : { isError: true };
-              return output === undefined
-                ? Effect.void
-                : mcpSessions.value.recordToolResult(thread.threadId, toolName, payload, output, {
-                    providerSessionId: thread.providerSessionId,
-                    epoch,
-                  });
-            }),
+            Effect.onExit(
+              Effect.fnUntraced(function* (exit) {
+                if (thread === undefined) return;
+                if (exit._tag === "Success" && exit.value instanceof McpSchema.InputRequired) {
+                  return;
+                }
+                if (exit._tag === "Failure" && Cause.hasInterruptsOnly(exit.cause)) {
+                  return;
+                }
+                const screenshot =
+                  exit._tag === "Success" &&
+                  SCREENSHOT_TOOLS.has(resolveT3McpToolId(toolName) ?? toolName) &&
+                  (yield* mcpSessions.value.areToolResultImagesRecovered(thread.providerInstanceId))
+                    ? screenshotToolOutput(exit.value)
+                    : undefined;
+                const output =
+                  exit._tag === "Success"
+                    ? (screenshot ?? compactCoxMcpToolOutput(toolName, exit.value))
+                    : { isError: true };
+                if (output === undefined) return;
+                yield* mcpSessions.value.recordToolResult(
+                  thread.threadId,
+                  toolName,
+                  payload,
+                  output,
+                  { providerSessionId: thread.providerSessionId, epoch },
+                );
+              }),
+            ),
           );
         }),
       });

@@ -15,6 +15,7 @@ import {
   RuntimeMode,
   ThreadId,
 } from "@t3tools/contracts";
+import * as McpProviderSessions from "@t3tools/provider-core/server/McpProviderSessions";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
@@ -505,6 +506,34 @@ it.effect("saves the uncapped screenshot while the agent sees the capped one", (
       });
     }),
   ).pipe(Effect.provide(layerTest)),
+);
+
+it.effect("keeps screenshot results only for provider instances that recover them", () =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      const sessions = yield* McpProviderSessions.McpProviderSessions;
+      const png =
+        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jRZkAAAAASUVORK5CYII=";
+      yield* serveSnapshots("mcp-capture-client", {
+        ...snapshotResult,
+        screenshot: { mimeType: "image/png", data: png, width: 1, height: 1 },
+      });
+      const args = { tabId: alternateTabId, includeImage: true };
+
+      yield* callSnapshot(args);
+      expect(yield* sessions.takeToolResult(threadId, "preview_snapshot", args)).toBeUndefined();
+
+      yield* sessions.recoversToolResultImages(invocation.thread.providerInstanceId);
+      yield* callSnapshot(args);
+      expect(yield* sessions.takeToolResult(threadId, "preview_snapshot", args)).toMatchObject({
+        content: [{ type: "image", mimeType: "image/png", data: png }],
+        structuredContent: {
+          url: snapshotResult.url,
+          screenshot: { mimeType: "image/png", width: 1, height: 1 },
+        },
+      });
+    }),
+  ).pipe(Effect.provide(layerTest.pipe(Layer.provideMerge(McpProviderSessions.layer)))),
 );
 
 it.effect("refuses preview tools to a client outside a thread before they run", () =>

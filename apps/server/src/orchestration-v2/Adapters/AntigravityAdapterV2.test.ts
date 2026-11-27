@@ -13,7 +13,7 @@ import {
   ThreadId,
 } from "@t3tools/contracts";
 import { resolveSelfInvocation } from "@t3tools/shared/nodeRuntime";
-import { htmlRenderFromToolItem } from "@t3tools/shared/toolOutput";
+import { htmlRenderFromToolItem, toolOutputImages } from "@t3tools/shared/toolOutput";
 import * as SecureRandom from "effect/crypto/SecureRandom";
 import * as DateTime from "effect/DateTime";
 import * as Deferred from "effect/Deferred";
@@ -902,6 +902,181 @@ describe("AntigravityAdapterV2 html_render pages", () => {
       assert.strictEqual(yield* mcpSessions.takeHtmlRender(threadId, report), undefined);
       assert.strictEqual(yield* mcpSessions.takeHtmlRender(threadId, failed), undefined);
       assert.strictEqual(yield* mcpSessions.takeHtmlRender(threadId, errored), undefined);
+    }).pipe(Effect.provide(layerSession), Effect.scoped),
+  );
+
+  it.effect("recovers dropped screenshot outputs within the turn's image budget", () =>
+    Effect.gen(function* () {
+      const childProcessSpawner = yield* ChildProcessSpawner.ChildProcessSpawner;
+      const path = yield* Path.Path;
+      const crypto = yield* SecureRandom.SecureRandom;
+      const mcpSessions = yield* McpProviderSessions.McpProviderSessions;
+      const mockAgentPath = yield* path.fromFileUrl(
+        new URL("../../../scripts/acp-mock-agent.ts", import.meta.url),
+      );
+      type RuntimeService = AcpSessionRuntime.AcpSessionRuntime["Service"];
+      let sessionUpdate: Parameters<RuntimeService["handleSessionUpdate"]>[0] | undefined;
+      const instanceId = ProviderInstanceId.make("antigravity-screenshot-recovery-test");
+      const threadId = ThreadId.make("thread-antigravity-screenshot-recovery");
+      const largeShot = "A".repeat(12 * 1024 * 1024);
+      const adapter = yield* makeAntigravityAdapterV2({
+        instanceId,
+        selfInvocation: yield* resolveSelfInvocation(),
+        makeRuntime: (input) =>
+          makeAntigravityAcpRuntime({
+            ...input,
+            childProcessSpawner,
+            spawn: {
+              command: process.execPath,
+              args: [mockAgentPath],
+              cwd: input.cwd,
+              env: { T3_ACP_ANTIGRAVITY: "1" },
+            },
+          }).pipe(
+            Effect.provideService(SecureRandom.SecureRandom, crypto),
+            Effect.map((runtime): RuntimeService => ({
+              ...runtime,
+              handleSessionUpdate: (handler) =>
+                Effect.sync(() => {
+                  sessionUpdate = handler;
+                }).pipe(Effect.andThen(runtime.handleSessionUpdate(handler))),
+              // The agent offloads a screenshot and completes the call with no result.
+              prompt: () =>
+                Effect.gen(function* () {
+                  const send = (update: EffectAcpSchema.SessionUpdate) =>
+                    sessionUpdate === undefined
+                      ? Effect.die("the adapter must handle session updates")
+                      : sessionUpdate(
+                          normalizeAntigravitySessionUpdate({
+                            sessionId: "mock-session-1",
+                            update,
+                          }),
+                        );
+                  const startTool = (toolCallId: string, rawInput: Record<string, unknown>) =>
+                    send({
+                      sessionUpdate: "tool_call",
+                      toolCallId,
+                      title: "Running preview_snapshot",
+                      kind: "other",
+                      status: "in_progress",
+                      rawInput,
+                    });
+                  const completeTool = (toolCallId: string) =>
+                    send({ sessionUpdate: "tool_call_update", toolCallId, status: "completed" });
+                  yield* startTool("snapshot", { includeImage: true });
+                  yield* mcpSessions.recordToolResult(
+                    threadId,
+                    "preview_snapshot",
+                    { includeImage: true },
+                    { content: [{ type: "image", mimeType: "image/png", data: "AAAA" }] },
+                  );
+                  yield* completeTool("snapshot");
+                  // Recovered screenshots stay with the turn, so their bytes are bounded.
+                  for (const tabId of ["tab-1", "tab-2", "tab-3"]) {
+                    yield* startTool(`large-${tabId}`, { tabId });
+                    yield* mcpSessions.recordToolResult(
+                      threadId,
+                      "preview_snapshot",
+                      { tabId },
+                      { content: [{ type: "image", mimeType: "image/png", data: largeShot }] },
+                    );
+                    yield* completeTool(`large-${tabId}`);
+                  }
+                  return { stopReason: "end_turn" as const };
+                }),
+            })),
+          ),
+        withProcess: (_stop, task) => task,
+        // @effect-diagnostics-next-line effectSucceedWithVoid:off - This optional result requires undefined, not the wider void type.
+        defaultModel: Effect.succeed(undefined),
+      });
+      const runtimePolicy = ProviderAdapter.ProviderAdapterV2RuntimePolicy.make({
+        runtimeMode: "full-access",
+        interactionMode: "default",
+        cwd: process.cwd(),
+      });
+      const modelSelection = { instanceId, model: "gemini-test-low" } as const;
+      const session = yield* adapter.openSession({
+        threadId,
+        providerSessionId: ProviderSessionId.make("provider-session-antigravity-screenshots"),
+        modelSelection,
+        runtimePolicy,
+      });
+      const providerThread = yield* session.ensureThread({
+        threadId,
+        modelSelection,
+        runtimePolicy,
+      });
+      const now = yield* DateTime.now;
+      yield* session.startTurn({
+        appThread: {
+          createdBy: "user",
+          creationSource: "web",
+          id: threadId,
+          projectId: ProjectId.make("project-antigravity-screenshots"),
+          title: "Antigravity screenshots",
+          providerInstanceId: instanceId,
+          modelSelection,
+          runtimeMode: "full-access",
+          interactionMode: "default",
+          branch: null,
+          worktreePath: process.cwd(),
+          activeProviderThreadId: providerThread.id,
+          lineage: { parentThreadId: null, relationshipToParent: null, rootThreadId: threadId },
+          forkedFrom: null,
+          createdAt: now,
+          updatedAt: now,
+          archivedAt: null,
+          settledOverride: null,
+          settledAt: null,
+          lastVisitedAt: null,
+          deletedAt: null,
+        },
+        threadId,
+        runId: RunId.make("run-antigravity-screenshots"),
+        runOrdinal: 1,
+        providerTurnOrdinal: 1,
+        attemptId: RunAttemptId.make("attempt-antigravity-screenshots"),
+        rootNodeId: NodeId.make("node-antigravity-screenshots"),
+        providerThread,
+        message: {
+          createdBy: "user",
+          creationSource: "web",
+          messageId: MessageId.make("message-antigravity-screenshots"),
+          text: "screenshot the page",
+          attachments: [],
+        },
+        modelSelection,
+        runtimePolicy,
+      });
+      const events = Array.from(
+        yield* session.events.pipe(
+          Stream.takeUntil((event) => event.type === "turn.terminal"),
+          Stream.runCollect,
+        ),
+      );
+      const tool = (nativeId: string) => {
+        const event = events.findLast(
+          (event) =>
+            event.type === "turn_item.updated" &&
+            event.turnItem.nativeItemRef?.nativeId === nativeId,
+        );
+        return event?.type === "turn_item.updated" && event.turnItem.type === "dynamic_tool"
+          ? event.turnItem
+          : undefined;
+      };
+
+      assert.equal(tool("snapshot")?.toolName, "cox.preview_snapshot");
+      assert.deepEqual(toolOutputImages(tool("snapshot")?.output), [
+        { mimeType: "image/png", data: "AAAA" },
+      ]);
+      assert.isTrue(yield* mcpSessions.areToolResultImagesRecovered(instanceId));
+      assert.deepEqual(
+        ["tab-1", "tab-2", "tab-3"].map((tabId) =>
+          toolOutputImages(tool(`large-${tabId}`)?.output).map((image) => image.data?.length),
+        ),
+        [[largeShot.length], [largeShot.length], [undefined]],
+      );
     }).pipe(Effect.provide(layerSession), Effect.scoped),
   );
 });
