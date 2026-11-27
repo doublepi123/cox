@@ -1666,6 +1666,50 @@ it.each([
   expect(editor.view.hasFocus()).toBe(true);
 });
 
+it("keeps web links from HTML paste and leaves links literal in fenced code", async () => {
+  for (const value of ["", "```text\nExisting answer\n```"]) {
+    await using screen = await mountEditor(value);
+    const { editor } = screen;
+    await act(() => {
+      editor.commands.setTextSelection(value ? 1 : 1);
+      const clipboardData = new DataTransfer();
+      clipboardData.setData("text/plain", "Setup guide");
+      clipboardData.setData("text/html", '<a href="https://example.com/setup">Setup guide</a>');
+      editor.view.dom.dispatchEvent(
+        new ClipboardEvent("paste", { clipboardData, bubbles: true, cancelable: true }),
+      );
+    });
+    expect(serializeEditorDoc(editor.state.doc).value).toBe(
+      value
+        ? "```text\nSetup guideExisting answer\n```"
+        : "[Setup guide](https://example.com/setup)",
+    );
+  }
+});
+
+it("keeps the destination of a link dropped from a web page", async () => {
+  await using screen = await mountEditor("");
+  const { editor } = screen;
+  await act(async () => {
+    const dataTransfer = new DataTransfer();
+    dataTransfer.setData("text/plain", "Setup guide");
+    dataTransfer.setData("text/html", '<a href="https://example.com/setup">Setup guide</a>');
+    const { left, top } = editor.view.coordsAtPos(1);
+    editor.view.dom.dispatchEvent(
+      new DragEvent("drop", {
+        dataTransfer,
+        clientX: left,
+        clientY: top + 1,
+        bubbles: true,
+        cancelable: true,
+      }),
+    );
+  });
+  expect(serializeEditorDoc(editor.state.doc).value).toBe(
+    "[Setup guide](https://example.com/setup)",
+  );
+});
+
 it("parses markdown dropped below the first line of an empty composer", async () => {
   await using screen = await mountEditor("");
   const { editor } = screen;

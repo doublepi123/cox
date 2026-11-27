@@ -11,6 +11,7 @@ import {
   replaceComposerContextReferences,
 } from "@t3tools/shared/composerContextReferences";
 import { getMobileShellInfo } from "../mobile/mobileShellBridge";
+import { restorePastedMarkdownLinks } from "../markdown-clipboard";
 
 let copiedComposerContext: { text: string; fragment: string } | null = null;
 
@@ -63,7 +64,10 @@ export function importPastedComposerText(
     fragment: ComposerContextClipboardFragment,
   ) => ReadonlyMap<string, string>,
 ): string {
-  const pastedText = readPastedPlainText(clipboardData);
+  const pastedText = restorePastedMarkdownLinks(
+    readPastedPlainText(clipboardData),
+    clipboardData.getData("text/html"),
+  );
   const fragment = importContextFragment ? readPastedComposerContext(clipboardData) : null;
   const rewrittenIds =
     fragment && fragment.records.length > 0 ? importContextFragment!(fragment) : null;

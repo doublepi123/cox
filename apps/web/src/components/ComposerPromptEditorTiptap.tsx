@@ -21,6 +21,7 @@ import {
   NodeSelection,
   Plugin,
   PluginKey,
+  Selection,
   TextSelection,
   type Transaction,
 } from "@tiptap/pm/state";
@@ -151,6 +152,7 @@ export interface ComposerPromptEditorHandle {
   focus: () => void;
   focusAt: (cursor: number) => void;
   focusAtEnd: () => void;
+  pasteAtCodeBlockEnd: (text: string) => boolean;
   readSelectionRange: () => { start: number; end: number };
   captureAttachmentInsertion?: () => ComposerAttachmentInsertion | undefined;
   requestCitationComment: (request: ComposerCitationCommentRequest) => void;
@@ -206,7 +208,7 @@ export interface ComposerPromptEditorProps {
   onCitationSubmitAndSend?: () => boolean;
   /** Saves unsaved citation text into replacedValue when a controlled rewrite replaces the document. */
   onCitationDraftSave?: (replacedValue: string, savedValue: string) => void;
-  onPaste: React.ClipboardEventHandler<HTMLElement>;
+  onPaste: (event: React.ClipboardEvent<HTMLElement>, inCodeBlock: boolean) => boolean | void;
   editorRef: React.RefObject<ComposerPromptEditorHandle | null>;
 }
 
@@ -1120,12 +1122,14 @@ function ComposerPromptEditorTiptapInner(
   };
 
   /** `newLineAt` inserts on a fresh line created at that block boundary, in the same undo step. */
+  const plainPastes = useRef(new WeakSet<ClipboardEvent>());
   const insertClipboardText = (
     view: EditorView,
     clipboardData: DataTransfer,
     newLineAt?: number,
+    plainTextOnly = false,
   ): boolean => {
-    const pastedText = clipboardData.getData("text/plain");
+    const pastedText = clipboardData.getData("text/plain").replace(/\r\n?/g, "\n");
     if (!pastedText) return false;
     const onNewLine = newLineAt !== undefined;
     // Paste verbatim inside fences; markdown parsing would split blocks and create unsupported chips.
@@ -1161,7 +1165,7 @@ function ComposerPromptEditorTiptapInner(
     }
     const importFragment = readCallbacks().importContextFragment;
     let text =
-      !literalText && importFragment
+      !literalText && !plainTextOnly
         ? importPastedComposerText(clipboardData, importFragment)
         : pastedText;
     const tokens = literalText ? [] : collectComposerPromptInlineTokens(`${text}\n`);
@@ -1520,7 +1524,8 @@ function ComposerPromptEditorTiptapInner(
         handlePaste: (view, event) => {
           const clipboardData = event.clipboardData;
           if (!clipboardData || clipboardData.files.length > 0) return false;
-          if (!insertClipboardText(view, clipboardData)) return false;
+          if (!insertClipboardText(view, clipboardData, undefined, plainPastes.current.has(event)))
+            return false;
           event.preventDefault();
           return true;
         },
@@ -1830,6 +1835,20 @@ function ComposerPromptEditorTiptapInner(
         readSnapshot();
         return selectionRangeRef.current;
       },
+      pasteAtCodeBlockEnd: (text) => {
+        if (!editor?.isEditable || !text) return false;
+        const { view } = editor;
+        const end = Selection.atEnd(view.state.doc);
+        if (!end.$from.parent.type.spec.code) return false;
+        view.focus();
+        view.dispatch(
+          markAsClipboardEdit(
+            view.state.tr.setSelection(end).insertText(text),
+            "paste",
+          ).scrollIntoView(),
+        );
+        return true;
+      },
       captureAttachmentInsertion: () =>
         editor ? captureComposerAttachmentInsertion(editor) : undefined,
       requestCitationComment: (request) => {
@@ -1979,7 +1998,11 @@ function ComposerPromptEditorTiptapInner(
               }}
               onKeyUp={(event) => onPageScrollKeyUp?.(event.key)}
               onBlur={onPageScrollRelease}
-              onPasteCapture={onPaste}
+              onPasteCapture={(event) => {
+                if (onPaste(event, editor !== null && isInCodeBlock(editor.view))) {
+                  plainPastes.current.add(event.nativeEvent);
+                }
+              }}
               onCopyCapture={(event) => handleCopyCut(event, false)}
               onCutCapture={(event) => handleCopyCut(event, true)}
             />
