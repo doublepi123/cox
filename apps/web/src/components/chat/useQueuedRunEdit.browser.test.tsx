@@ -1,3 +1,5 @@
+import { scopedThreadKey } from "@t3tools/client-runtime/environment";
+import type { ChatComposerHandle } from "./ChatComposer";
 import type { ThreadStructure } from "@t3tools/client-runtime/state/shell";
 import {
   EnvironmentId,
@@ -10,7 +12,7 @@ import {
   ThreadId,
   type ScopedThreadRef,
 } from "@t3tools/contracts";
-import { useImperativeHandle, type RefObject } from "react";
+import { useImperativeHandle, useLayoutEffect, useRef, type RefObject } from "react";
 import { describe, expect, it, vi } from "vite-plus/test";
 import { ATTACHMENT_ONLY_BOOTSTRAP_PROMPT } from "@t3tools/shared/composerContextReferences";
 import { toastManager } from "../ui/toast";
@@ -136,21 +138,36 @@ function setRuns(ref: ScopedThreadRef, status: string) {
   appAtomRegistry.set(mocks.threadRuns(runsKey(ref)), [{ id: RUN, status }]);
 }
 
+interface ComposerRefs {
+  readonly promptRef: RefObject<string>;
+  readonly composerRef: Parameters<typeof useQueuedRunEdit>[0]["composerRef"];
+}
+
 function Harness(props: {
   readonly threadRef: ScopedThreadRef;
   readonly runStatus: string;
   readonly hookRef: RefObject<HookResult | null>;
+  readonly composer?: ComposerRefs | undefined;
   readonly localSendBusy?: boolean;
   readonly messages?: ReadonlyArray<FixtureMessage> | undefined;
 }) {
+  const threadKey = scopedThreadKey(props.threadRef);
+  const currentRouteThreadKeyRef = useRef<string | null>(threadKey);
+  useLayoutEffect(() => {
+    currentRouteThreadKeyRef.current = threadKey;
+    return () => {
+      currentRouteThreadKeyRef.current = null;
+    };
+  }, [threadKey]);
   const result = useQueuedRunEdit({
     environmentId: ENV,
     routeThreadRef: props.threadRef,
+    currentRouteThreadKeyRef,
     threadDraftTarget: props.threadRef,
     activeThreadId: props.threadRef.threadId,
     serverProjection: projection([{ id: RUN, status: props.runStatus }], props.messages ?? []),
-    promptRef: { current: "" },
-    composerRef: { current: null },
+    promptRef: props.composer?.promptRef ?? { current: "" },
+    composerRef: props.composer?.composerRef ?? { current: null },
   });
   useImperativeHandle(props.hookRef, () => result);
   const draft = useComposerThreadDraft(result.draftTarget);
@@ -188,10 +205,17 @@ function view(
   runStatus: string,
   hook: { current: HookResult | null },
   messages?: ReadonlyArray<FixtureMessage>,
+  composer?: ComposerRefs,
 ) {
   return (
     <AppAtomRegistryProvider>
-      <Harness threadRef={threadRef} runStatus={runStatus} hookRef={hook} messages={messages} />
+      <Harness
+        threadRef={threadRef}
+        runStatus={runStatus}
+        hookRef={hook}
+        messages={messages}
+        composer={composer}
+      />
     </AppAtomRegistryProvider>
   );
 }
@@ -269,6 +293,68 @@ const promptOf = (ref: ScopedThreadRef) =>
   useComposerDraftStore.getState().getComposerDraft(ref)?.prompt ?? "";
 
 describe("useQueuedRunEdit", () => {
+  it.each([
+    { navigation: "switches before the reply", resets: false, focuses: false },
+    { navigation: "switches before the frame", resets: true, focuses: false },
+    { navigation: "stays on thread", resets: true, focuses: true },
+  ])("finishes a successful queued edit when the user $navigation", async (scenario) => {
+    const { hook } = setup();
+    let signalRequested!: () => void;
+    const requested = new Promise<void>((resolve) => {
+      signalRequested = resolve;
+    });
+    let resolveReply!: (result: { readonly _tag: "Success" }) => void;
+    const reply = new Promise<{ readonly _tag: "Success" }>((resolve) => {
+      resolveReply = resolve;
+    });
+    mocks.editQueuedRun.mockImplementation(() => {
+      signalRequested();
+      return reply;
+    });
+    const focusAtEnd = vi.fn();
+    const resetCursorState = vi.fn();
+    const composer: ComposerRefs = {
+      promptRef: { current: "changed" },
+      composerRef: { current: null },
+    };
+    await using screen = await render(view(THREAD_A, "queued", hook, [], composer));
+    const frames: FrameRequestCallback[] = [];
+    using _frame = vi.spyOn(window, "requestAnimationFrame").mockImplementation((callback) => {
+      frames.push(callback);
+      return 0;
+    });
+    await beginChangedEdit(hook);
+    await act(() => {
+      for (const frame of frames.splice(0)) frame(0);
+    });
+    composer.composerRef.current = {
+      focusAtEnd,
+      resetCursorState,
+    } as unknown as ChatComposerHandle;
+
+    const setThreadError = vi.fn();
+    const saved = requireHook(hook).saveEdit(savedContent("changed"), setThreadError);
+    await requested;
+    const openOtherThread = async () => {
+      await screen.rerender(view(THREAD_B, "queued", hook, [], composer));
+      composer.promptRef.current = "other thread draft";
+    };
+    if (scenario.navigation === "switches before the reply") await openOtherThread();
+    resolveReply({ _tag: "Success" });
+    await act(() => saved);
+    expect(setThreadError).toHaveBeenCalledExactlyOnceWith(THREAD_A.threadId, null);
+    expect(resetCursorState).toHaveBeenCalledTimes(Number(scenario.resets));
+
+    if (scenario.navigation === "switches before the frame") await openOtherThread();
+    await act(() => {
+      for (const frame of frames.splice(0)) frame(0);
+    });
+    expect(focusAtEnd).toHaveBeenCalledTimes(Number(scenario.focuses));
+    expect(composer.promptRef.current).toBe(
+      scenario.navigation === "stays on thread" ? "" : "other thread draft",
+    );
+  });
+
   it("enables a queued edit when a send behind compaction is acknowledged", async () => {
     const { hook } = setup();
     const oldMessage = MessageId.make("before-send");
