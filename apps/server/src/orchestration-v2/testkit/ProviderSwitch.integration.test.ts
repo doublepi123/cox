@@ -67,6 +67,7 @@ import * as ProviderReplayHarness from "./ProviderReplayHarness.ts";
 import { checkpointWorkspace } from "@t3tools/provider-testing/replayWorkspace";
 import * as ProviderAdapter from "@t3tools/provider-core/server/ProviderAdapter";
 
+import * as EffectAcpErrors from "effect-acp/errors";
 const encodeJson = Schema.encodeEffect(Schema.fromJsonString(Schema.Unknown));
 
 const threadId = ThreadId.make("thread:provider-switch");
@@ -123,6 +124,9 @@ function makeTestAdapter(input: {
   readonly holdRunOrdinal?: number;
   readonly pendingBackgroundWork?: Ref.Ref<boolean>;
   readonly subagentOnlyBackgroundWork?: boolean;
+  readonly loseNativeResumeOnce?: Ref.Ref<boolean>;
+  readonly failReplacement?: Ref.Ref<boolean>;
+  readonly loseNativeSessionOnce?: Ref.Ref<boolean>;
   readonly holdFirstTurn?: Deferred.Deferred<void>;
   readonly releaseFirstTurn?: Deferred.Deferred<void>;
   readonly backgroundWork?: Ref.Ref<boolean>;
@@ -212,6 +216,13 @@ function makeTestAdapter(input: {
               }),
           ensureThread: (threadInput) =>
             Effect.gen(function* () {
+              if (
+                threadInput.forceNewNativeThread &&
+                input.failReplacement !== undefined &&
+                (yield* Ref.getAndSet(input.failReplacement, false))
+              ) {
+                return yield* unimplemented(input.driver, "replacement initialize timed out");
+              }
               const createdAt = yield* DateTime.now;
               const generation =
                 input.nativeThreadGeneration === undefined
@@ -243,6 +254,19 @@ function makeTestAdapter(input: {
             }),
           resumeThread: ({ providerThread }) =>
             Effect.gen(function* () {
+              if (
+                input.loseNativeResumeOnce !== undefined &&
+                (yield* Ref.getAndSet(input.loseNativeResumeOnce, false))
+              ) {
+                return yield* new ProviderAdapter.ProviderAdapterProtocolError({
+                  driver: input.driver,
+                  detail: "session load failed",
+                  cause: EffectAcpErrors.AcpRequestError.fromProtocolError(
+                    { code: -32603, message: "Session not found" },
+                    { method: "session/load" },
+                  ),
+                });
+              }
               if (
                 input.failResume ||
                 (input.failResumeOnce !== undefined &&
@@ -282,6 +306,23 @@ function makeTestAdapter(input: {
                 (yield* Ref.getAndSet(input.failStartOnce, false))
               )
                 return yield* unimplemented(input.driver, "turn start failed after injection");
+              if (
+                input.loseNativeSessionOnce !== undefined &&
+                (yield* Ref.getAndSet(input.loseNativeSessionOnce, false))
+              )
+                return yield* new ProviderAdapter.ProviderAdapterTurnStartError({
+                  driver: input.driver,
+                  threadId: turnInput.threadId,
+                  providerThreadId: turnInput.providerThread.id,
+                  runId: turnInput.runId,
+                  cause: EffectAcpErrors.AcpRequestError.fromProtocolError(
+                    {
+                      code: -32603,
+                      message: `Session not found: ${turnInput.providerThread.nativeThreadRef?.nativeId}`,
+                    },
+                    { method: "session/load" },
+                  ),
+                });
               if (
                 input.refuseStarts !== undefined &&
                 (yield* Ref.getAndUpdate(input.refuseStarts, (left) => Math.max(0, left - 1))) > 0
@@ -2377,6 +2418,121 @@ describe("orchestration v2 provider switching", () => {
         );
       }),
     ),
+  );
+
+  it.live.each([false, true])(
+    "recovers a lost native ACP session (replacement first fails: %s)",
+    (replacementFails) =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const cwd = yield* checkpointWorkspace("lost-native-start");
+          const capturedTurns = yield* Ref.make<ReadonlyArray<CapturedTurn>>([]);
+          const loseNativeSessionOnce = yield* Ref.make(false);
+          const failReplacement = yield* Ref.make(false);
+          const loseNativeResumeOnce = yield* Ref.make(false);
+          const selection = GROK_MODEL_SELECTION;
+          const registry = ProviderAdapterRegistry.layerFromAdapters([
+            makeTestAdapter({
+              driver: GROK_DRIVER,
+              instanceId: selection.instanceId,
+              modelSelection: selection,
+              capabilities: AcpProviderCapabilitiesV2,
+              responseByRunOrdinal: { 1: "Prior answer", 2: "Recovered answer" },
+              capturedTurns,
+              loseNativeSessionOnce,
+              loseNativeResumeOnce,
+              failReplacement,
+              nativeThreadGeneration: yield* Ref.make(0),
+            }),
+          ]);
+          yield* Effect.gen(function* () {
+            const orchestrator = yield* Orchestrator.OrchestratorV2;
+            const worker = yield* EffectWorker.OrchestrationEffectWorkerV2;
+            yield* orchestrator.dispatch({
+              type: "thread.create",
+              commandId: CommandId.make("lost:create"),
+              threadId,
+              projectId,
+              title: "Lost ACP session",
+              modelSelection: selection,
+              runtimeMode: "full-access",
+              interactionMode: "default",
+              branch: null,
+              worktreePath: null,
+              createdBy: "user",
+              creationSource: "web",
+            });
+            for (const ordinal of [1, 2]) {
+              if (ordinal === 2) {
+                if (replacementFails) {
+                  const prior = yield* orchestrator.getThreadProjection(threadId);
+                  const providerSessionId = prior.providerThreads[0]?.providerSessionId;
+                  if (providerSessionId == null)
+                    return yield* Effect.die("Expected the source session");
+                  yield* orchestrator.dispatch({
+                    type: "provider-session.detach",
+                    commandId: CommandId.make("lost:detach"),
+                    threadId,
+                    providerSessionId,
+                  });
+                  yield* worker.drain();
+                  yield* Ref.set(loseNativeResumeOnce, true);
+                  yield* Ref.set(failReplacement, true);
+                } else yield* Ref.set(loseNativeSessionOnce, true);
+              }
+              yield* orchestrator.dispatch({
+                type: "message.dispatch",
+                commandId: CommandId.make(`lost:${ordinal}`),
+                messageId: MessageId.make(`lost:${ordinal}`),
+                threadId,
+                text: `Prompt ${ordinal}`,
+                attachments: [],
+                modelSelection: selection,
+                dispatchMode: { type: "start_immediately" },
+                createdBy: "user",
+                creationSource: "web",
+              });
+              yield* orchestrator.streamStoredEvents.pipe(
+                Stream.filter(
+                  ({ event }) =>
+                    event.type === "run.updated" &&
+                    event.payload.ordinal === ordinal &&
+                    (event.payload.status === "completed" || event.payload.status === "failed"),
+                ),
+                Stream.runHead,
+              );
+              yield* worker.drain();
+            }
+            const projection = yield* orchestrator.getThreadProjection(threadId);
+            assert.deepEqual(
+              projection.runs.map((run) => run.status),
+              ["completed", "completed"],
+            );
+            const turns = yield* Ref.get(capturedTurns);
+            assert.lengthOf(turns, 2);
+            assert.notEqual(turns[0]?.nativeThreadId, turns[1]?.nativeThreadId);
+            assert.isTrue(
+              projection.turnItems.some(
+                (item) => item.type === "handoff" && item.runId === projection.runs[1]?.id,
+              ),
+            );
+          }).pipe(
+            Effect.provide(
+              ProviderReplayHarness.layerWithRegistry(
+                {
+                  name: "lost-native-start",
+                  runtimePolicyOverride: {
+                    cwd,
+                    approvalPolicy: "never",
+                    sandboxPolicy: { type: "readOnly" },
+                  },
+                },
+                registry,
+              ),
+            ),
+          );
+        }),
+      ),
   );
 
   it.live("resumes a queued account switch without requiring a portable handoff", () =>

@@ -610,6 +610,17 @@ export interface RunExecutionServiceV2StartRootRunInput {
     ReadonlyArray<OrchestrationV2ContextHandoff>,
     never
   >;
+  /**
+   * Runs the turn in a fresh native session when its start found the native session gone,
+   * returning that session's thread, or undefined to let the start fail.
+   */
+  readonly recoverLostNativeSession?: (
+    turnInput: ProviderAdapter.ProviderAdapterV2TurnInput,
+    error: ProviderAdapter.ProviderAdapterV2Error,
+  ) => Effect.Effect<
+    OrchestrationV2ProviderThread | undefined,
+    ProviderAdapter.ProviderAdapterV2Error
+  >;
   readonly message: ProviderAdapter.ProviderAdapterV2TurnMessage;
   readonly modelSelection: ModelSelection;
   readonly runtimePolicy: ProviderAdapter.ProviderAdapterV2RuntimePolicy;
@@ -1880,7 +1891,19 @@ export const layer: Layer.Layer<
                 cause: "This provider does not support context compaction.",
               }),
             ))
-          : input.session.startTurn(turnInput);
+          : input.session.startTurn(turnInput).pipe(
+              Effect.catch((error) => {
+                const recover = input.recoverLostNativeSession;
+                if (recover === undefined) return Effect.fail(error);
+                return recover(turnInput, error).pipe(
+                  Effect.flatMap((thread) =>
+                    thread === undefined
+                      ? Effect.fail(error)
+                      : Ref.set(latestProviderThread, thread),
+                  ),
+                );
+              }),
+            );
         yield* Effect.acquireUseRelease(
           acquireWake,
           () => Effect.andThen(shouldStart, startTurn),
