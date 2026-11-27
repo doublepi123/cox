@@ -355,6 +355,7 @@ export function filterKeybindingRows(
       row.command.toLowerCase().includes(normalizedQuery) ||
       commandLabel(row.command).toLowerCase().includes(normalizedQuery) ||
       row.key.toLowerCase().includes(normalizedQuery) ||
+      row.previewLabels.some((label) => label.toLowerCase().includes(normalizedQuery)) ||
       row.when.toLowerCase().includes(normalizedQuery) ||
       row.source.toLowerCase().includes(normalizedQuery)
     );

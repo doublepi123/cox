@@ -12,6 +12,7 @@ import { translate } from "../../i18n";
 import {
   buildKeybindingRows,
   commandLabel,
+  filterKeybindingRows,
   keybindingConflictLabels,
   keybindingFromKeyboardEvent,
   parseWhenExpressionDraft,
@@ -26,6 +27,22 @@ describe("KeybindingsSettings.logic", () => {
   it("translates the previous and next terminal shortcuts", () => {
     expect(translate("zh", commandLabel("terminal.previous"))).toBe("终端：上一个");
     expect(translate("zh", commandLabel("terminal.next"))).toBe("终端：下一个");
+  });
+
+  it("finds a shortcut by the label its row shows", () => {
+    const rows = buildKeybindingRows(
+      compileResolvedKeybindingsConfig([
+        { command: "commandPalette.toggle", key: "mod+k" },
+        { command: "chat.new", key: "mod+shift+o" },
+      ]),
+      "Linux x86_64",
+    );
+    expect(filterKeybindingRows(rows, "Ctrl+K").map((row) => row.command)).toEqual([
+      "commandPalette.toggle",
+    ]);
+    expect(filterKeybindingRows(rows, "ctrl+shift+o").map((row) => row.command)).toEqual([
+      "chat.new",
+    ]);
   });
 
   it("marks only bindings shadowed by later unconditional or matching conditions", () => {
