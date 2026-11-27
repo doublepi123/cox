@@ -27,6 +27,7 @@ import { resolveDiffThemeName } from "../../lib/diffRendering";
 import { getSyntaxHighlighterPromise } from "../../lib/syntaxHighlighting";
 import { useTurnItemDetail } from "../../state/queries";
 import { formatWorkspaceRelativePath } from "../../filePathDisplay";
+import { formatFileChangeLine } from "./V2ItemInspector.logic";
 import { Button } from "../ui/button";
 import ChatMarkdown from "../ChatMarkdown";
 import { ChatMarkdownAssetImage } from "./ChatMarkdownMedia";
@@ -353,11 +354,7 @@ export const V2ItemInspector = memo(function V2ItemInspector(props: V2ItemInspec
             <ul className="space-y-1 font-mono text-muted-foreground">
               {item.changes.map((change) => (
                 <li key={JSON.stringify([change.operation, change.oldPath, change.path])}>
-                  {change.operation} {change.oldPath ? `${change.oldPath} → ` : ""}
-                  {formatWorkspaceRelativePath(change.path, props.workspaceRoot)}
-                  {change.fileType || change.mimeType
-                    ? ` (${[change.fileType, change.mimeType].filter(Boolean).join(", ")})`
-                    : ""}
+                  {formatFileChangeLine(change, props.workspaceRoot)}
                 </li>
               ))}
             </ul>
