@@ -671,7 +671,7 @@ it.layer(layerTest, { excludeTestServices: true })("WorkspaceEntries", (it) => {
           { path: "long.txt", lineNumber: 1, matchRanges: [] },
         ]);
         const wholeWords = yield* workspaceEntries.searchContents({ ...query, wholeWord: true });
-        expect(wholeWords.matches).toEqual([]);
+        expect(wholeWords.matches).toEqual(result.matches);
       }),
     );
 

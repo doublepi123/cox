@@ -8,6 +8,7 @@ import type {
   MixedItem,
   Result,
 } from "@ff-labs/fff-node";
+import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
@@ -16,6 +17,7 @@ import * as LayerMap from "effect/LayerMap";
 import * as Option from "effect/Option";
 import * as Path from "effect/Path";
 import * as Schema from "effect/Schema";
+import * as Semaphore from "effect/Semaphore";
 
 import type {
   ProjectEntry,
@@ -40,6 +42,7 @@ const WORKSPACE_INDEX_MAX_ENTRIES = 25_000;
 const WORKSPACE_INDEX_PAGE_SIZE = WORKSPACE_INDEX_MAX_ENTRIES + 2;
 const WORKSPACE_INDEX_SCAN_TIMEOUT = "15 seconds";
 const WORKSPACE_INDEX_SCAN_TIMEOUT_MS = 15_000;
+const PASSIVE_REFRESH_INTERVAL_MS = 60_000;
 const WORKSPACE_INDEX_IDLE_TTL = "15 minutes";
 const CONTENT_SEARCH_TIME_BUDGET_MS = 250;
 const CONTENT_SEARCH_MAX_MATCHES_PER_FILE = 100;
@@ -124,10 +127,9 @@ export class WorkspaceSearchIndex extends Context.Service<
     readonly searchContents: (
       input: Omit<ProjectSearchContentsInput, "cwd">,
     ) => Effect.Effect<ProjectSearchContentsResult, WorkspaceSearchIndexSearchFailed>;
-    readonly refresh: () => Effect.Effect<
-      void,
-      WorkspaceSearchIndexRefreshFailed | WorkspaceSearchIndexScanTimedOut
-    >;
+    readonly refresh: (
+      mode?: "passive",
+    ) => Effect.Effect<void, WorkspaceSearchIndexRefreshFailed | WorkspaceSearchIndexScanTimedOut>;
   }
 >()("cox/workspace/WorkspaceSearchIndex") {}
 
@@ -626,38 +628,55 @@ export const make = Effect.fn("WorkspaceSearchIndex.make")(function* (
   });
   let symlinks = yield* Effect.cached(scanSymlinks());
 
+  const refreshPermit = yield* Semaphore.make(1);
+  let lastRefreshStartedAt: number | undefined;
   const refresh: WorkspaceSearchIndex["Service"]["refresh"] = Effect.fn(
     "WorkspaceSearchIndex.refresh",
-  )(function* () {
-    // scanFiles waits on fff's picker lock, which its watcher can hold for seconds.
-    const result = yield* Effect.tryPromise({
-      try: () => finder.scanFilesAsync(),
-      catch: (cause) =>
-        new WorkspaceSearchIndexRefreshFailed({
-          cwd,
-          reason: "FileFinder.scanFilesAsync rejected unexpectedly.",
-          cause,
-        }),
-    });
-    if (!result.ok) {
-      return yield* new WorkspaceSearchIndexRefreshFailed({
-        cwd,
-        reason: result.error,
+  )(
+    function* (mode) {
+      const now = yield* Clock.currentTimeMillis;
+      if (
+        mode === "passive" &&
+        ((lastRefreshStartedAt !== undefined &&
+          now - lastRefreshStartedAt < PASSIVE_REFRESH_INTERVAL_MS) ||
+          finder.isScanning())
+      )
+        return;
+      // scanFiles waits on fff's picker lock, which its watcher can hold for seconds.
+      const result = yield* Effect.tryPromise({
+        try: () => finder.scanFilesAsync(),
+        catch: (cause) =>
+          new WorkspaceSearchIndexRefreshFailed({
+            cwd,
+            reason: "FileFinder.scanFilesAsync rejected unexpectedly.",
+            cause,
+          }),
       });
-    }
-    yield* waitForIndexReady(
-      cwd,
-      finder,
-      ({ reason, cause }) =>
-        new WorkspaceSearchIndexRefreshFailed({
+      if (!result.ok) {
+        return yield* new WorkspaceSearchIndexRefreshFailed({
           cwd,
-          reason,
-          cause,
-        }),
-    );
-    ignoredPaths = yield* loadIgnoredPaths();
-    symlinks = yield* Effect.cached(scanSymlinks());
-  });
+          reason: result.error,
+        });
+      }
+      lastRefreshStartedAt = now;
+      yield* waitForIndexReady(
+        cwd,
+        finder,
+        ({ reason, cause }) =>
+          new WorkspaceSearchIndexRefreshFailed({
+            cwd,
+            reason,
+            cause,
+          }),
+      );
+      ignoredPaths = yield* loadIgnoredPaths();
+      symlinks = yield* Effect.cached(scanSymlinks());
+    },
+    (effect, mode) =>
+      mode === "passive"
+        ? refreshPermit.withPermitsIfAvailable(1)(effect).pipe(Effect.asVoid)
+        : refreshPermit.withPermit(effect),
+  );
 
   const list: WorkspaceSearchIndex["Service"]["list"] = Effect.fn("WorkspaceSearchIndex.list")(
     function* () {

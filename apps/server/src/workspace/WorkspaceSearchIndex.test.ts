@@ -221,6 +221,7 @@ it.effect("refreshes the index through FFF's asynchronous scan", () =>
         destroy: vi.fn(),
         waitForIndexReady: vi.fn(async () => ({ ok: true as const, value: true })),
         scanFilesAsync,
+        isScanning: () => false,
       } as unknown as FileFinder;
       vi.spyOn(FileFinder, "create").mockReturnValueOnce({ ok: true, value: finder });
 
@@ -238,8 +239,11 @@ it.effect("refreshes the index through FFF's asynchronous scan", () =>
         }),
       );
       yield* searchIndex.refresh();
-
+      yield* searchIndex.refresh("passive");
+      yield* searchIndex.refresh("passive");
       expect(scanFilesAsync).toHaveBeenCalledOnce();
+      yield* searchIndex.refresh();
+      expect(scanFilesAsync).toHaveBeenCalledTimes(2);
     }),
   ),
 );

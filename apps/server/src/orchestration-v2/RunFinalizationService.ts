@@ -151,7 +151,7 @@ export const layerObserver = Layer.effect(
       refresh: Effect.fn("RunFinalizationService.refresh")(
         function* ({ cwd, threadId, runId }) {
           const [, local] = yield* Effect.all(
-            [workspaceEntries.refresh(cwd), vcsStatus.refreshLocalStatus(cwd)],
+            [workspaceEntries.refresh(cwd, "passive"), vcsStatus.refreshLocalStatus(cwd)],
             { concurrency: "unbounded" },
           );
           if (local.refName === null || local.isDefaultRef) return;
