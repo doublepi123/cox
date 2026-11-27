@@ -1,5 +1,9 @@
 import appCss from "../index.css?inline";
-import { scopeProjectRef, scopeThreadRef } from "@t3tools/client-runtime/environment";
+import {
+  scopedThreadKey,
+  scopeProjectRef,
+  scopeThreadRef,
+} from "@t3tools/client-runtime/environment";
 import type { EnvironmentServerConfig } from "@t3tools/client-runtime/connection";
 import * as shelfHooks from "../state/olderSettledShelf";
 import { createWorkspaceFocusController, workspaceAreaProps } from "../lib/workspaceFocus";
@@ -28,6 +32,8 @@ import { useOrchestrationCommand } from "../state/use-orchestration-command";
 import { useTerminalUiStateStore } from "../terminalUiStateStore";
 import type { Project } from "../types";
 import Sidebar from "./Sidebar";
+import { readLocalApi } from "../localApi";
+import { useThreadSelectionStore } from "../threadSelectionStore";
 import { THREAD_JUMP_HINT_SHOW_DELAY_MS } from "./Sidebar.logic";
 import { SortableThreadRow } from "./sidebar/SidebarThreadRow";
 import { SidebarProvider } from "./ui/sidebar";
@@ -37,6 +43,7 @@ vi.mock(import("../state/olderSettledShelf"), async (original) => {
   return { ...actual, useOlderSettledShelf: vi.fn(actual.useOlderSettledShelf) };
 });
 vi.mock("../state/entities", { spy: true });
+vi.mock("../localApi", { spy: true });
 vi.mock("../hooks/useHandleNewThread", { spy: true });
 vi.mock("../hooks/useThreadRouteTarget", { spy: true });
 vi.mock("./sidebar/SidebarThreadRow", { spy: true });
@@ -349,6 +356,57 @@ describe("sidebar thread rename", () => {
       expect(updateMetadata).not.toHaveBeenCalled();
     },
   );
+});
+
+describe("sidebar selection menu", () => {
+  it("counts only the selected threads Settle will settle", async () => {
+    const activeProject = project("active");
+    const activeThread = threadShell(activeProject.id, 0);
+    const settledThread = makeThreadFixture({
+      environmentId: activeProject.environmentId,
+      projectId: activeProject.id,
+      id: ThreadId.make("thread-1"),
+      title: "Thread 1",
+      settledOverride: "settled",
+      settledAt: "2026-01-01T00:00:00.000Z",
+    });
+    const settledRef = { environmentId: activeProject.environmentId, threadId: settledThread.id };
+    const show = vi.fn().mockResolvedValue(null);
+    vi.mocked(readLocalApi).mockReturnValue({ contextMenu: { show } } as unknown as NonNullable<
+      ReturnType<typeof readLocalApi>
+    >);
+    vi.mocked(useProjects).mockReturnValue([activeProject]);
+    vi.mocked(useQuietThreadShells).mockReturnValue([activeThread, settledThread]);
+    vi.mocked(useThreadRouteTarget).mockReturnValue({ kind: "server", threadRef: settledRef });
+    vi.mocked(useHandleNewThread).mockReturnValue({
+      activeDraftThread: null,
+      activeThread: null,
+      defaultProjectRef: {
+        environmentId: activeProject.environmentId,
+        projectId: activeProject.id,
+      },
+      handleNewThread: vi.fn().mockResolvedValue(null),
+      routeDraftId: null,
+      routeThreadRef: settledRef,
+    });
+    await using screen = await render(
+      <SidebarProvider>
+        <Sidebar routeReveal={{ observedKey: null, pendingKey: null }} />
+      </SidebarProvider>,
+    );
+    await expect.element(screen.getByText("Thread 1").first()).toBeInTheDocument();
+    const selection = useThreadSelectionStore.getState();
+    selection.clearSelection();
+    selection.toggleThread(
+      scopedThreadKey(scopeThreadRef(activeProject.environmentId, activeThread.id)),
+    );
+    selection.toggleThread(scopedThreadKey(settledRef));
+    await userEvent.click(screen.getByText("Thread 0").first(), { button: "right" });
+    await vi.waitFor(() => expect(show).toHaveBeenCalledTimes(1));
+    const settleItem = show.mock.lastCall?.[0].find((item: { id: string }) => item.id === "settle");
+    expect(settleItem?.label).toBe("Settle (1)");
+    selection.clearSelection();
+  });
 });
 
 describe("sidebar settled pagination", () => {

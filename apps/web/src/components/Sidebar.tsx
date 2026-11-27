@@ -2384,7 +2384,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
               : []),
             {
               id: "settle",
-              label: t("Settle ({count})", { count }),
+              label: t("Settle ({count})", { count: settlingThreads.length }),
               disabled: settlingThreads.length === 0 || !canOperateThreads(settlingThreads, true),
             },
             ...(canSnoozeSelection
