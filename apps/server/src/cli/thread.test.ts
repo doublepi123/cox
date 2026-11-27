@@ -19,6 +19,7 @@ import {
   readOutputSchema,
   type ThreadTools,
   threadCommand,
+  titleFromMessage,
   waitForRun,
 } from "./thread.ts";
 
@@ -36,6 +37,14 @@ it.effect("--output-schema reads a ~/ path from the home directory", () =>
     assert.deepStrictEqual(output, { outputSchema: { type: "object" } });
   }).pipe(Effect.provide(NodeServices.layer)),
 );
+
+it.each([
+  ["CR", "\r"],
+  ["Unicode line separator", "\u2028"],
+  ["Unicode paragraph separator", "\u2029"],
+])("uses only the first line of a message with %s line endings", (_name, newline) => {
+  assert.strictEqual(titleFromMessage(`Review merge${newline}Check changelog`), "Review merge");
+});
 
 const threadId = ThreadId.make("thread-1");
 const runId = RunId.make("run-1");
