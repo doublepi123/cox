@@ -94,6 +94,7 @@ import {
   SUBAGENT_RESULT_TURN_ITEM_TYPES,
   subagentResultForRun,
   subagentStopNotice,
+  monitorUpdateRunIds,
   delegatedTaskProgress,
 } from "@t3tools/provider-core/server/subagentProjection";
 import {
@@ -705,11 +706,7 @@ function latestTerminalResultRun(
   delegatedRun: OrchestrationV2Run | undefined,
   awaitingContinuationRun: OrchestrationV2Run | undefined,
 ): OrchestrationV2Run | undefined {
-  const monitorRunIds = new Set(
-    projection.messages
-      .filter((message) => message.notification?.source.kind === "monitor")
-      .map((message) => message.runId),
-  );
+  const monitorRunIds = monitorUpdateRunIds(projection.messages, projection.runs);
   const runsById = new Map(projection.runs.map((run) => [run.id, run]));
   const supersededRunIds = new Set<RunId>();
   const supersede = (runId: RunId | undefined) => {
@@ -1687,7 +1684,7 @@ const make = Effect.gen(function* () {
       )
       .pipe(Effect.mapError(threadManagementFailure));
     const childRun = delegatedTaskRun(childControls, task);
-    const progress = delegatedTaskProgress(childControls);
+    const progress = delegatedTaskProgress(childControls, { unsettled: task.result === null });
     const taskResultRun =
       childRun?.delegatedTaskId === task.id
         ? childControls.runs

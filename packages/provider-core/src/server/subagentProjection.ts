@@ -295,24 +295,50 @@ export function subagentResultForRun(
   };
 }
 
-export function delegatedTaskProgress(projection: {
-  readonly runs: OrchestrationV2ThreadProjection["runs"];
-  readonly messages: ReadonlyArray<
-    Pick<OrchestrationV2ConversationMessage, "runId" | "notification" | "createdBy">
-  >;
-  readonly subagents: ReadonlyArray<
-    Pick<OrchestrationV2ThreadProjection["subagents"][number], "status" | "completionDelivery">
-  >;
-  readonly providerThreads: ReadonlyArray<
-    Pick<OrchestrationV2ThreadProjection["providerThreads"][number], "pendingBackgroundTasks">
-  >;
-}) {
+type MonitorNotice = Pick<OrchestrationV2ConversationMessage, "runId" | "notification">;
+
+export function monitorUpdateRunIds(
+  messages: ReadonlyArray<MonitorNotice>,
+  runs: ReadonlyArray<Pick<OrchestrationV2Run, "id" | "status">>,
+) {
+  const updates = new Set(
+    messages.flatMap((message) =>
+      message.notification?.source.kind === "monitor" && message.notification.outcome === "updated"
+        ? [message.runId]
+        : [],
+    ),
+  );
+  return new Set(
+    runs.flatMap((run) =>
+      (run.status === "completed" || run.status === "queued") && updates.has(run.id)
+        ? [run.id]
+        : [],
+    ),
+  );
+}
+
+export function delegatedTaskProgress(
+  projection: {
+    readonly runs: OrchestrationV2ThreadProjection["runs"];
+    readonly messages: ReadonlyArray<
+      Pick<OrchestrationV2ConversationMessage, "runId" | "notification" | "createdBy">
+    >;
+    readonly subagents: ReadonlyArray<
+      Pick<OrchestrationV2ThreadProjection["subagents"][number], "status" | "completionDelivery">
+    >;
+    readonly providerThreads: ReadonlyArray<
+      Pick<OrchestrationV2ThreadProjection["providerThreads"][number], "pendingBackgroundTasks">
+    >;
+  },
+  options?: { readonly unsettled?: boolean },
+) {
   const terminal = (status: string) =>
     ["completed", "failed", "cancelled", "interrupted", "rolled_back"].includes(status);
-  const monitorRuns = new Set(
-    projection.messages
-      .filter((message) => message.notification?.source.kind === "monitor")
-      .map((message) => message.runId),
+  const monitorRuns = monitorUpdateRunIds(
+    projection.messages,
+    options?.unsettled === true
+      ? projection.runs.filter((run) => run.status === "queued")
+      : projection.runs,
   );
   const workRuns = projection.runs.filter(
     (run) => !monitorRuns.has(run.id) && run.status !== "rolled_back",

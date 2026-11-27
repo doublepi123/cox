@@ -13461,12 +13461,17 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
       childControls.thread.forkedFrom?.type !== "node"
     )
       return;
-    const progress = delegatedTaskProgress(childControls);
     const parent = yield* projectionStore.getThreadRecords(
       parentThreadId,
       ["subagents", "contextTransfers"],
       { subagentChildThreadIds: [childThreadId] },
     );
+    const delegatedNodeId = childControls.thread.forkedFrom.nodeId;
+    const progress = delegatedTaskProgress(childControls, {
+      unsettled: parent.subagents.some(
+        (task) => task.id === delegatedNodeId && task.result === null,
+      ),
+    });
     for (const task of parent.subagents) {
       if (
         task.origin !== "app_owned" ||
