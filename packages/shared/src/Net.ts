@@ -13,6 +13,17 @@ export class NetError extends Data.TaggedError("NetError")<{
   readonly cause?: unknown;
 }> {}
 
+export class NetListenError extends Data.TaggedError("NetListenError")<{
+  readonly host: string;
+  readonly port: number;
+  readonly code: string;
+  readonly cause: unknown;
+}> {
+  override get message(): string {
+    return `Cannot listen on ${this.host}:${this.port} (${this.code}).`;
+  }
+}
+
 const isErrnoExceptionWithCode = (
   cause: unknown,
 ): cause is {
@@ -31,6 +42,12 @@ const closeServer = (server: NodeNet.Server) => {
 export interface NetServiceShape {
   readonly canListenOnHost: (port: number, host: string) => Effect.Effect<boolean>;
 
+  /** Like `canListenOnHost`, but only EADDRINUSE yields `false`; other bind errors fail. */
+  readonly probeListenOnHost: (
+    port: number,
+    host: string,
+  ) => Effect.Effect<boolean, NetListenError>;
+
   readonly isPortAvailableOnLoopback: (port: number) => Effect.Effect<boolean>;
 
   readonly hasListenerOnHost: (port: number, host: string) => Effect.Effect<boolean>;
@@ -46,34 +63,36 @@ export class NetService extends Context.Service<NetService, NetServiceShape>()(
 
 /** @public */
 export const make = () => {
-  const canListenOnHost = (port: number, host: string): Effect.Effect<boolean> =>
-    Effect.callback<boolean>((resume) => {
+  const probeListenOnHost = (port: number, host: string): Effect.Effect<boolean, NetListenError> =>
+    Effect.callback<boolean, NetListenError>((resume) => {
       const server = NodeNet.createServer();
       let settled = false;
 
-      const settle = (value: boolean) => {
+      const settle = (effect: Effect.Effect<boolean, NetListenError>) => {
         if (settled) return;
         settled = true;
-        resume(Effect.succeed(value));
+        resume(effect);
       };
 
       server.unref();
 
       server.once("error", (cause) => {
+        const code = isErrnoExceptionWithCode(cause) ? cause.code : "UNKNOWN";
         // Missing IPv6 addresses or kernel support do not mean the port is occupied.
-        if (
-          isErrnoExceptionWithCode(cause) &&
-          (cause.code === "EADDRNOTAVAIL" || cause.code === "EAFNOSUPPORT")
-        ) {
-          settle(true);
+        if (code === "EADDRNOTAVAIL" || code === "EAFNOSUPPORT") {
+          settle(Effect.succeed(true));
           return;
         }
-        settle(false);
+        if (code === "EADDRINUSE") {
+          settle(Effect.succeed(false));
+          return;
+        }
+        settle(Effect.fail(new NetListenError({ host, port, code, cause })));
       });
 
       server.once("listening", () => {
         server.close(() => {
-          settle(true);
+          settle(Effect.succeed(true));
         });
       });
 
@@ -83,6 +102,11 @@ export const make = () => {
         closeServer(server);
       });
     });
+
+  const canListenOnHost = (port: number, host: string): Effect.Effect<boolean> =>
+    probeListenOnHost(port, host).pipe(
+      Effect.catchTags({ NetListenError: () => Effect.succeed(false) }),
+    );
 
   const hasListenerOnHost = (port: number, host: string): Effect.Effect<boolean> =>
     Effect.callback<boolean>((resume) => {
@@ -179,6 +203,7 @@ export const make = () => {
 
   return {
     canListenOnHost,
+    probeListenOnHost,
     isPortAvailableOnLoopback,
     hasListenerOnHost,
     reserveLoopbackPort,

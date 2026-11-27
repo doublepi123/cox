@@ -78,6 +78,45 @@ it.layer(NetService.layer)("NetService", (it) => {
         }),
     );
 
+    it.effect.each(["EACCES", "EPERM"])(
+      "fails a probe on %s instead of reporting the port as occupied",
+      (code) =>
+        Effect.gen(function* () {
+          const net = yield* NetService.NetService;
+          const port = yield* net.reserveLoopbackPort();
+          const listen = NodeNet.Server.prototype.listen;
+          const spy = vi.spyOn(NodeNet.Server.prototype, "listen").mockImplementation(function (
+            this: NodeNet.Server,
+          ) {
+            process.nextTick(() => this.emit("error", Object.assign(new Error(code), { code })));
+            return this;
+          });
+          try {
+            const failure = yield* Effect.flip(net.probeListenOnHost(port, "127.0.0.1"));
+            assert.instanceOf(failure, NetService.NetListenError);
+            assert.equal(failure.code, code);
+            assert.equal(failure.host, "127.0.0.1");
+            assert.equal(failure.port, port);
+            assert.equal(failure.message, `Cannot listen on 127.0.0.1:${port} (${code}).`);
+            assert.equal(yield* net.canListenOnHost(port, "127.0.0.1"), false);
+          } finally {
+            spy.mockRestore();
+          }
+        }),
+    );
+
+    it.effect("probeListenOnHost reports an occupied port as false", () =>
+      Effect.acquireUseRelease(
+        openServer("127.0.0.1"),
+        (server) =>
+          Effect.gen(function* () {
+            const net = yield* NetService.NetService;
+            assert.equal(yield* net.probeListenOnHost(getPort(server), "127.0.0.1"), false);
+          }),
+        closeServer,
+      ),
+    );
+
     it.effect("isPortAvailableOnLoopback reports false for an occupied port", () =>
       Effect.acquireUseRelease(
         openServer("127.0.0.1"),
