@@ -26,6 +26,7 @@ import * as Semaphore from "effect/Semaphore";
 import * as Scope from "effect/Scope";
 import * as Stream from "effect/Stream";
 
+import { lock } from "proper-lockfile";
 import * as ServerConfig from "./config.ts";
 import { watchDirectoryPath } from "./watchDirectoryReplacements.ts";
 
@@ -95,6 +96,59 @@ export const readThemeFileGuarded = (
     NodeFS.closeSync(fd);
   }
 };
+
+export class EnvironmentThemeRefusedError extends Schema.TaggedError<EnvironmentThemeRefusedError>()(
+  "EnvironmentThemeRefusedError",
+  { themeId: Schema.String, problem: Schema.String, cause: Schema.optional(Schema.Defect()) },
+) {
+  override get message() {
+    return `Theme "${this.themeId}" ${this.problem}`;
+  }
+}
+
+/**
+ * Hold through the settings write so CLI and server publishers share one catalog snapshot.
+ * Returns a guard that skips a rollback once a stalled holder has lost the lock to another.
+ */
+export const acquireThemePublishLock = Effect.fn("EnvironmentTheme.acquirePublishLock")(function* (
+  themesDir: string,
+  themeId: string,
+) {
+  const fs = yield* FileSystem.FileSystem;
+  yield* fs
+    .makeDirectory(themesDir, { recursive: true })
+    .pipe(
+      Effect.mapError(
+        (cause) =>
+          new EnvironmentThemeRefusedError({ themeId, problem: "could not be published.", cause }),
+      ),
+    );
+  let compromised = false;
+  yield* Effect.acquireRelease(
+    Effect.tryPromise({
+      try: () =>
+        lock(themesDir, {
+          lockfilePath: `${themesDir}/.cox-theme-publish.lock`,
+          stale: 60_000,
+          onCompromised: () => {
+            compromised = true;
+          },
+        }),
+      catch: (cause) =>
+        new EnvironmentThemeRefusedError({
+          themeId,
+          problem:
+            (cause as { code?: unknown } | null)?.code === "ELOCKED"
+              ? "could not be published because the themes directory is busy. Try again."
+              : "could not be published.",
+          cause,
+        }),
+    }),
+    (release) => Effect.promise(() => release().catch(() => undefined)),
+  );
+  return (rollback: Effect.Effect<void>) =>
+    Effect.suspend(() => (compromised ? Effect.void : rollback));
+});
 
 export const readPublishedThemes = Effect.fn(function* (
   themesDir: string,
