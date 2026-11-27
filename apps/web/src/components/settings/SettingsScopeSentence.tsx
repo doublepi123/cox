@@ -123,7 +123,7 @@ function ScopeMenu({
   const [query, setQuery] = useState("");
   const Trigger = options.length > 6 ? ComboboxTrigger : MenuTrigger;
   const trigger = (
-    <span className="inline-flex min-w-0 max-w-72">
+    <span className="inline-flex min-w-0 max-w-[min(100%,18rem)]">
       <Trigger
         aria-label={`${ariaLabel}: ${label}`}
         render={<Button variant="outline" size="sm" />}
