@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { buildCollapsedProposedPlanPreviewMarkdown, resolvePlanFollowUpSubmission } from "./proposedPlan";
+import {
+  buildCollapsedProposedPlanPreviewMarkdown,
+  resolvePlanFollowUpSubmission,
+} from "./proposedPlan";
 
 describe("resolvePlanFollowUpSubmission", () => {
   it.each(["", "Consider this "])(

@@ -123,7 +123,7 @@ function ExtendedOfficeViewer(props: {
     timerRef.current = startTimeout();
     submitPassword.current = (password) => {
       timerRef.current = startTimeout();
-      worker.postMessage({ type: "unlock", password });
+      worker.postMessage({ type: "unlock", password }, []);
     };
     worker.addEventListener("error", () =>
       fail("Could not load the Office viewer. Close the file and try again."),

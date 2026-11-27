@@ -88,7 +88,7 @@ function ReadingFrame(props: {
               // oxlint-disable-next-line react/no-array-index-key -- The authored media order is fixed within a chapter.
               key={`${item.localName}:${index}`}
               variant="outline"
-              size="sm" className="max-sm:min-h-11"
+              size="sm-touch"
               onClick={() => {
                 for (const element of media) element.pause();
                 setOpenMedia(item);

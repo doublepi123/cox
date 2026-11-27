@@ -75,7 +75,7 @@ export default function OfficeViewer(props: {
     let timer = startTimeout();
     submitPassword.current = (password) => {
       timer = startTimeout();
-      worker.postMessage({ type: "unlock", password });
+      worker.postMessage({ type: "unlock", password }, []);
     };
     worker.addEventListener("error", () => failure(new Error("Could not load the Office viewer.")));
     worker.addEventListener("messageerror", () =>

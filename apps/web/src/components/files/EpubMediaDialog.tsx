@@ -41,7 +41,9 @@ export function EpubMediaDialog(props: {
     >
       <DialogPopup>
         <DialogHeader>
-          <DialogTitle className="me-10">{title}</DialogTitle>
+          <div className="me-10">
+            <DialogTitle>{title}</DialogTitle>
+          </div>
         </DialogHeader>
         <div className="px-4 pb-4">
           {isVideo ? (

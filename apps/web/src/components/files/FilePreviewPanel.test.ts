@@ -756,7 +756,7 @@ describe("document preview contents", () => {
       )
       .file(
         "Book/two&&&.xhtml",
-        '<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.1//EN" "http://www.w3.org/TR/xhtml11/DTD/xhtml11.dtd"><html><head><title>Second</title></head><body><h1>Second chapter</h1><p>A&nbsp;B &copy; &mdash; &NotEqualTilde; &amp;lt;</p><img src="cover.png" alt="&copy; &NotEqualTilde;"/></body></html>',
+        '<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.1//EN" "http://www.w3.org/TR/xhtml11/DTD/xhtml11.dtd"><html><head><title>Second</title></head><body><h1>Second chapter</h1><p>A&nbsp;B &copy; &mdash; &NotEqualTilde; &amp;lt;</p><p>Run <tt>make install</tt> with <acronym title="GNU Compiler Collection">GCC</acronym>.</p><img src="cover.png" alt="&copy; &NotEqualTilde;"/></body></html>',
       )
       .file(
         "Book/cover.png",
@@ -770,6 +770,9 @@ describe("document preview contents", () => {
     const second = await book.page(1);
     expect([first.title, second.title]).toEqual(["Second", "a".repeat(119)]);
     expect(first.html).toContain("A\u00a0B © — ≂̸ &amp;lt;");
+    expect(first.html).toContain(
+      '<p>Run <tt>make install</tt> with <acronym title="GNU Compiler Collection">GCC</acronym>.</p>',
+    );
     expect(first.html).toContain('alt="© ≂̸"');
     expect(first.html).toContain(`src="${first.assets[0]}"`);
     const image = await fetch(first.assets[0]!);
