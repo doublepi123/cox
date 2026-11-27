@@ -71,9 +71,9 @@ const environmentId = EnvironmentId.make("remote");
 const startError = "The resource monitor is not available.";
 const historyError = "Resource history could not start.";
 
-it("shows each group's process count in the interface language", async () => {
+it("shows process counts, I/O totals, and process scans in the interface language", async () => {
   using fixture = setup();
-  const { groups } = fixture.snapshot;
+  const { groups, health } = fixture.snapshot;
   const liveTelemetry = Atom.make<AsyncResult.AsyncResult<ResourceTelemetrySnapshot, MonitorError>>(
     AsyncResult.success({
       ...fixture.snapshot,
@@ -81,7 +81,9 @@ it("shows each group's process count in the interface language", async () => {
         ...groups,
         backend: { ...groups.backend, processCount: 3 },
         monitor: { ...groups.monitor, processCount: 1 },
+        allT3: { ...groups.allT3, ioReadBytes: 512, ioWriteBytes: 300 },
       },
+      health: { ...health, scannedProcessCount: 40, retainedProcessCount: 12 },
     }),
   ).pipe(Atom.keepAlive);
   monitor.telemetry.mockImplementation(() => liveTelemetry);
@@ -98,6 +100,9 @@ it("shows each group's process count in the interface language", async () => {
     await act(() => setLanguagePreference("zh"));
     await expect.element(screen.getByText("3 个进程", { exact: true })).toBeVisible();
     await expect.element(screen.getByText("1 个进程", { exact: true })).toBeVisible();
+    await expect.element(screen.getByText("已观测 512 B", { exact: true })).toBeVisible();
+    await expect.element(screen.getByText("已观测 300 B", { exact: true })).toBeVisible();
+    await expect.element(screen.getByText("保留 12/40", { exact: true })).toBeVisible();
   } finally {
     setLanguagePreference("system");
   }
