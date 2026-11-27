@@ -3,6 +3,7 @@ import { expect, it, vi } from "vite-plus/test";
 
 import {
   ARCHIVE_ENTRY_MAX_BYTES,
+  compareArchiveRows,
   type BinaryWorkerRequest,
   type BinaryWorkerResult,
 } from "./binaryPreviewProtocol";
@@ -150,6 +151,21 @@ it.each([ARCHIVE_ENTRY_MAX_BYTES, ARCHIVE_ENTRY_MAX_BYTES + 1])(
     }
   },
 );
+
+it("sorts archive folders first, then numbered names in natural order", () => {
+  const rows = ["page10.txt", "vol10", "page2.txt", "vol2", "page1.txt", "vol1"].map((path) => ({
+    path,
+    directory: path.startsWith("vol"),
+  }));
+  expect(rows.sort(compareArchiveRows).map(({ path }) => path)).toEqual([
+    "vol1",
+    "vol2",
+    "vol10",
+    "page1.txt",
+    "page2.txt",
+    "page10.txt",
+  ]);
+});
 
 it("formats singular and plural byte labels for SQLite BLOB cells", async () => {
   const { default: initSqlJs } = await import("sql.js");
