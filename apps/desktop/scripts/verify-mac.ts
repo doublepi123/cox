@@ -5,6 +5,7 @@ import { mkdtemp, mkdir, readFile, readdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { MAC_COMPUTER_ENGINE_BUILD, computerEngineFile } from "../src/computer/engine.ts";
+import { assertInspectorFuseDisabled } from "./smoke-fuses.ts";
 
 assert.equal(process.platform, "darwin", "macOS signature verification requires macOS.");
 const flavor = process.env.COX_DESKTOP_CLIENT_ONLY === "true" ? "client-only" : "bundled";
@@ -73,10 +74,11 @@ try {
   try {
     assert.ok((await readdir(mounted)).includes("Cox.app"), "DMG must contain Cox.app.");
     verify(join(mounted, "Cox.app"));
+    await assertInspectorFuseDisabled(join(mounted, "Cox.app"));
   } finally {
     execFileSync("hdiutil", ["detach", mounted], { stdio: "inherit" });
   }
-  console.log("PASS: unpacked and DMG application, Node and computer engine signatures.");
+  console.log("PASS: unpacked and DMG signatures and disabled Node inspector fuse in the DMG.");
 } finally {
   await rm(temporary, { recursive: true, force: true });
 }

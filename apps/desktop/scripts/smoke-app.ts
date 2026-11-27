@@ -1,33 +1,38 @@
 import assert from "node:assert/strict";
-import { spawn } from "node:child_process";
+import { execFileSync, spawn } from "node:child_process";
 import { once } from "node:events";
 import { existsSync } from "node:fs";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { cp, mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { basename, join, resolve } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
+import { flipFuses, FuseV1Options, FuseVersion } from "@electron/fuses";
 import { _electron } from "playwright-core";
+import { assertInspectorFuseDisabled } from "./smoke-fuses.ts";
 
 const root = resolve(import.meta.dirname, "../../..");
 const clientOnly = process.env.COX_DESKTOP_CLIENT_ONLY === "true";
 const output = join(root, "release", "desktop", clientOnly ? "client-only" : "bundled");
-const executable =
+const packagedApp =
   process.platform === "darwin"
-    ? join(
-        output,
-        process.arch === "arm64" ? "mac-arm64" : "mac",
-        "Cox.app",
-        "Contents",
-        "MacOS",
-        "Cox",
-      )
+    ? join(output, process.arch === "arm64" ? "mac-arm64" : "mac", "Cox.app")
     : join(
         output,
         `${process.platform === "win32" ? "win" : "linux"}${process.arch === "arm64" ? "-arm64" : ""}-unpacked`,
-        process.platform === "win32" ? "Cox.exe" : "cox-desktop",
       );
-assert.ok(existsSync(executable), "Build the desktop package before testing its window.");
+const executablePath =
+  process.platform === "darwin"
+    ? join("Contents", "MacOS", "Cox")
+    : process.platform === "win32"
+      ? "Cox.exe"
+      : "cox-desktop";
+const packagedExecutable = join(packagedApp, executablePath);
+assert.ok(existsSync(packagedExecutable), "Build the desktop package before testing its window.");
+await assertInspectorFuseDisabled(process.platform === "darwin" ? packagedApp : packagedExecutable);
+console.log("PASS: Node inspector flags are disabled in the original packaged Electron app.");
 const temporary = await mkdtemp(join(tmpdir(), "cox-desktop-app-"));
+const smokeApp = join(temporary, basename(packagedApp));
+const executable = join(smokeApp, executablePath);
 const environment: Record<string, string> = Object.fromEntries(
   Object.entries({
     ...process.env,
@@ -37,14 +42,45 @@ const environment: Record<string, string> = Object.fromEntries(
     XDG_CACHE_HOME: join(temporary, "cache"),
   }).filter((entry): entry is [string, string] => typeof entry[1] === "string"),
 );
-const application = await _electron.launch({
-  executablePath: executable,
-  env: environment,
-  timeout: 120_000,
-  args: [
-    ...(process.platform === "linux" ? ["--no-sandbox"] : []),
-    ...(clientOnly ? [] : ["--offline"]),
-  ],
+async function cleanSmokeDirectory() {
+  await rm(temporary, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 }).catch(
+    (error: unknown) => {
+      console.error("Could not clean smoke directory:", temporary, error);
+    },
+  );
+}
+const application = await (async () => {
+  if (process.platform === "darwin") {
+    execFileSync("ditto", [packagedApp, smokeApp], { stdio: "inherit" });
+  } else {
+    await cp(packagedApp, smokeApp, { recursive: true, verbatimSymlinks: true });
+  }
+  await flipFuses(process.platform === "darwin" ? smokeApp : executable, {
+    version: FuseVersion.V1,
+    [FuseV1Options.EnableNodeCliInspectArguments]: true,
+  });
+  if (process.platform === "darwin") {
+    const framework = join(smokeApp, "Contents", "Frameworks", "Electron Framework.framework");
+    for (const target of [framework, smokeApp]) {
+      execFileSync(
+        "codesign",
+        ["--force", "--sign", "-", "--preserve-metadata=entitlements,flags,runtime", target],
+        { stdio: "inherit" },
+      );
+    }
+  }
+  return await _electron.launch({
+    executablePath: executable,
+    env: environment,
+    timeout: 120_000,
+    args: [
+      ...(process.platform === "linux" ? ["--no-sandbox"] : []),
+      ...(clientOnly ? [] : ["--offline"]),
+    ],
+  });
+})().catch(async (error: unknown) => {
+  await cleanSmokeDirectory();
+  throw error;
 });
 const applicationProcess = application.process();
 async function waitForSettingsVisibility(visible: boolean) {
@@ -595,14 +631,13 @@ try {
   }
   throw error;
 } finally {
-  if (applicationProcess.exitCode === null && applicationProcess.signalCode === null) {
-    const exited = once(applicationProcess, "exit", { signal: AbortSignal.timeout(15_000) });
-    applicationProcess.kill("SIGKILL");
-    await exited;
+  try {
+    if (applicationProcess.exitCode === null && applicationProcess.signalCode === null) {
+      const exited = once(applicationProcess, "exit", { signal: AbortSignal.timeout(15_000) });
+      applicationProcess.kill("SIGKILL");
+      await exited;
+    }
+  } finally {
+    await cleanSmokeDirectory();
   }
-  await rm(temporary, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 }).catch(
-    (error: unknown) => {
-      console.error("Could not clean smoke directory:", temporary, error);
-    },
-  );
 }

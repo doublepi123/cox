@@ -22,6 +22,7 @@
     "electron-updater": "6.8.11"
   },
   "devDependencies": {
+    "@electron/fuses": "1.8.0",
     "@t3tools/contracts": "workspace:*",
     "@t3tools/shared": "workspace:*",
     "@types/node": "catalog:",
