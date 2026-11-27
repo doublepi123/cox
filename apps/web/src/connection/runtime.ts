@@ -36,6 +36,7 @@ const layerProvidedClientConnection = layerSnapshotLoader.pipe(
       environmentThemes: true,
       usageLimitSources: true,
       usageLimitsCommand: true,
+      pingInterval: "10 seconds",
     }),
   ),
   Layer.provideMerge(
