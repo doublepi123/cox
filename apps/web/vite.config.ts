@@ -119,6 +119,8 @@ const browserTestProject = {
       "@betteroffice/xlsx",
       "@betteroffice/xlsx/headless",
       "fast-xml-parser",
+      "parse5",
+      "@noble/hashes/legacy",
       "entities",
       "dompurify",
       "heic-to/next",

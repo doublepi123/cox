@@ -187,73 +187,6 @@ function boundedMarkup(value: string): string {
   reserveMarkup(value.length);
   return value;
 }
-const HTML_TAGS = new Set([
-  "p",
-  "h1",
-  "h2",
-  "h3",
-  "h4",
-  "h5",
-  "h6",
-  "div",
-  "span",
-  "strong",
-  "b",
-  "em",
-  "i",
-  "u",
-  "s",
-  "ul",
-  "ol",
-  "li",
-  "blockquote",
-  "pre",
-  "code",
-  "table",
-  "thead",
-  "tbody",
-  "tr",
-  "th",
-  "td",
-  "caption",
-  "figure",
-  "figcaption",
-  "br",
-  "hr",
-  "sub",
-  "sup",
-  "dl",
-  "dt",
-  "dd",
-]);
-async function epubHtml(node: XmlNode, archive: JSZip, base: string): Promise<string> {
-  if (node.name === "#text") return pipe(text(node), escape, boundedMarkup);
-  const tag =
-    node.name
-      .replace(/^\{[^}]*\}/, "")
-      .split(":")
-      .at(-1) ?? "";
-  if (["head", "script", "style", "iframe", "object", "embed", "svg", "math", "form"].includes(tag))
-    return "";
-  if (tag === "br" || tag === "hr") return boundedMarkup(`<${tag}>`);
-  if (tag === "img") {
-    const src = await imageData(archive, archivePath(base, node.attrs.src ?? ""));
-    return src ? `<img src="${src}" alt="${boundedMarkup(escape(node.attrs.alt ?? ""))}">` : "";
-  }
-  let children = "";
-  for (const child of node.children) children += await epubHtml(child, archive, base);
-  if (!HTML_TAGS.has(tag)) return children;
-  const spans =
-    tag === "td" || tag === "th"
-      ? ["colspan", "rowspan"]
-          .map((name) =>
-            /^\d{1,4}$/.test(node.attrs[name] ?? "") ? ` ${name}="${node.attrs[name]}"` : "",
-          )
-          .join("")
-      : "";
-  reserveMarkup(tag.length * 2 + spans.length + 5);
-  return `<${tag}${spans}>${children}</${tag}>`;
-}
 async function odfHtml(
   node: XmlNode,
   archive: JSZip,
@@ -433,40 +366,7 @@ export async function openDocument(
   }
   return { type: "document", navigation: kind === "odp" ? "slide" : "page", pages: rendered };
 }
-export async function openEpub(archive: JSZip): Promise<OfficeWorkerResult> {
-  markupBytes = 0;
-  const container = parseXml((await archive.file("META-INF/container.xml")?.async("string")) ?? "");
-  const fullPath = find(container, "rootfile")[0]?.attrs["full-path"] ?? "";
-  const rootfile = [archivePath("", fullPath), fullPath].find((path) => path && archive.file(path));
-  if (!rootfile) throw new Error("This EPUB has no readable package.");
-  const packageRoot = parseXml(await archive.file(rootfile)!.async("string"));
-  const manifest = new Map(find(packageRoot, "item").map((item) => [item.attrs.id, item]));
-  const spine = find(packageRoot, "itemref");
-  if (!spine.length || spine.length > 500)
-    throw new Error("This EPUB has no chapters or too many chapters to preview.");
-  const pages = [];
-  for (const itemref of spine) {
-    const item = manifest.get(itemref.attrs.idref);
-    if (!item || item.attrs["media-type"] !== "application/xhtml+xml") continue;
-    const path = archivePath(rootfile, item.attrs.href ?? "");
-    const entry = path ? archive.file(path) : null;
-    if (!entry || !path) continue;
-    const chapter = parseXml(await entry.async("string"));
-    const headings = [...find(chapter, "title"), ...find(chapter, "h1")].map((node) =>
-      text(node).trim(),
-    );
-    const title = headings.length ? (headings.find(Boolean) ?? "") : text(chapter).trim();
-    const last = title.charCodeAt(119);
-    pages.push({
-      title:
-        title.slice(0, last >= 0xd800 && last <= 0xdbff ? 119 : 120) ||
-        `Chapter ${pages.length + 1}`,
-      html: await epubHtml(chapter, archive, path),
-    });
-  }
-  if (!pages.length) throw new Error("This EPUB has no readable XHTML chapters.");
-  return { type: "document", navigation: "chapter", pages };
-}
+
 function record(value: unknown): Record<string, unknown> {
   return value !== null && typeof value === "object" && !Array.isArray(value)
     ? (value as Record<string, unknown>)

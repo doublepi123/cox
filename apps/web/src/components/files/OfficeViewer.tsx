@@ -1,4 +1,5 @@
 import { useTranslation } from "../../i18n";
+import { useStableCallback } from "~/hooks/useStableCallback";
 /* oxlint-disable react/no-array-index-key -- Spreadsheet rows and columns retain their source positions. */
 import { formatAttachmentSize } from "@t3tools/client-runtime/state/attachments";
 import type { OfficePreviewKind } from "@t3tools/shared/filePreview";
@@ -18,6 +19,7 @@ import {
 import { FileSurfaceAction, FileSurfaceLoading, FileSurfaceNotice } from "./fileSurfaceChrome";
 import { OFFICE_PREVIEW_MAX_BYTES, type OfficeWorkerResult } from "./officePreviewProtocol";
 
+const EpubViewer = lazy(() => import("./EpubViewer"));
 const DocumentPages = lazy(() => import("./DocumentPages"));
 const NotebookPreview = lazy(() => import("./NotebookPreview"));
 
@@ -81,6 +83,11 @@ function ExtendedOfficeViewer(props: {
     OfficeWorkerResult,
     { type: "notebook" }
   > | null>(null);
+  const [epub, setEpub] = useState<Extract<OfficeWorkerResult, { type: "epub" }> | null>(null);
+  const [epubPage, setEpubPage] = useState<Extract<
+    OfficeWorkerResult,
+    { type: "epub-page" }
+  > | null>(null);
   const [workbook, setWorkbook] = useState<Workbook | null>(null);
   const [count, setCount] = useState(0);
   const [fileSize, setFileSize] = useState(props.sizeBytes);
@@ -116,7 +123,12 @@ function ExtendedOfficeViewer(props: {
       if (controller.signal.aborted) return;
       const result = event.data;
       if (result.type === "error") fail(result.message);
-      else if (result.type === "document") {
+      else if (result.type === "epub") {
+        if (timerRef.current) clearTimeout(timerRef.current);
+        setEpub(result);
+      } else if (result.type === "epub-page") {
+        setEpubPage(result);
+      } else if (result.type === "document") {
         if (timerRef.current) clearTimeout(timerRef.current);
         setDocument(result);
         setCount(result.pages.length > 1 ? result.pages.length : 0);
@@ -156,6 +168,9 @@ function ExtendedOfficeViewer(props: {
     };
   }, [props.src, props.kind, props.sizeBytes]);
   const selectPage = setPage;
+  const loadEpubPage = useStableCallback((index: number) =>
+    workerRef.current?.postMessage({ type: "epub-page", index }),
+  );
   if (error)
     return (
       <div
@@ -174,14 +189,23 @@ function ExtendedOfficeViewer(props: {
         <NotebookPreview notebook={notebook} sizeBytes={fileSize} />
       </Suspense>
     );
+  if (epub)
+    return (
+      <Suspense fallback={<FileSurfaceLoading />}>
+        <EpubViewer
+          name={props.name}
+          book={epub}
+          response={epubPage}
+          sizeBytes={fileSize}
+          loadPage={loadEpubPage}
+        />
+      </Suspense>
+    );
   const sheet = workbook?.sheets[page];
   const documentPage = previewDocument?.pages[page];
   const navigation = workbook ? "sheet" : (previewDocument?.navigation ?? "slide");
   const documentCount = previewDocument?.pages.length ?? 0;
-  const documentDetails =
-    navigation === "chapter"
-      ? `Chapter ${page + 1} of ${documentCount}`
-      : `${documentCount} ${navigation}${documentCount === 1 ? "" : "s"}`;
+  const documentDetails = `${documentCount} ${navigation}${documentCount === 1 ? "" : "s"}`;
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       {count > 0 ? (
@@ -208,26 +232,6 @@ function ExtendedOfficeViewer(props: {
                   {workbook.sheets.map((item, index) => (
                     <SelectItem key={index} value={index}>
                       {item.name}
-                    </SelectItem>
-                  ))}
-                </SelectPopup>
-              </Select>
-            </div>
-          ) : previewDocument?.navigation === "chapter" ? (
-            <div className="min-w-0 flex-1">
-              <Select
-                value={page}
-                onValueChange={(value) => {
-                  if (value !== null) selectPage(value);
-                }}
-              >
-                <SelectTrigger aria-label="Chapter" size="xs">
-                  <SelectValue>{documentPage?.title}</SelectValue>
-                </SelectTrigger>
-                <SelectPopup>
-                  {previewDocument.pages.map((item, index) => (
-                    <SelectItem key={index} value={index}>
-                      {item.title}
                     </SelectItem>
                   ))}
                 </SelectPopup>
@@ -261,11 +265,9 @@ function ExtendedOfficeViewer(props: {
       ) : null}
       {documentPage ? (
         <>
-          {props.kind !== "epub" ? (
-            <FileSurfaceNotice>
-              Text and images. Layout and embedded objects may differ from the original.
-            </FileSurfaceNotice>
-          ) : null}
+          <FileSurfaceNotice>
+            Text and images. Layout and embedded objects may differ from the original.
+          </FileSurfaceNotice>
           <Suspense fallback={<FileSurfaceLoading />}>
             <DocumentPages
               html={documentPage.html}

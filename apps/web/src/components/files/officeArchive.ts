@@ -18,7 +18,7 @@ function xmlParser() {
   return parser;
 }
 
-function officeXmlDecoder(bytes: Uint8Array) {
+export function officeXmlDecoder(bytes: Uint8Array) {
   if ((bytes[0] === 0xff && bytes[1] === 0xfe) || (bytes[0] === 0x3c && bytes[1] === 0))
     return new TextDecoder("utf-16le");
   if ((bytes[0] === 0xfe && bytes[1] === 0xff) || (bytes[0] === 0 && bytes[1] === 0x3c))
@@ -953,12 +953,13 @@ export async function boundedArchive(input: Extract<OfficeWorkerRequest, { type:
   const spreadsheet = input.kind === "xlsx";
   if (bytes.byteLength > OFFICE_PREVIEW_MAX_BYTES)
     throw new Error("Preview limited to files under 50 MB.");
-  checkZipDirectory(bytes);
+  const entryLimit = input.kind === "epub" ? 8192 : 2048;
+  checkZipDirectory(bytes, entryLimit);
   const source = await JSZip.loadAsync(bytes).catch(() => {
     throw new Error("This file is damaged, encrypted, or not a valid Office document.");
   });
   const allEntries = Object.values(source.files);
-  if (allEntries.length > 2048)
+  if (allEntries.length > entryLimit)
     throw new Error("This file contains too many archive entries to preview.");
   const entries = allEntries.filter((entry) => !entry.dir);
   if (

@@ -4205,6 +4205,26 @@ export const en = {
   "{enabled} of {total} on": "{enabled} of {total} on",
   now: "now",
   "just now": "just now",
+  Chapter: "Chapter",
+  "Chapter {number}": "Chapter {number}",
+  "Chapter {page} of {count}": "Chapter {page} of {count}",
+  "Previous chapter": "Previous chapter",
+  "Next chapter": "Next chapter",
+  "Decrease reading size": "Decrease reading size",
+  "Increase reading size": "Increase reading size",
+  "Reset reading size": "Reset reading size",
+  "The document contains invalid XML.": "The document contains invalid XML.",
+  "The document XML is nested too deeply.": "The document XML is nested too deeply.",
+  "The document contains too much XML content.": "The document contains too much XML content.",
+  "The document contains invalid repeated content.":
+    "The document contains invalid repeated content.",
+  "This EPUB has no readable package.": "This EPUB has no readable package.",
+  "This EPUB has no chapters or too many chapters to preview.":
+    "This EPUB has no chapters or too many chapters to preview.",
+  "This EPUB has no readable chapters or image pages.":
+    "This EPUB has no readable chapters or image pages.",
+  "The rendered document is too large to preview.":
+    "The rendered document is too large to preview.",
   "opened {time} ago": "opened {time} ago",
   "opened {time}": "opened {time}",
   "{count}m": "{count}m",
