@@ -127,6 +127,9 @@ function makeTestAdapter(input: {
   readonly releaseFirstTurn?: Deferred.Deferred<void>;
   readonly backgroundWork?: Ref.Ref<boolean>;
   readonly backgroundProbeFails?: Ref.Ref<boolean>;
+  readonly unloadThread?: NonNullable<
+    ProviderAdapter.ProviderAdapterV2SessionRuntime["unloadThread"]
+  >;
   readonly closedSessions?: Ref.Ref<ReadonlyArray<string>>;
 }): ProviderAdapter.ProviderAdapterV2["Service"] {
   return {
@@ -162,6 +165,7 @@ function makeTestAdapter(input: {
           driver: input.driver,
           providerSessionId: sessionInput.providerSessionId,
           providerSession,
+          ...(input.unloadThread === undefined ? {} : { unloadThread: input.unloadThread }),
           events: Stream.fromPubSub(events),
           ...(input.nativeTurnKept === undefined
             ? {}
@@ -2379,6 +2383,7 @@ describe("orchestration v2 provider switching", () => {
     Effect.scoped(
       Effect.gen(function* () {
         const cwd = yield* checkpointWorkspace("queued-account-switch");
+        const writerReleased = yield* Deferred.make<void>();
         const capturedTurns = yield* Ref.make<ReadonlyArray<CapturedTurn>>([]);
         const started = yield* Deferred.make<void>();
         const alternateSelection: ModelSelection = {
@@ -2398,6 +2403,10 @@ describe("orchestration v2 provider switching", () => {
             responseByRunOrdinal: {},
             capturedTurns,
             holdFirstTurn: started,
+            unloadThread: ({ awaitClosed }) =>
+              awaitClosed === true
+                ? Deferred.succeed(writerReleased, undefined).pipe(Effect.asVoid)
+                : Effect.void,
           }),
           makeTestAdapter({
             instanceId: alternateSelection.instanceId,
@@ -2522,6 +2531,7 @@ describe("orchestration v2 provider switching", () => {
             (providerThread) => providerThread.id === delivered.runs[1]?.providerThreadId,
           )?.nativeThreadRef;
           assert.deepEqual(targetNativeRef, sourceNativeRef);
+          assert.isTrue(yield* Deferred.isDone(writerReleased));
           return delivered;
         }).pipe(
           Effect.provide(

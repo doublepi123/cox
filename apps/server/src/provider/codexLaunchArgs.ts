@@ -3,6 +3,7 @@ import * as FileSystem from "effect/FileSystem";
 import * as Path from "effect/Path";
 import * as HostProcess from "@t3tools/shared/HostProcess";
 import { tokenizeCliArgs } from "@t3tools/shared/cliArgs";
+import { compareSemverVersions, parseSemver } from "@t3tools/shared/semver";
 import { parse, TomlError } from "smol-toml";
 
 const T3CODE_CODEX_LAUNCH_ARGS_ENV = "T3CODE_CODEX_LAUNCH_ARGS";
@@ -17,10 +18,19 @@ export const resolveCodexLaunchArgs = (
 
 const codexLaunchArgv = (launchArgs?: string): ReadonlyArray<string> => tokenizeCliArgs(launchArgs);
 
-export const codexAppServerArgs = (launchArgs?: string) => [
-  "app-server",
-  ...codexLaunchArgv(launchArgs),
-];
+export const codexUsesStrictConfig = (launchArgs?: string) =>
+  codexLaunchArgv(launchArgs).includes("--strict-config");
+
+export const codexAppServerArgs = (launchArgs?: string, strictConfigVersion?: string | null) => {
+  const args = codexLaunchArgv(launchArgs);
+  // Strict config rejects this key before Codex 0.154. Leave unknown versions untouched.
+  const setUnloadDelay =
+    !args.includes("--strict-config") ||
+    (strictConfigVersion != null &&
+      parseSemver(strictConfigVersion) !== null &&
+      compareSemverVersions(strictConfigVersion, "0.154.0") >= 0);
+  return ["app-server", ...(setUnloadDelay ? ["-c", "thread_unload_delay_secs=0"] : []), ...args];
+};
 
 const codexConfigSetsMemories = (contents: string) => {
   try {
@@ -35,8 +45,9 @@ const codexConfigSetsMemories = (contents: string) => {
 export const codexSessionAppServerArgs = Effect.fn("codexSessionAppServerArgs")(function* (
   launchArgs: string,
   environment: NodeJS.ProcessEnv,
+  strictConfigVersion?: string | null,
 ) {
-  const args = codexAppServerArgs(launchArgs);
+  const args = codexAppServerArgs(launchArgs, strictConfigVersion);
   const explicitlySet = args.some(
     (arg, index) =>
       /^(?:--enable|--disable)=memories$/u.test(arg) ||

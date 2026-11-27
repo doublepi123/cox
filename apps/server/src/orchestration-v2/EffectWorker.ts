@@ -140,26 +140,53 @@ export const layerExecutor: Layer.Layer<
                   }),
               ),
             );
-          case "provider-session.detach":
-            return providerSessions
-              .detach({
-                providerSessionId: effect.request.providerSessionId,
-                threadId: effect.threadId,
-                ...(effect.request.detail === undefined ? {} : { detail: effect.request.detail }),
-                ...(effect.request.revokeMcpCredential === undefined
-                  ? {}
-                  : { revokeMcpCredential: effect.request.revokeMcpCredential }),
-              })
-              .pipe(
-                Effect.mapError(
-                  (cause) =>
-                    new OrchestrationEffectExecutionError({
-                      effectId: effect.id,
-                      effectType: effect.request.type,
+          case "provider-session.detach": {
+            const { handoffRunId } = effect.request;
+            const detach = providerSessions.detach({
+              providerSessionId: effect.request.providerSessionId,
+              threadId: effect.threadId,
+              ...(effect.request.detail === undefined ? {} : { detail: effect.request.detail }),
+              ...(effect.request.revokeMcpCredential === undefined
+                ? {}
+                : { revokeMcpCredential: effect.request.revokeMcpCredential }),
+              ...(effect.request.handoffProviderThread === undefined
+                ? {}
+                : { handoffProviderThread: effect.request.handoffProviderThread }),
+            });
+            return Effect.gen(function* () {
+              if (handoffRunId === undefined) return yield* detach;
+
+              yield* detach.pipe(
+                Effect.catch((cause) =>
+                  Effect.logWarning(
+                    "Provider account handoff could not release the source thread",
+                    {
+                      runId: handoffRunId,
                       cause,
-                    }),
+                    },
+                  ).pipe(
+                    Effect.andThen(
+                      providerTurnStart.start({
+                        threadId: effect.threadId,
+                        runId: handoffRunId,
+                        handoffFailure:
+                          "The previous provider did not release this conversation. Wait a moment and try again.",
+                      }),
+                    ),
+                  ),
                 ),
               );
+            }).pipe(
+              Effect.mapError(
+                (cause) =>
+                  new OrchestrationEffectExecutionError({
+                    effectId: effect.id,
+                    effectType: effect.request.type,
+                    cause,
+                  }),
+              ),
+            );
+          }
           case "provider-turn.start":
             return providerTurnStart
               .start({ threadId: effect.threadId, runId: effect.request.runId, willRetry })

@@ -229,6 +229,7 @@ export interface ProviderTurnStartServiceV2Shape {
     readonly threadId: ThreadId;
     readonly runId: RunId;
     readonly willRetry?: boolean;
+    readonly handoffFailure?: string;
   }) => Effect.Effect<void, ProviderTurnStartError>;
 }
 
@@ -393,6 +394,7 @@ export const layer: Layer.Layer<
       readonly threadId: ThreadId;
       readonly runId: RunId;
       readonly willRetry?: boolean;
+      readonly handoffFailure?: string;
     }) {
       const { runId } = input;
       const projection = yield* projectionStore.getTurnStartContext(input.threadId, runId);
@@ -559,6 +561,20 @@ export const layer: Layer.Layer<
           });
         },
       );
+      if (input.handoffFailure !== undefined) {
+        return yield* settleRunBeforeStart({
+          signal: "account-handoff-failed",
+          status: "failed",
+          now: yield* DateTime.now,
+          providerInstanceId: run.providerInstanceId,
+          itemProviderThreadId: providerThread.id,
+          item: {
+            type: "error",
+            title: "Turn failed to start",
+            failure: makeProviderFailure({ message: input.handoffFailure }),
+          },
+        });
+      }
       const settleStartFailure = Effect.fn("ProviderTurnStartService.settleStartFailure")(
         function* (failed: {
           readonly signal: string;

@@ -20,6 +20,7 @@ import { classifyCodexManagedError } from "../../provider/CodexManagedErrors.ts"
 import {
   buildCodexInitializeParams,
   codexAppServerEnvironment,
+  probeCodexCliVersion,
   codexDefaultReasoningEffortOverride,
 } from "../../provider/CodexProvider.ts";
 import {
@@ -129,6 +130,7 @@ import {
 } from "../../provider/EventNdjsonLogger.ts";
 import * as ProviderEventLoggers from "@t3tools/provider-core/server/ProviderEventLoggers";
 import {
+  codexUsesStrictConfig,
   codexSessionAppServerArgs,
   resolveCodexLaunchArgs,
 } from "../../provider/codexLaunchArgs.ts";
@@ -1784,12 +1786,18 @@ export const layerAppServerClientFactory: Layer.Layer<
           ...codexAppServerEnvironment(input.environment),
           ...(input.settings.homePath ? { CODEX_HOME: input.settings.homePath } : {}),
         };
+        const binaryPath = input.settings.binaryPath || "codex";
+        const launchArgs = resolveCodexLaunchArgs(input.settings.launchArgs, input.environment);
+        const strictConfigVersion = codexUsesStrictConfig(launchArgs)
+          ? yield* probeCodexCliVersion({
+              binaryPath,
+              cwd: yield* HostProcess.WorkingDirectory,
+              environment,
+            }).pipe(Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, spawner))
+          : undefined;
         const command = yield* makeCodexAppServerSpawnCommand({
-          command: input.settings.binaryPath || "codex",
-          args: yield* codexSessionAppServerArgs(
-            resolveCodexLaunchArgs(input.settings.launchArgs, input.environment),
-            environment,
-          ).pipe(
+          command: binaryPath,
+          args: yield* codexSessionAppServerArgs(launchArgs, environment, strictConfigVersion).pipe(
             Effect.provideService(FileSystem.FileSystem, fileSystem),
             Effect.provideService(Path.Path, path),
           ),
@@ -2233,6 +2241,7 @@ export const makeCodexAdapterV2 = Effect.fn("makeCodexAdapterV2")(function* (
           return kinds;
         };
         /** Retain settled contexts while background commands run so late item events still project. */
+        const threadClosings = new Map<string, Deferred.Deferred<void>>();
         const settledTurns = yield* Ref.make(new Map<string, ActiveCodexTurnContext>());
         const runningCommandItemsByTurn = yield* Ref.make(
           new Map<string, Map<string, TrackedRunningCommandItem>>(),
@@ -5452,42 +5461,51 @@ export const makeCodexAdapterV2 = Effect.fn("makeCodexAdapterV2")(function* (
         // their command items, while the shared provider session stays alive.
         yield* client.handleServerNotification("thread/closed", (payload) =>
           Effect.gen(function* () {
-            const completedAt = yield* DateTime.now;
-            for (const context of (yield* Ref.get(settledTurns)).values()) {
-              if (context.providerThread.nativeThreadRef?.nativeId !== payload.threadId) continue;
-              const commands = (yield* Ref.get(runningCommandItemsByTurn)).get(
-                context.nativeTurnId,
-              );
-              const unknown = (yield* Ref.get(unknownOutcomeCommandItemsByTurn)).get(
-                context.nativeTurnId,
-              );
-              if (commands !== undefined || unknown !== undefined) {
-                context.closedCommandItemIds = new Set([
-                  ...(commands?.keys() ?? []),
-                  ...(unknown ?? []),
-                ]);
-              }
-              if (unknown !== undefined) {
-                yield* Ref.update(unknownOutcomeCommandItemsByTurn, (current) => {
-                  const updated = new Map(current);
-                  updated.delete(context.nativeTurnId);
-                  return updated;
-                });
-              }
-              yield* terminalizeRunningCommandItems(
-                context,
-                context.nativeTurnId,
-                "interrupted",
-                completedAt,
-              );
-              yield* Ref.update(runningCommandItemsByTurn, (current) => {
-                const updated = new Map(current);
-                updated.delete(context.nativeTurnId);
-                return updated;
-              });
-              yield* releaseSettledTurnIfIdle(context.nativeTurnId);
-            }
-          }).pipe(Effect.orDie, turnTerminalizationPermit.withPermits(1)),
+            const closing = threadClosings.get(payload.threadId);
+            threadClosings.delete(payload.threadId);
+            if (closing !== undefined) yield* Deferred.succeed(closing, undefined);
+          }).pipe(
+            Effect.andThen(
+              Effect.gen(function* () {
+                const completedAt = yield* DateTime.now;
+                for (const context of (yield* Ref.get(settledTurns)).values()) {
+                  if (context.providerThread.nativeThreadRef?.nativeId !== payload.threadId)
+                    continue;
+                  const commands = (yield* Ref.get(runningCommandItemsByTurn)).get(
+                    context.nativeTurnId,
+                  );
+                  const unknown = (yield* Ref.get(unknownOutcomeCommandItemsByTurn)).get(
+                    context.nativeTurnId,
+                  );
+                  if (commands !== undefined || unknown !== undefined) {
+                    context.closedCommandItemIds = new Set([
+                      ...(commands?.keys() ?? []),
+                      ...(unknown ?? []),
+                    ]);
+                  }
+                  if (unknown !== undefined) {
+                    yield* Ref.update(unknownOutcomeCommandItemsByTurn, (current) => {
+                      const updated = new Map(current);
+                      updated.delete(context.nativeTurnId);
+                      return updated;
+                    });
+                  }
+                  yield* terminalizeRunningCommandItems(
+                    context,
+                    context.nativeTurnId,
+                    "interrupted",
+                    completedAt,
+                  );
+                  yield* Ref.update(runningCommandItemsByTurn, (current) => {
+                    const updated = new Map(current);
+                    updated.delete(context.nativeTurnId);
+                    return updated;
+                  });
+                  yield* releaseSettledTurnIfIdle(context.nativeTurnId);
+                }
+              }).pipe(Effect.orDie, turnTerminalizationPermit.withPermits(1)),
+            ),
+          ),
         );
 
         yield* client.handleServerNotification("item/started", (payload) =>
@@ -8166,7 +8184,19 @@ export const makeCodexAdapterV2 = Effect.fn("makeCodexAdapterV2")(function* (
             function* (unloadInput) {
               const nativeThreadId = yield* getNativeThreadId(unloadInput.providerThread);
               sessionApprovals.delete(nativeThreadId);
-              yield* client.request("thread/unsubscribe", { threadId: nativeThreadId });
+              const pending = threadClosings.get(nativeThreadId);
+              const closing = pending ?? Deferred.makeUnsafe<void>();
+              threadClosings.set(nativeThreadId, closing);
+              const { status } = yield* client.request("thread/unsubscribe", {
+                threadId: nativeThreadId,
+              });
+              if (status === "notLoaded" || (status === "notSubscribed" && pending === undefined)) {
+                if (threadClosings.get(nativeThreadId) === closing)
+                  threadClosings.delete(nativeThreadId);
+                yield* Deferred.succeed(closing, undefined);
+              } else if (unloadInput.awaitClosed === true) {
+                yield* Deferred.await(closing);
+              }
             },
             (effect, unloadInput) =>
               effect.pipe(
