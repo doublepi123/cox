@@ -25,6 +25,11 @@ import {
   buildAntigravityPrompt,
   type AntigravityAcpRuntimeInput,
 } from "../../provider/acp/AntigravityAcpSupport.ts";
+import {
+  antigravitySubagentLaunches,
+  describeAntigravitySubagentLaunches,
+  readAntigravitySubagentTranscript,
+} from "../../provider/acp/AntigravityChildWork.ts";
 import { readAntigravityClientTextFile } from "../../provider/acp/AntigravityClientFiles.ts";
 import {
   readAntigravityExecutedModel,
@@ -102,14 +107,19 @@ const extractAntigravitySubagentUpdate: NonNullable<AcpAdapterV2Flavor["extractS
   const status =
     toolCall.status === "failed" ? "failed" : toolCall.status === "pending" ? "pending" : "running";
   const childSessionId = antigravitySwarmAddChildSessionId(toolCall);
+  const launches = antigravitySubagentLaunches(toolCall.data.rawInput);
+  const launch = launches === undefined ? undefined : describeAntigravitySubagentLaunches(launches);
   return {
     nativeTaskId: toolCall.toolCallId,
     prompt:
+      launch?.prompt ??
       antigravitySubagentOutput(toolCall) ??
       toolCall.detail ??
       toolCall.title ??
       "Antigravity subagent batch",
-    title: toolCall.title?.startsWith("Add ") ? toolCall.title : "Antigravity subagent batch",
+    title:
+      launch?.title ??
+      (toolCall.title?.startsWith("Add ") ? toolCall.title : "Antigravity subagent batch"),
     model: antigravitySwarmAddModel(toolCall),
     status,
     childSessionId,
@@ -263,6 +273,15 @@ export function makeAntigravityAcpAdapterFlavor(
     ...(options.profileDirectory === undefined
       ? {}
       : {
+          readSubagentTranscript: ({
+            sessionId,
+            ...input
+          }: Parameters<NonNullable<AcpAdapterV2Flavor["readSubagentTranscript"]>>[0]) =>
+            readAntigravitySubagentTranscript({
+              ...input,
+              profileDirectory: options.profileDirectory!,
+              rootSessionId: sessionId,
+            }),
           watchPromptOutcome: (sessionId: string) =>
             watchAntigravityPromptOutcome(options.profileDirectory!, sessionId),
           executedModel: (sessionId: string) =>

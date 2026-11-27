@@ -1288,6 +1288,190 @@ describe("AntigravityAdapterV2 subagent reads", () => {
       assert.deepEqual(read("call_unseen"), failed);
     }).pipe(Effect.provide(layerSession), Effect.scoped),
   );
+
+  it.effect(
+    "projects Antigravity child thinking, typed tools, and replies on the child timeline",
+    () =>
+      Effect.gen(function* () {
+        const childProcessSpawner = yield* ChildProcessSpawner.ChildProcessSpawner;
+        const fileSystem = yield* FileSystem.FileSystem;
+        const path = yield* Path.Path;
+        const crypto = yield* SecureRandom.SecureRandom;
+        const mockAgentPath = yield* path.fromFileUrl(
+          new URL("../../../scripts/acp-mock-agent.ts", import.meta.url),
+        );
+        const workspace = yield* fileSystem.makeTempDirectoryScoped({
+          prefix: "t3-antigravity-reads-",
+        });
+        const profileDirectory = yield* fileSystem.makeTempDirectoryScoped({
+          prefix: "cox-antigravity-transcript-",
+        });
+        const childId = "a357bf2720914589dd1ec49f7a816115";
+        const transcriptDirectory = path.join(
+          profileDirectory,
+          "antigravity-acp",
+          "brain",
+          childId,
+          ".system_generated",
+          "logs",
+        );
+        yield* fileSystem.makeDirectory(transcriptDirectory, { recursive: true });
+        yield* fileSystem.writeFileString(
+          path.join(transcriptDirectory, "transcript.jsonl"),
+          [
+            { step_index: 0, type: "SYSTEM_MESSAGE", status: "DONE", content: "Read README.md" },
+            {
+              step_index: 1,
+              type: "PLANNER_RESPONSE",
+              status: "DONE",
+              thinking: "Checking the README",
+              tool_calls: [{ name: "read_file", args: { Path: '"/project/README.md"' } }],
+            },
+            { step_index: 2, type: "GENERIC", status: "DONE", content: "Found the marker" },
+            {
+              step_index: 3,
+              type: "PLANNER_RESPONSE",
+              status: "DONE",
+              content: "The marker is present.",
+            },
+          ]
+            .map((line) => JSON.stringify(line))
+            .join("\n") + "\n",
+        );
+        type RuntimeService = AcpSessionRuntime.AcpSessionRuntime["Service"];
+        let sessionUpdate: Parameters<RuntimeService["handleSessionUpdate"]>[0] | undefined;
+        const instanceId = ProviderInstanceId.make("antigravity-subagent-reads-test");
+        const threadId = ThreadId.make("thread-antigravity-subagent-reads");
+        const adapter = yield* makeAntigravityAdapterV2({
+          instanceId,
+          profileDirectory,
+          selfInvocation: yield* resolveSelfInvocation(),
+          makeRuntime: (input) =>
+            makeAntigravityAcpRuntime({
+              ...input,
+              childProcessSpawner,
+              spawn: {
+                command: process.execPath,
+                args: [mockAgentPath],
+                cwd: input.cwd,
+                env: { T3_ACP_ANTIGRAVITY: "1" },
+              },
+            }).pipe(
+              Effect.provideService(SecureRandom.SecureRandom, crypto),
+              Effect.map((runtime): RuntimeService => ({
+                ...runtime,
+                handleSessionUpdate: (handler) =>
+                  Effect.sync(() => {
+                    sessionUpdate = handler;
+                  }).pipe(Effect.andThen(runtime.handleSessionUpdate(handler))),
+                prompt: () =>
+                  Effect.gen(function* () {
+                    if (sessionUpdate === undefined)
+                      return yield* Effect.die("missing ACP session update handler");
+                    yield* sessionUpdate({
+                      sessionId: "mock-session-1",
+                      update: {
+                        sessionUpdate: "tool_call",
+                        toolCallId: "call_spawn",
+                        title: "Running swarm",
+                        kind: "other",
+                        status: "completed",
+                        rawInput: { action: "add", name: "reader", brief: "Read README.md" },
+                        rawOutput: { conversation_id: childId },
+                      },
+                    });
+                    return { stopReason: "end_turn" as const };
+                  }),
+              })),
+            ),
+          withProcess: (_stop, task) => task,
+          // @effect-diagnostics-next-line effectSucceedWithVoid:off - This optional result requires undefined, not the wider void type.
+          defaultModel: Effect.succeed(undefined),
+        });
+        const runtimePolicy = ProviderAdapter.ProviderAdapterV2RuntimePolicy.make({
+          runtimeMode: "full-access",
+          interactionMode: "default",
+          cwd: workspace,
+        });
+        const modelSelection = { instanceId, model: "gemini-test-low" } as const;
+        const session = yield* adapter.openSession({
+          threadId,
+          providerSessionId: ProviderSessionId.make("provider-session-antigravity-subagent-reads"),
+          modelSelection,
+          runtimePolicy,
+        });
+        const providerThread = yield* session.ensureThread({
+          threadId,
+          modelSelection,
+          runtimePolicy,
+        });
+        const now = yield* DateTime.now;
+        yield* session.startTurn({
+          appThread: {
+            createdBy: "user",
+            creationSource: "web",
+            id: threadId,
+            projectId: ProjectId.make("project-antigravity-subagent-reads"),
+            title: "Antigravity subagent reads",
+            providerInstanceId: instanceId,
+            modelSelection,
+            runtimeMode: "full-access",
+            interactionMode: "default",
+            branch: null,
+            worktreePath: workspace,
+            activeProviderThreadId: providerThread.id,
+            lineage: { parentThreadId: null, relationshipToParent: null, rootThreadId: threadId },
+            forkedFrom: null,
+            createdAt: now,
+            updatedAt: now,
+            archivedAt: null,
+            settledOverride: null,
+            settledAt: null,
+            lastVisitedAt: null,
+            deletedAt: null,
+          },
+          threadId,
+          runId: RunId.make("run-antigravity-subagent-reads"),
+          runOrdinal: 1,
+          providerTurnOrdinal: 1,
+          attemptId: RunAttemptId.make("attempt-antigravity-subagent-reads"),
+          rootNodeId: NodeId.make("node-antigravity-subagent-reads"),
+          providerThread,
+          message: {
+            createdBy: "user",
+            creationSource: "web",
+            messageId: MessageId.make("message-antigravity-subagent-reads"),
+            text: "review the codebase",
+            attachments: [],
+          },
+          modelSelection,
+          runtimePolicy,
+        });
+        const events = Array.from(
+          yield* session.events.pipe(
+            Stream.takeUntil((event) => event.type === "turn.terminal"),
+            Stream.runCollect,
+          ),
+        );
+        const child = events.find((event) => event.type === "app_thread.created");
+        assert.isDefined(child);
+        if (child === undefined) return;
+        const items = events.flatMap((event) =>
+          event.type === "turn_item.updated" && event.turnItem.threadId === child.appThread.id
+            ? [event.turnItem]
+            : [],
+        );
+        assert.includeMembers(
+          items.map((item) => item.type),
+          ["reasoning", "dynamic_tool", "assistant_message"],
+        );
+        assert.isTrue(
+          items.some(
+            (item) => item.type === "assistant_message" && item.text === "The marker is present.",
+          ),
+        );
+      }).pipe(Effect.provide(layerSession), Effect.scoped),
+  );
 });
 
 describe("AntigravityAdapterV2 update_steps checklist", () => {

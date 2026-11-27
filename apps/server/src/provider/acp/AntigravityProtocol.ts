@@ -298,6 +298,9 @@ function sanitizeToolValue(
   return Object.fromEntries(entries);
 }
 
+export { boundText as boundAntigravityToolText };
+export const isCutAntigravityToolText = (text: string) => text.includes(TOOL_TEXT_TRUNCATED);
+
 export function sanitizeAntigravityToolPayload(payload: unknown): unknown {
   return sanitizeToolValue(
     payload,
