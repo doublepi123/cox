@@ -89,11 +89,7 @@ export function MarkdownTable({ children, ...props }: ComponentProps<"table">) {
               <MenuItem
                 onClick={() => {
                   const table = containerRef.current?.querySelector("table");
-                  if (table)
-                    copyPngToClipboard(
-                      () => loadTablePng(table),
-                      "png",
-                    );
+                  if (table) copyPngToClipboard(() => loadTablePng(table), "png");
                 }}
               >
                 {translateUi("Copy as PNG")}
