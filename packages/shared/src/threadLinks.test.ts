@@ -178,6 +178,18 @@ describe("thread links", () => {
     }
   });
 
+  it.each(["\r", "\r\n", "\n"])("keeps fenced examples literal with %j line endings", (eol) => {
+    for (const fence of ["~~~", "```"]) {
+      const text = [fence, "<t3-thread://v2/local/t>", fence].join(eol);
+      expect(threadLinkRefs(text, local)).toEqual([]);
+      const pasted = `${text}${eol}<t3-thread://v2/local/after>`;
+      expect(threadLinkRefs(pasted, local)).toEqual([ref("local", "after")]);
+      expect(relabelThreadLinks(pasted, local, () => "New")).toBe(
+        `${text}${eol}[New](t3-thread://v2/local/after)`,
+      );
+    }
+  });
+
   it("lists the threads a message's links can name, outside code", () => {
     expect(
       threadLinkRefs(
