@@ -43,6 +43,8 @@ const WORKSPACE_INDEX_SCAN_TIMEOUT_MS = 15_000;
 const WORKSPACE_INDEX_IDLE_TTL = "15 minutes";
 const CONTENT_SEARCH_TIME_BUDGET_MS = 250;
 const CONTENT_SEARCH_MAX_MATCHES_PER_FILE = 100;
+const FFF_LINE_PREVIEW_BYTES = 512;
+const UTF8_MAX_TRAILING_BYTES = 3;
 
 export class WorkspaceSearchIndexCreateFailed extends Schema.TaggedError<WorkspaceSearchIndexCreateFailed>()(
   "WorkspaceSearchIndexCreateFailed",
@@ -747,6 +749,15 @@ export const make = Effect.fn("WorkspaceSearchIndex.make")(function* (
     let { searchQuery, regexMode } = wholeWordPrefilter
       ? { searchQuery: buildWholeWordPattern(input.query, input.caseSensitive), regexMode: true }
       : buildContentSearchQuery(input);
+    const nativeWholeWordRegex =
+      input.wholeWord &&
+      input.useRegex &&
+      /^[\w+*?{}| -]+$/u.test(input.query) &&
+      /^\w.*\w$/u.test(input.query) &&
+      !input.query.includes("|");
+    if (nativeWholeWordRegex) {
+      searchQuery = `${input.caseSensitive ? "" : "(?i)"}\\b(?:${input.query})\\b`;
+    }
     const deadline = performance.now() + CONTENT_SEARCH_TIME_BUDGET_MS;
     // Grep cursors advance per file; whole-word filtering needs enough raw candidates before advancing.
     const rawPageSize = input.wholeWord
@@ -778,12 +789,28 @@ export const make = Effect.fn("WorkspaceSearchIndex.make")(function* (
 
       for (const match of result.items) {
         if (isIgnoredPath(ignoredPaths, match.relativePath)) continue;
+        const capped =
+          Buffer.byteLength(match.lineContent) >= FFF_LINE_PREVIEW_BYTES - UTF8_MAX_TRAILING_BYTES;
         const matchRanges = (
           wholeWordPrefilter
             ? findWordRanges(match.lineContent, input.query, input.caseSensitive)
             : mapContentMatchRanges(match.lineContent, match.matchRanges)
-        ).filter((range) => !input.wholeWord || isWholeWordRange(match.lineContent, range));
-        if (input.wholeWord && matchRanges.length === 0) continue;
+        ).filter(
+          (range) =>
+            (!capped || range.end < match.lineContent.length) &&
+            (!input.wholeWord || isWholeWordRange(match.lineContent, range)),
+        );
+        if (
+          input.wholeWord &&
+          matchRanges.length === 0 &&
+          !(
+            capped &&
+            match.matchRanges.length === 0 &&
+            !retryLiterally &&
+            (wholeWordPrefilter || nativeWholeWordRegex)
+          )
+        )
+          continue;
         matches.push({
           path: toPosixPath(match.relativePath),
           lineNumber: match.lineNumber,

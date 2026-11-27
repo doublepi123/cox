@@ -172,6 +172,47 @@ it.effect("continues whole-word searches after a filtered grep page", () =>
   ),
 );
 
+it.live("checks whole lines while returning only visible match ranges", () =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem;
+      const path = yield* Path.Path;
+      const cwd = yield* fs.makeTempDirectoryScoped({ prefix: "cox-long-lines-" });
+      yield* fs.writeFileString(
+        path.join(cwd, "long.ts"),
+        [
+          `${" ".repeat(600)}token`,
+          `${" ".repeat(507)}tokenized`,
+          `é token ${"d".repeat(600)} token`,
+          `é tokenized${" ".repeat(600)}token`,
+        ].join("\r\n"),
+      );
+      const searchIndex = yield* WorkspaceSearchIndex.make(cwd, "content");
+      const search = (query: string, wholeWord: boolean, useRegex: boolean) =>
+        searchIndex
+          .searchContents({ query, wholeWord, useRegex, limit: 20, caseSensitive: true })
+          .pipe(
+            Effect.map(({ matches }) =>
+              matches.map(({ lineNumber, matchRanges }) => [lineNumber, matchRanges]),
+            ),
+          );
+      const words = [
+        [1, []],
+        [3, [{ start: 2, end: 7 }]],
+        [4, []],
+      ];
+      expect(yield* search("token", true, false)).toEqual(words);
+      expect(yield* search("tok+en", true, true)).toEqual(words);
+      expect(yield* search("tok+en\\w*", false, true)).toEqual([
+        [1, []],
+        [2, []],
+        [3, [{ start: 2, end: 7 }]],
+        [4, [{ start: 2, end: 11 }]],
+      ]);
+    }).pipe(Effect.provide(VcsProcessModule.layer.pipe(Layer.provideMerge(NodeServices.layer)))),
+  ),
+);
+
 it.effect("refreshes the index through FFF's asynchronous scan", () =>
   Effect.scoped(
     Effect.gen(function* () {
