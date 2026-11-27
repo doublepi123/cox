@@ -19,6 +19,41 @@ const pendingWorkspaceDefaults = new Map<
   ProvisionalWorkspace & { readonly settled: Promise<void> }
 >();
 
+type DraftCheckoutOutcome = boolean | "moved";
+const pendingCheckouts = new Map<DraftId, Promise<DraftCheckoutOutcome>>();
+
+export function trackPendingDraftCheckout(
+  draftId: DraftId,
+  project: ScopedProjectRef,
+  checkoutReady: Promise<boolean>,
+) {
+  let resolve!: (outcome: DraftCheckoutOutcome) => void;
+  const settled = new Promise<DraftCheckoutOutcome>((done) => {
+    resolve = done;
+  });
+  const isCurrent = () => pendingCheckouts.get(draftId) === settled;
+  const finish = (outcome: DraftCheckoutOutcome) => {
+    unsubscribe();
+    if (isCurrent()) pendingCheckouts.delete(draftId);
+    resolve(outcome);
+  };
+  const check = () => {
+    const draft = useComposerDraftStore.getState().getDraftSession(draftId);
+    if (
+      draft === null ||
+      draft.promotedTo != null ||
+      draft.environmentId !== project.environmentId ||
+      draft.projectId !== project.projectId
+    )
+      finish("moved");
+  };
+  const unsubscribe = useComposerDraftStore.subscribe(check);
+  pendingCheckouts.set(draftId, settled);
+  check();
+  void checkoutReady.then(finish, () => finish(false));
+  return isCurrent;
+}
+
 function keepsProvisionalWorkspace(
   draft: DraftSessionState | null,
   provisional: ProvisionalWorkspace,
@@ -35,21 +70,9 @@ function keepsProvisionalWorkspace(
   );
 }
 
-const pendingCheckouts = new Map<DraftId, Promise<boolean>>();
-
-/** A waiting send can resume only after the current checkout has been applied. */
-export function trackPendingDraftCheckout(draftId: DraftId, checkoutReady: Promise<boolean>) {
-  const isCurrent = () => pendingCheckouts.get(draftId) === settled;
-  const settled: Promise<boolean> = checkoutReady
-    .catch(() => false)
-    .finally(() => {
-      if (isCurrent()) pendingCheckouts.delete(draftId);
-    });
-  pendingCheckouts.set(draftId, settled);
-  return isCurrent;
-}
-
-export function readPendingWorkspaceDefault(draftId: DraftId): Promise<boolean | void> | null {
+export function readPendingWorkspaceDefault(
+  draftId: DraftId,
+): Promise<DraftCheckoutOutcome | void> | null {
   const checkout = pendingCheckouts.get(draftId);
   if (checkout) return checkout;
   const pending = pendingWorkspaceDefaults.get(draftId);

@@ -12,6 +12,7 @@ import type {
   PullRequestMergeMethod,
   PullRequestRef,
   PullRequestSummary,
+  ScopedProjectRef,
   ScopedThreadRef,
 } from "@t3tools/contracts";
 import { useRef, useState } from "react";
@@ -35,6 +36,7 @@ import { usePrimaryEnvironmentId } from "~/state/environments";
 import { type DraftId, useComposerDraftStore } from "~/composerDraftStore";
 import { useNewThreadHandler } from "~/hooks/useHandleNewThread";
 import { usePreparePullRequestThreadAction } from "~/state/sourceControlActions";
+import { trackPendingDraftCheckout } from "~/lib/draftWorkspaceDefaults";
 import { trackPendingDraftCheckout } from "~/lib/draftWorkspaceDefaults";
 import type { ReviewCommentContext } from "~/reviewCommentContext";
 import { pullRequestEnvironment } from "~/state/pullRequests";
@@ -279,6 +281,7 @@ type DraftCheckoutResult = PreparedCheckout | { readonly _tag: "Cancelled" };
  */
 export function prepareDraftCheckout(
   draftId: DraftId,
+  projectRef: ScopedProjectRef,
   checkout: Promise<PreparedCheckout>,
 ): Promise<DraftCheckoutResult> {
   const result = checkout.then((prepared): DraftCheckoutResult => {
@@ -298,6 +301,7 @@ export function prepareDraftCheckout(
   });
   const isCurrent = trackPendingDraftCheckout(
     draftId,
+    projectRef,
     result.then((prepared) => prepared._tag === "Success"),
   );
   return result;
@@ -399,6 +403,7 @@ export function usePullRequestHandoffs({
     }
     const prepared = await prepareDraftCheckout(
       opened.draftId,
+      projectRef,
       prepareThread.run({
         reference: detail.url,
         mode,

@@ -1,5 +1,10 @@
-import { scopedProjectKey } from "@t3tools/client-runtime/environment";
 import { EnvironmentId, ProjectId, ThreadId, type PullRequestRef } from "@t3tools/contracts";
+import { scopeProjectRef, scopedProjectKey } from "@t3tools/client-runtime/environment";
+import { DraftId, useComposerDraftStore } from "~/composerDraftStore";
+import {
+  readPendingWorkspaceDefault,
+  trackPendingDraftCheckout,
+} from "~/lib/draftWorkspaceDefaults";
 import { sourceControlClients } from "@t3tools/client-runtime/source-control-clients";
 import { expect, it, vi } from "vite-plus/test";
 import { userEvent } from "vite-plus/test/browser";
@@ -38,6 +43,30 @@ function deferred<T>() {
   });
   return { promise, resolve };
 }
+
+it("releases a waiting send when its checkout draft moves to a different project", async () => {
+  const store = useComposerDraftStore.getState();
+  const draftId = DraftId.make("draft-moved-during-checkout");
+  const threadId = ThreadId.make("thread-moved-during-checkout");
+  const environment = EnvironmentId.make("environment");
+  const initial = scopeProjectRef(environment, ProjectId.make("initial"));
+  const destination = scopeProjectRef(environment, ProjectId.make("destination"));
+  store.setLogicalProjectDraftThreadId(scopedProjectKey(initial), initial, draftId, { threadId });
+  store.setPrompt(draftId, "Keep my prompt");
+  const isCurrent = trackPendingDraftCheckout(draftId, initial, deferred<boolean>().promise);
+  const waiting = readPendingWorkspaceDefault(draftId);
+  expect(waiting).not.toBeNull();
+  store.setLogicalProjectDraftThreadId(scopedProjectKey(destination), destination, draftId, {
+    branch: "destination",
+  });
+  await expect(waiting).resolves.toBe("moved");
+  expect(isCurrent()).toBe(false);
+  expect(store.getDraftSession(draftId)).toMatchObject({
+    branch: "destination",
+    worktreePath: null,
+  });
+  expect(store.getComposerDraft(draftId)?.prompt).toBe("Keep my prompt");
+});
 
 function MergeButton({ reference }: { reference: PullRequestRef }) {
   const { actionPending, perform } = usePullRequestActionRunner({

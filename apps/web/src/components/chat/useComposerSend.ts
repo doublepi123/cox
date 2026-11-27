@@ -1639,13 +1639,13 @@ export function useComposerSend(input: ComposerSendInput) {
       const draftStatus = finishWatching();
       if (result._tag === "Failure" || result.value === false) return;
       if (currentRouteThreadKeyRef.current !== routeThreadKey) return;
-      if (draftStatus === "edited" && activeThread) {
+      if ((draftStatus === "edited" || result.value === "moved") && activeThread) {
         setThreadError(
           activeThread.id,
           t("Draft changed while preparing this message. Review it and send again."),
         );
       }
-      if (draftStatus !== "ready") return;
+      if (draftStatus !== "ready" || result.value === "moved") return;
       return sendLatest(...args);
     },
   };
