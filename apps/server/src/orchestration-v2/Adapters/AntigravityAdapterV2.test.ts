@@ -1351,6 +1351,12 @@ describe("AntigravityAdapterV2 subagent reads", () => {
           path.join(rootRecords, "subagents", childId + ".json"),
           "{}",
         );
+        const rootLogs = path.join(rootRecords, "logs");
+        yield* fileSystem.makeDirectory(rootLogs);
+        yield* fileSystem.writeFileString(
+          path.join(rootLogs, "transcript.jsonl"),
+          '{"step_index":0,"type":"USER_INPUT"}\n{"step_index":1,"type":"PLANNER_RESPONSE","model":"gemini-test-high"}\n',
+        );
         type RuntimeService = AcpSessionRuntime.AcpSessionRuntime["Service"];
         let sessionUpdate: Parameters<RuntimeService["handleSessionUpdate"]>[0] | undefined;
         const instanceId = ProviderInstanceId.make("antigravity-subagent-reads-test");
@@ -1482,6 +1488,14 @@ describe("AntigravityAdapterV2 subagent reads", () => {
             Stream.takeUntil((event) => event.type === "turn.terminal"),
             Stream.runCollect,
           ),
+        );
+        const completed = events.findLast(
+          (event) =>
+            event.type === "provider_turn.updated" && event.providerTurn.status === "completed",
+        );
+        assert.equal(
+          completed?.type === "provider_turn.updated" && completed.providerTurn.model,
+          "gemini-test-high",
         );
         const idle = events.findIndex(
           (event) => event.type === "subagent.updated" && event.subagent.status === "idle",
