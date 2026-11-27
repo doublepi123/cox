@@ -1,6 +1,15 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { LARGE_MARKDOWN_CHUNK_MAX_CHARS, splitMarkdown } from "./markdownChunks.ts";
+import { toHtml } from "hast-util-to-html";
+import remarkParse from "remark-parse";
+import remarkRehype from "remark-rehype";
+import { unified } from "unified";
+
+import {
+  LARGE_MARKDOWN_CHUNK_MAX_CHARS,
+  splitMarkdown,
+  withMarkdownDefinitions,
+} from "./markdownChunks.ts";
 
 const splitLargeMarkdown = (text: string, targetChars?: number) =>
   splitMarkdown(text, targetChars).chunks;
@@ -269,5 +278,94 @@ describe("splitMarkdown", () => {
     expect(splitMarkdown(unbalanced.join("\n")).definitions).toBe(
       "[balanced]: /docs/example(a(b))\n[escaped]: /docs/example\\)\n[angle]: </docs/example)>",
     );
+  });
+});
+
+describe("withMarkdownDefinitions", () => {
+  const html = (text: string) => {
+    const processor = unified().use(remarkParse).use(remarkRehype);
+    return toHtml(processor.runSync(processor.parse(text)));
+  };
+
+  // Cox appends shared definitions after a piece, so these assert on what was collected; which
+  // definition wins when a piece repeats one is upstream 9b4a5e1086 (definitions prepended).
+  it("keeps the first document definition ahead of later chunk definitions", () => {
+    const text = "[id]: /first\n\n" + "x".repeat(4100) + "\n\n# Next\n[id]: /later\n\n[id]";
+    const { chunks, definitions } = splitMarkdown(text);
+    expect(html(text)).toContain('href="/first"');
+    expect(chunks).toHaveLength(2);
+    expect(definitions.startsWith("[id]: /first\n")).toBe(true);
+    expect(chunks.map((chunk) => chunk.text).join("\n")).toBe(text);
+  });
+
+  it.each([
+    ["a wrapped label with an inline destination", "[release\nnotes]: /first"],
+    ["a wrapped label with a next-line destination", "[release\nnotes]:\n  /first"],
+    [
+      "a title on the next line of the preceding definition",
+      '[other]: /other\n  "Other"\n[release notes]: /first',
+    ],
+    ["a title starting on the destination line", '[release notes]: /first "First\n  release"'],
+    ["a destination ending in a nonbreaking space", "[release notes]:\n  /first\u00a0"],
+  ])("collects the first reference with %s", (_, first) => {
+    const text = `${first}\n\n${"x".repeat(4100)}\n\n# Next\n[release notes]: /later\n\n[Release][release notes]`;
+    const { chunks, definitions } = splitMarkdown(text);
+    expect(chunks).toHaveLength(2);
+    expect(definitions.startsWith(first)).toBe(true);
+    expect(chunks.map((chunk) => chunk.text).join("\n")).toBe(text);
+  });
+
+  it("shares a wrapped label at the Markdown length limit with an escaped bracket", () => {
+    const definition = `[${"a".repeat(995)}\\]\nct]: /first`;
+    expect(splitMarkdown(definition).definitions).toBe(definition);
+  });
+
+  it("leaves oversized titles with their source definitions", () => {
+    const title = "t".repeat(16 * 1024);
+    const text = `[id]\n\n[id]:\n  /first\n  "${title}"\n\n# Next\n[ID]: /later\n\n[id]`;
+    const { chunks, definitions } = splitMarkdown(text);
+    expect(chunks).toHaveLength(2);
+    const first = html(withMarkdownDefinitions(chunks[0]!.text, definitions));
+    expect(first).toContain('href="/first"');
+    expect(first).toContain(`title="${title}"`);
+  });
+
+  it.each(["", '" trailing text', '\\"'])(
+    "shares a complete definition before a long quote-led paragraph ending in %j",
+    (suffix) => {
+      const text = `[id]:\n  /first\n  "${"x".repeat(16 * 1024)}${suffix}\n\n# Next\n[id]: /later\n\n[id]`;
+      const { chunks, definitions } = splitMarkdown(text);
+      expect(chunks).toHaveLength(2);
+      expect(definitions).toContain("[id]:\n  /first");
+    },
+  );
+
+  it.each([
+    ["inline links", "[a](/x)".repeat(2000), "\n\n", 64],
+    ["link-like text separated by thematic breaks", "[note] text\n***", "\n", 2000],
+    ["invalid definitions separated by thematic breaks", "[note]: /invalid)\n***", "\n", 2000],
+  ])("keeps long runs of %s out of shared definitions", (_, block, separator, count) => {
+    const text = Array.from({ length: count }, () => block).join(separator);
+    const { chunks, definitions } = splitMarkdown(text);
+    expect(definitions).toBe("");
+    expect(chunks.map((chunk) => chunk.text).join("\n")).toBe(text);
+  });
+
+  it("keeps a display math opener and its contents out of shared definitions", () => {
+    const text = "[actual]\n\n[unused]:\n$$\n\n[actual]: /wrong\n\n$$\n\n[actual]: /right";
+    const { chunks, definitions } = splitMarkdown(text, 1);
+    expect(html(withMarkdownDefinitions(chunks[0]!.text, definitions))).toContain('href="/right"');
+    expect(definitions).toBe("[actual]: /right");
+    expect(chunks.map((chunk) => chunk.text).join("\n")).toBe(text);
+  });
+
+  it("collects a long run of titled references within the shared definition budget", () => {
+    const references = Array.from({ length: 2000 }, (_, index) => `[r${index}]:\n  /url "Title"`);
+    const source = references.join("\n");
+    const { definitions } = splitMarkdown(source);
+    expect(definitions).toBe(source.slice(0, definitions.length));
+    expect(definitions).toContain(references[500]);
+    expect(definitions.length).toBeLessThanOrEqual(16 * 1024);
+    expect(definitions).not.toContain("[r1999]");
   });
 });
