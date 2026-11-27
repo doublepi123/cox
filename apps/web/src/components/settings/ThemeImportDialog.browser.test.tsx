@@ -201,6 +201,43 @@ const theme = (name: string, accent = "#3b82f6") => ({
   colors: { accent },
 });
 
+it("keeps a numbered copy when the theme name expands in its ID", async () => {
+  const previous = localStorage.getItem(CUSTOM_THEMES_STORAGE_KEY);
+  localStorage.removeItem(CUSTOM_THEMES_STORAGE_KEY);
+  invalidateCustomThemes();
+  using _themes = {
+    [Symbol.dispose]() {
+      if (previous === null) localStorage.removeItem(CUSTOM_THEMES_STORAGE_KEY);
+      else localStorage.setItem(CUSTOM_THEMES_STORAGE_KEY, previous);
+      invalidateCustomThemes();
+    },
+  };
+  const name = "İstanbul İncisi İzmir İskenderun İnegöl İpsala";
+  const original = installCustomTheme(parseThemeFile(theme(name)));
+  const updated = theme(name, "#f97316");
+  await using _screen = await render(
+    <ThemeImportDialog
+      open
+      onOpenChange={() => {}}
+      onImported={() => true}
+      onImportedMany={() => {}}
+    />,
+  );
+
+  await userEvent.fill(page.getByRole("textbox", { name: "Theme JSON" }), JSON.stringify(updated));
+  await page.getByRole("button", { name: "Add theme", exact: true }).click();
+  await expect.element(page.getByText("Already installed")).toBeVisible();
+  await page.getByRole("button", { name: "Keep both" }).click();
+
+  const themes = getCustomThemes();
+  expect(themes).toHaveLength(2);
+  expect(themes.find(({ id }) => id === original.id)).toEqual(original);
+  expect(themes.find(({ id }) => id !== original.id)).toMatchObject({
+    label: "İstanbul İncisi İzmir İskenderun İnegöl İ (1)",
+    colors: parseThemeFile(updated).colors,
+  });
+});
+
 const themeFile = (name: string, accent?: string) =>
   new File([JSON.stringify(theme(name, accent))], `${name}.json`, { type: "application/json" });
 

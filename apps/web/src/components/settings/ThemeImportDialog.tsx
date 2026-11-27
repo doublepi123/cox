@@ -16,6 +16,7 @@ import {
 } from "../../themePalette";
 import {
   humanizeThemeName,
+  numberedThemeName,
   pairVsCodeThemes,
   parseThemeImport,
   resolveThemeLabelCollisions,
@@ -328,7 +329,7 @@ function ThemeImportBody({
     for (let copy = 1; copy < 100; copy += 1) {
       const candidate = parseThemeFile({
         version: THEME_FILE_VERSION,
-        name: `${theme.label.slice(0, 48 - ` (${copy})`.length)} (${copy})`,
+        name: numberedThemeName(theme.label, ` (${copy})`),
         appearance: theme.appearance,
         colors: theme.colors,
         ...(theme.variants ? { variants: theme.variants } : {}),
