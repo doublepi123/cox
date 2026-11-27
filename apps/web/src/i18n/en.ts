@@ -4205,6 +4205,8 @@ export const en = {
   "{enabled} of {total} on": "{enabled} of {total} on",
   now: "now",
   "just now": "just now",
+  "opened {time} ago": "opened {time} ago",
+  "opened {time}": "opened {time}",
   "{count}m": "{count}m",
   "{count}h": "{count}h",
   "{count}d": "{count}d",

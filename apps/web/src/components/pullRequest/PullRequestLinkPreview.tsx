@@ -11,7 +11,8 @@ import {
   type ReactNode,
 } from "react";
 
-import { RelativeTime } from "~/components/RelativeTime";
+import { useRelativeTimeState } from "~/hooks/useRelativeTimeState";
+import { useTranslation } from "~/i18n";
 import { pullRequestEnvironment, useSharedPullRequestSummary } from "~/state/pullRequests";
 import { useAtomQueryRunner } from "~/state/use-atom-query-runner";
 import { useEnvironmentQuery } from "~/state/query";
@@ -46,6 +47,7 @@ export function PullRequestLinkPreview({
   onOpenFallback?: (url: string) => Promise<void>;
   fallback?: ReactNode;
 }) {
+  const { t, language } = useTranslation();
   const [open, setOpen] = useState(false);
   const previewActionsRef = useRef<PreviewCardPrimitive.Root.Actions | null>(null);
   const [resolvingClick, setResolvingClick] = useState(false);
@@ -89,6 +91,7 @@ export function PullRequestLinkPreview({
         })
       : link;
   const preview = previewQuery.data;
+  const opened = useRelativeTimeState(preview?.createdAt ?? null, language);
   const card = preview ?? summary;
   const showCard = card !== null || (previewQuery.error !== null && fallback !== undefined);
   const showUrlTooltip = open && previewQuery.error !== null && !showCard;
@@ -147,7 +150,11 @@ export function PullRequestLinkPreview({
                       <>
                         <span aria-hidden>·</span>
                         <span className="shrink-0">
-                          opened <RelativeTime timestamp={preview.createdAt} />
+                          {opened.status === "relative"
+                            ? t(opened.suffix ? "opened {time} ago" : "opened {time}", {
+                                time: opened.value,
+                              })
+                            : null}
                         </span>
                       </>
                     )}

@@ -3981,6 +3981,8 @@ export const zh = {
   "{enabled} of {total} on": "已启用 {enabled}/{total} 项",
   now: "刚刚",
   "just now": "刚刚",
+  "opened {time} ago": "{time}前开启",
+  "opened {time}": "{time}开启",
   "{count}m": "{count}分钟",
   "{count}h": "{count}小时",
   "{count}d": "{count}天",
