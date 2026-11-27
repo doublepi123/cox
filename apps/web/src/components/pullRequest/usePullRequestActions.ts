@@ -15,6 +15,7 @@ import type {
   ScopedThreadRef,
 } from "@t3tools/contracts";
 import { useRef, useState } from "react";
+import { flushSync } from "react-dom";
 import {
   capitalizeTerm,
   sourceControlClients,
@@ -34,6 +35,7 @@ import { usePrimaryEnvironmentId } from "~/state/environments";
 import { type DraftId, useComposerDraftStore } from "~/composerDraftStore";
 import { useNewThreadHandler } from "~/hooks/useHandleNewThread";
 import { usePreparePullRequestThreadAction } from "~/state/sourceControlActions";
+import { trackPendingDraftCheckout } from "~/lib/draftWorkspaceDefaults";
 import type { ReviewCommentContext } from "~/reviewCommentContext";
 import { pullRequestEnvironment } from "~/state/pullRequests";
 
@@ -266,6 +268,36 @@ export function writeHandoffToComposer(
   store.setReviewComments(target, next.reviewComments);
 }
 
+type PreparedCheckout = Awaited<
+  ReturnType<ReturnType<typeof usePreparePullRequestThreadAction>["run"]>
+>;
+
+/**
+ * Moves the draft opened for a checkout onto it once it is ready, keeping whatever the user
+ * typed meanwhile. A send from that draft waits for this so it starts in the checkout.
+ */
+export function prepareDraftCheckout(
+  draftId: DraftId,
+  checkout: Promise<PreparedCheckout>,
+): Promise<PreparedCheckout> {
+  const pointed = checkout.then((prepared) => {
+    if (prepared._tag === "Failure") return prepared;
+    const { branch, worktreePath } = prepared.value;
+    // A waiting send resumes right after this and must render the checkout first.
+    flushSync(() =>
+      useComposerDraftStore.getState().setDraftThreadContext(draftId, {
+        branch,
+        worktreePath,
+        envMode: worktreePath === null ? "local" : "worktree",
+        workspaceExplicit: true,
+      }),
+    );
+    return prepared;
+  });
+  trackPendingDraftCheckout(draftId, pointed);
+  return pointed;
+}
+
 export type PullRequestHandoffDetail = Pick<
   PullRequestDetail,
   "projectId" | "workspaceRoot" | "url"
@@ -360,11 +392,14 @@ export function usePullRequestHandoffs({
       });
       return;
     }
-    const prepared = await prepareThread.run({
-      reference: detail.url,
-      mode,
-      threadId: opened.threadId,
-    });
+    const prepared = await prepareDraftCheckout(
+      opened.draftId,
+      prepareThread.run({
+        reference: detail.url,
+        mode,
+        threadId: opened.threadId,
+      }),
+    );
     if (prepared._tag === "Failure") {
       setHandoff(null);
       toastManager.update(toastId, {
@@ -373,23 +408,6 @@ export function usePullRequestHandoffs({
         description: checkoutFailureDescription(
           isAtomCommandInterrupted(prepared) ? undefined : squashAtomCommandFailure(prepared),
         ),
-      });
-      return;
-    }
-    const pointed = await newThread(projectRef, {
-      branch: prepared.value.branch,
-      worktreePath: prepared.value.worktreePath,
-      envMode: prepared.value.worktreePath === null ? "local" : "worktree",
-    }).then(
-      (session) => session !== null,
-      () => false,
-    );
-    if (!pointed) {
-      setHandoff(null);
-      toastManager.update(toastId, {
-        type: "error",
-        title: "Checked out, but the thread stayed where it was",
-        description: `The checkout is ready on \`${prepared.value.branch}\`. Point a thread at it from the branch picker, then ask again.`,
       });
       return;
     }

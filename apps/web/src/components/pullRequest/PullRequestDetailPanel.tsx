@@ -53,6 +53,7 @@ import { isCommandPaletteOpen } from "~/commandPaletteBus";
 import { resolveShortcutCommand, type ShortcutMatchContext } from "~/keybindings";
 import { primaryServerKeybindingsAtom } from "~/state/server";
 import {
+  prepareDraftCheckout,
   usePullRequestDefaultMergeMethodResolver,
   writeHandoffToComposer,
 } from "./usePullRequestActions";
@@ -921,11 +922,14 @@ export function PullRequestDetailPanel({
       });
       return;
     }
-    const prepared = await prepareThread.run({
-      reference: handoffSummary.url,
-      mode,
-      threadId: opened.threadId,
-    });
+    const prepared = await prepareDraftCheckout(
+      opened.draftId,
+      prepareThread.run({
+        reference: handoffSummary.url,
+        mode,
+        threadId: opened.threadId,
+      }),
+    );
     if (prepared._tag === "Failure") {
       setHandoff(null);
       toastManager.update(toastId, {
@@ -934,24 +938,6 @@ export function PullRequestDetailPanel({
         description: checkoutFailureDescription(
           isAtomCommandInterrupted(prepared) ? undefined : squashAtomCommandFailure(prepared),
         ),
-      });
-      return;
-    }
-    const pointed = await newThread(projectRef, {
-      branch: prepared.value.branch,
-      worktreePath: prepared.value.worktreePath,
-      envMode: prepared.value.worktreePath === null ? "local" : "worktree",
-    }).then(
-      (session) => session !== null,
-      () => false,
-    );
-    if (!pointed) {
-      setHandoff(null);
-      // Sending after failed rebinding would use the previous checkout.
-      toastManager.update(toastId, {
-        type: "error",
-        title: "Checked out, but the thread stayed where it was",
-        description: `The checkout is ready on \`${prepared.value.branch}\`. Point a thread at it from the branch picker, then ask again.`,
       });
       return;
     }

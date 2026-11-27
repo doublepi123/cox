@@ -35,7 +35,24 @@ function keepsProvisionalWorkspace(
   );
 }
 
+const pendingCheckouts = new Map<DraftId, Promise<void>>();
+
+/** A send waits while a checkout is prepared for its draft, so it starts in that checkout. */
+export function trackPendingDraftCheckout(draftId: DraftId, checkout: Promise<unknown>) {
+  const settled: Promise<void> = checkout
+    .then(
+      () => {},
+      () => {},
+    )
+    .finally(() => {
+      if (pendingCheckouts.get(draftId) === settled) pendingCheckouts.delete(draftId);
+    });
+  pendingCheckouts.set(draftId, settled);
+}
+
 export function readPendingWorkspaceDefault(draftId: DraftId): Promise<void> | null {
+  const checkout = pendingCheckouts.get(draftId);
+  if (checkout) return checkout;
   const pending = pendingWorkspaceDefaults.get(draftId);
   if (pending === undefined) return null;
   const draft = useComposerDraftStore.getState().getDraftSession(draftId);
