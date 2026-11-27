@@ -15,6 +15,7 @@ import { Menu, MenuItem, MenuPopup, MenuTrigger } from "../ui/menu";
 import { ScrollArea } from "../ui/scroll-area";
 
 import { reportMarkdownActionFailure, type TableCopyFormat } from "./markdownActionFailure";
+import { loadTablePng } from "./loadTablePng";
 
 type TableTextFormat = Exclude<TableCopyFormat, "png">;
 const TABLE_COPY_SERIALIZERS: Record<TableTextFormat, (table: Element) => string> = {
@@ -90,7 +91,7 @@ export function MarkdownTable({ children, ...props }: ComponentProps<"table">) {
                   const table = containerRef.current?.querySelector("table");
                   if (table)
                     copyPngToClipboard(
-                      () => import("./tablePng").then((module) => module.renderTablePng(table)),
+                      () => loadTablePng(table),
                       "png",
                     );
                 }}
