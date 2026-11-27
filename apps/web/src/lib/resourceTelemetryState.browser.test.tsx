@@ -14,6 +14,7 @@ import type { ReactNode } from "react";
 import { describe, expect, it, vi } from "vite-plus/test";
 
 import { act, render } from "../../test/render";
+import { setLanguagePreference } from "../i18n";
 
 const monitor = vi.hoisted(() => ({
   telemetry:
@@ -69,6 +70,38 @@ class MonitorError extends Data.TaggedError("MonitorError")<{ readonly message: 
 const environmentId = EnvironmentId.make("remote");
 const startError = "The resource monitor is not available.";
 const historyError = "Resource history could not start.";
+
+it("shows each group's process count in the interface language", async () => {
+  using fixture = setup();
+  const { groups } = fixture.snapshot;
+  const liveTelemetry = Atom.make<AsyncResult.AsyncResult<ResourceTelemetrySnapshot, MonitorError>>(
+    AsyncResult.success({
+      ...fixture.snapshot,
+      groups: {
+        ...groups,
+        backend: { ...groups.backend, processCount: 3 },
+        monitor: { ...groups.monitor, processCount: 1 },
+      },
+    }),
+  ).pipe(Atom.keepAlive);
+  monitor.telemetry.mockImplementation(() => liveTelemetry);
+
+  setLanguagePreference("en");
+  try {
+    await using screen = await render(
+      <RegistryContext.Provider value={fixture.registry}>
+        <ResourceTelemetryDiagnostics environmentId={environmentId} />
+      </RegistryContext.Provider>,
+    );
+    await expect.element(screen.getByText("3 processes", { exact: true })).toBeVisible();
+    await expect.element(screen.getByText("1 process", { exact: true })).toBeVisible();
+    await act(() => setLanguagePreference("zh"));
+    await expect.element(screen.getByText("3 个进程", { exact: true })).toBeVisible();
+    await expect.element(screen.getByText("1 个进程", { exact: true })).toBeVisible();
+  } finally {
+    setLanguagePreference("system");
+  }
+});
 
 function setup({ retryFails = false, holdRetry = false } = {}) {
   const readAt = DateTime.makeUnsafe(0);
