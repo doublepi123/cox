@@ -67,7 +67,7 @@ interface XmlNode {
   hasSelectedChoice?: boolean;
   epubTable?: boolean;
   mathmlFirstChildSeen?: boolean;
-  epubNavigation?: boolean;
+  epubBlock?: boolean;
 }
 
 function separateRubyReadings(ruby: XmlNode) {
@@ -139,8 +139,12 @@ function xml(source: string, extension: string): XmlNode {
     stack.push(node);
     if (htmlEntities && node.name === "semantics" && namespaceOf(tag.name, stack) === MATHML_NS)
       node.mathmlFirstChildSeen = false;
-    if (htmlEntities && node.name === "nav" && isXhtmlElement(tag.name, stack, rootTagName))
-      node.epubNavigation = true;
+    if (
+      htmlEntities &&
+      ["nav", "details", "summary"].includes(node.name) &&
+      isXhtmlElement(tag.name, stack, rootTagName)
+    )
+      node.epubBlock = true;
     if (
       (node.name === "AlternateContent" || node.name === "Choice") &&
       namespaceOf(tag.name, stack) === MARKUP_COMPATIBILITY_NS
@@ -308,7 +312,7 @@ function* paragraphs(node: XmlNode): Generator<TextPart, void> {
       yield "\n";
     } else if (
       child.hasText &&
-      (child.epubNavigation ||
+      (child.epubBlock ||
         [
           "blockquote",
           "figure",
