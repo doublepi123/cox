@@ -162,6 +162,10 @@ function moveColorSchemeSourcesToImage(picture: MarkdownImageHastNode) {
   picture.children = picture.children.filter((child) => child.tagName !== "source");
 }
 
+function normalizeHttpScheme(url: string): string {
+  return url.replace(/^https?:/i, (scheme) => scheme.toLowerCase());
+}
+
 function rehypePreserveImageSourceMeta() {
   return (tree: MarkdownImageHastNode) => {
     const visit = (node: MarkdownImageHastNode) => {
@@ -176,6 +180,10 @@ function rehypePreserveImageSourceMeta() {
           ...(typeof src === "string" && isWindowsDrivePathHref(src) ? { dataLocalSrc: src } : {}),
           ...(typeof title === "string" ? { dataMarkdownTitle: title } : {}),
         };
+        for (const key of ["src", "dataDarkSrc", "dataLightSrc"]) {
+          const value = node.properties[key];
+          if (typeof value === "string") node.properties[key] = normalizeHttpScheme(value);
+        }
       }
       node.children?.forEach(visit);
     };
@@ -190,14 +198,17 @@ function rehypeNormalizeLocalFileLinks() {
     const visit = (node: MarkdownImageHastNode) => {
       const href = node.properties?.href;
       if (node.type === "element" && node.tagName === "a" && typeof href === "string") {
-        // The sanitizer compares schemes case-sensitively, so lowercase accepted file link schemes first.
-        if (/^sandbox:/i.test(href)) {
+        // The sanitizer compares schemes case-sensitively, so lowercase accepted link schemes first.
+        const lowered = normalizeHttpScheme(href);
+        if (/^sandbox:/i.test(lowered)) {
           node.properties = { ...node.properties };
-          if (parseMarkdownSandboxFileLink(href)) {
-            node.properties.href = href.replace(/^sandbox:/i, "sandbox:");
+          if (parseMarkdownSandboxFileLink(lowered)) {
+            node.properties.href = lowered.replace(/^sandbox:/i, "sandbox:");
           } else {
             delete node.properties.href;
           }
+        } else if (lowered !== href) {
+          node.properties = { ...node.properties, href: lowered };
         } else {
           try {
             const url = new URL(href);

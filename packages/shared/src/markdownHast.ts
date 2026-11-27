@@ -111,6 +111,10 @@ export function rehypePreserveImageSourceMeta() {
 
 const IMAGE_SRC_PROTOCOLS = [...(defaultSchema.protocols?.src ?? []), "file", "t3-context"];
 
+function normalizeHttpScheme(url: string): string {
+  return url.replace(/^https?:/i, (scheme) => scheme.toLowerCase());
+}
+
 // The sanitizer compares schemes case-sensitively, so lowercase accepted file link schemes first.
 function normalizeLocalFileHref(href: string): string {
   if (/^sandbox:/i.test(href)) {
@@ -130,7 +134,7 @@ export function rehypeNormalizeLocalFileLinks() {
     const visit = (node: MarkdownImageHastNode) => {
       const href = node.properties?.href;
       if (node.type === "element" && node.tagName === "a" && typeof href === "string") {
-        const normalized = normalizeLocalFileHref(href);
+        const normalized = normalizeLocalFileHref(normalizeHttpScheme(href));
         if (normalized !== href) node.properties = { ...node.properties, href: normalized };
       }
       node.children?.forEach(visit);
