@@ -1,4 +1,5 @@
 import { SharedTooltipTrigger } from "~/components/ui/shared-tooltip";
+import { useFileDownload } from "./useFileDownload";
 import { contextMenuSourceOf } from "../../contextMenuSource";
 import { isMacPlatform } from "~/lib/utils";
 import { useTranslation } from "../../i18n";
@@ -175,6 +176,7 @@ export default function FileBrowserPanel({
   const { resolvedTheme } = useTheme();
   const composerRef = useComposerHandleContext();
   const fileContextMenu = useFileContextMenu(environmentId);
+  const downloadFile = useFileDownload(environmentId);
   const {
     entries: directoryEntries,
     load,
@@ -231,6 +233,9 @@ export default function FileBrowserPanel({
         const clicked = await api.contextMenu.show(
           [
             ...fileMenuItems,
+            ...(downloadFile && item.kind !== "directory"
+              ? [{ id: "download", label: t("Download") }]
+              : []),
             { id: "copy-path", label: t("Copy path") },
             { id: "copy-mention", label: "Copy mention" },
             { id: "add-to-chat", label: "Add to chat" },
@@ -244,6 +249,10 @@ export default function FileBrowserPanel({
           fileMenuItems.some((entry) => entry.id === clicked) || clicked.startsWith("editor:");
         if (isFileMenuAction) {
           await fileContextMenu.activate(clicked as FileContextMenuAction, fileTarget);
+          return;
+        }
+        if (clicked === "download") {
+          downloadFile?.(cwd, relativePath);
           return;
         }
         if (clicked === "copy-path" || clicked === "copy-mention") {
