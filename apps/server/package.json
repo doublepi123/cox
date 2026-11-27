@@ -55,6 +55,7 @@
     "@t3tools/source-control-github": "workspace:*",
     "@t3tools/source-control-gitlab": "workspace:*",
     "character-entities": "2.0.2",
+    "character-entities-legacy": "3.0.0",
     "diff": "8.0.3",
     "effect": "catalog:",
     "jose": "catalog:",
