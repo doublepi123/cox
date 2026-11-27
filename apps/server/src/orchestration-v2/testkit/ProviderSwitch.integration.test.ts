@@ -2663,6 +2663,188 @@ describe("orchestration v2 provider switching", () => {
       ),
   );
 
+  it.live("shows the imported context handoff when the first send switches providers", () =>
+    Effect.gen(function* () {
+      const cwd = yield* checkpointWorkspace("imported-native-switch");
+      const capturedTurns = yield* Ref.make<ReadonlyArray<CapturedTurn>>([]);
+      const layerRegistry = ProviderAdapterRegistry.layerFromAdapters([
+        makeTestAdapter({
+          instanceId: CLAUDE_MODEL_SELECTION.instanceId,
+          driver: CLAUDE_DRIVER,
+          capabilities: ClaudeProviderCapabilitiesV2,
+          modelSelection: CLAUDE_MODEL_SELECTION,
+          responseByRunOrdinal: {},
+          capturedTurns,
+        }),
+        makeTestAdapter({
+          instanceId: CODEX_MODEL_SELECTION.instanceId,
+          driver: CODEX_DRIVER,
+          capabilities: CodexProviderCapabilitiesV2,
+          modelSelection: CODEX_MODEL_SELECTION,
+          responseByRunOrdinal: { 1: "PELICAN" },
+          capturedTurns,
+        }),
+      ]);
+      yield* Effect.gen(function* () {
+        const orchestrator = yield* Orchestrator.OrchestratorV2;
+        const worker = yield* EffectWorker.OrchestrationEffectWorkerV2;
+        yield* orchestrator.dispatch({
+          type: "thread.create",
+          commandId: CommandId.make("imported-native:create"),
+          threadId,
+          projectId,
+          createdBy: "system",
+          creationSource: "server",
+          title: "Imported Claude Code session",
+          modelSelection: CLAUDE_MODEL_SELECTION,
+          runtimeMode: "full-access",
+          interactionMode: "default",
+          branch: null,
+          worktreePath: null,
+        });
+        // The rows AgentSessionImporter writes: imported messages without a run,
+        // bound to the strong native session they came from.
+        const created = yield* orchestrator.getThreadProjection(threadId);
+        const at = created.thread.createdAt;
+        const providerThread: OrchestrationV2ProviderThread = {
+          id: ProviderThreadId.make("provider-thread:imported-native"),
+          driver: CLAUDE_DRIVER,
+          providerInstanceId: CLAUDE_MODEL_SELECTION.instanceId,
+          providerSessionId: null,
+          appThreadId: threadId,
+          ownerNodeId: null,
+          nativeThreadRef: {
+            driver: CLAUDE_DRIVER,
+            nativeId: "native-session",
+            strength: "strong",
+          },
+          nativeConversationHeadRef: null,
+          status: "idle",
+          firstRunOrdinal: null,
+          lastRunOrdinal: null,
+          handoffIds: [],
+          forkedFrom: null,
+          createdAt: at,
+          updatedAt: at,
+        };
+        const common = {
+          threadId,
+          runId: null,
+          nodeId: null,
+          providerThreadId: null,
+          providerTurnId: null,
+          nativeItemRef: null,
+          parentItemId: null,
+          status: "completed" as const,
+          title: null,
+          startedAt: at,
+          completedAt: at,
+          updatedAt: at,
+        };
+        yield* (yield* EventSink.EventSinkV2).write({
+          events: [
+            {
+              id: EventId.make("imported-native:thread"),
+              type: "thread.metadata-updated",
+              threadId,
+              providerInstanceId: CLAUDE_MODEL_SELECTION.instanceId,
+              occurredAt: at,
+              payload: {
+                ...created.thread,
+                historyOrigin: "v1_import",
+                activeProviderThreadId: providerThread.id,
+              },
+            },
+            {
+              id: EventId.make("imported-native:user"),
+              type: "turn-item.updated",
+              threadId,
+              occurredAt: at,
+              payload: {
+                ...common,
+                id: TurnItemId.make("imported-native:user"),
+                ordinal: 1,
+                createdBy: "user",
+                creationSource: "server",
+                type: "user_message",
+                messageId: MessageId.make("imported-native:user"),
+                inputIntent: "turn_start",
+                text: "Remember the code word PELICAN.",
+                attachments: [],
+              },
+            },
+            {
+              id: EventId.make("imported-native:assistant"),
+              type: "turn-item.updated",
+              threadId,
+              occurredAt: at,
+              payload: {
+                ...common,
+                id: TurnItemId.make("imported-native:assistant"),
+                ordinal: 2,
+                type: "assistant_message",
+                messageId: MessageId.make("imported-native:assistant"),
+                text: "OK",
+                streaming: false,
+              },
+            },
+            {
+              id: EventId.make("imported-native:provider-thread"),
+              type: "provider-thread.updated",
+              threadId,
+              driver: CLAUDE_DRIVER,
+              providerInstanceId: CLAUDE_MODEL_SELECTION.instanceId,
+              occurredAt: at,
+              payload: providerThread,
+            },
+          ],
+        });
+        yield* orchestrator.dispatch({
+          type: "message.dispatch",
+          commandId: CommandId.make("imported-native:switch"),
+          threadId,
+          messageId: MessageId.make("imported-native:switch"),
+          createdBy: "user",
+          creationSource: "web",
+          text: "What was the code word?",
+          attachments: [],
+          modelSelection: CODEX_MODEL_SELECTION,
+          dispatchMode: { type: "start_immediately" },
+        });
+        yield* worker.drain();
+        const projection = yield* waitForIdle(threadId).pipe(
+          Effect.provideService(Orchestrator.OrchestratorV2, orchestrator),
+        );
+        const run = projection.runs[0];
+        assert.isDefined(run);
+        assert.isNotNull(run.contextHandoffId);
+        const handoffItem = projection.turnItems.find(
+          (item) => item.type === "handoff" && item.runId === run.id,
+        );
+        assert.isDefined(handoffItem);
+        assert.equal(
+          handoffItem.type === "handoff" ? handoffItem.contextHandoffId : null,
+          run.contextHandoffId,
+        );
+        assert.equal(handoffItem.title, "Imported context");
+      }).pipe(
+        Effect.provide(
+          ProviderReplayHarness.layerWithRegistry(
+            {
+              name: "imported-native-switch",
+              runtimePolicyOverride: {
+                cwd,
+                approvalPolicy: "never",
+                sandboxPolicy: { type: "readOnly" },
+              },
+            },
+            layerRegistry,
+          ),
+        ),
+      );
+    }),
+  );
+
   it.live("resumes a queued account switch without requiring a portable handoff", () =>
     Effect.scoped(
       Effect.gen(function* () {
