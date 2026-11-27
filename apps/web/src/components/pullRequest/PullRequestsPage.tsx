@@ -2,7 +2,6 @@ import { useTranslation } from "../../i18n";
 import { sourceControlClients } from "@t3tools/client-runtime/source-control-clients";
 import {
   applyPullRequestFilterChange,
-  parsePullRequestQuery,
   pullRequestMenuFilters,
 } from "@t3tools/client-runtime/pull-request-query";
 import { Spinner } from "~/components/ui/spinner";

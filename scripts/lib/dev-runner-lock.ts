@@ -1,5 +1,5 @@
 import { DatabaseSync } from "node:sqlite";
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 export function acquireDevRunnerLock(stateDir: string, owner: string): () => void {
@@ -14,11 +14,14 @@ export function acquireDevRunnerLock(stateDir: string, owner: string): () => voi
       (("errcode" in cause && cause.errcode === 5) ||
         ("code" in cause && cause.code === "SQLITE_BUSY"));
     if (!busy) throw cause;
-    let currentOwner = "owner unknown";
-    try {
-      currentOwner = readFileSync(join(stateDir, "dev-runner-owner.txt"), "utf8").trim() || currentOwner;
-    } catch {}
-    throw new Error(`Another Cox dev runner already uses ${stateDir} (${currentOwner}). Stop it, or use a separate checkout.`);
+    const ownerPath = join(stateDir, "dev-runner-owner.txt");
+    const currentOwner = existsSync(ownerPath)
+      ? readFileSync(ownerPath, "utf8").trim() || "owner unknown"
+      : "owner unknown";
+    throw new Error(
+      `Another Cox dev runner already uses ${stateDir} (${currentOwner}). Stop it, or use a separate checkout.`,
+      { cause },
+    );
   }
   try {
     writeFileSync(join(stateDir, "dev-runner-owner.txt"), owner);
