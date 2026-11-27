@@ -20,7 +20,15 @@ import { withInstanceIdentity } from "@t3tools/provider-core/server/instanceIden
 import { mergeProviderInstanceEnvironment } from "@t3tools/provider-core/server/instanceEnvironment";
 import {
   enrichProviderSnapshotWithVersionAdvisory,
+  homebrewOwnershipFromCommandPath,
+  makeCachedProviderMaintenanceResolution,
   makeManualOnlyProviderMaintenanceCapabilities,
+  makeProviderMaintenanceCapabilities,
+  normalizeCommandPath,
+  type ProviderMaintenanceCapabilities,
+  type ProviderMaintenanceCapabilitiesResolver,
+  resolveHomebrewProviderMaintenance,
+  resolveProviderMaintenanceCapabilitiesEffect,
 } from "@t3tools/provider-core/server/maintenanceResolver";
 import { expandHomePath } from "@t3tools/provider-core/server/pathExpansion";
 import {
@@ -42,10 +50,43 @@ import { buildInitialCursorCliProviderSnapshot, checkCursorCliProviderStatus } f
 import { makeCursorCliTextGeneration } from "./textGeneration.ts";
 
 const decodeCursorCliSettings = Schema.decodeSync(CursorCliSettings);
-const MAINTENANCE = makeManualOnlyProviderMaintenanceCapabilities({
-  provider: CURSOR_CLI_DRIVER_KIND,
-  packageName: null,
-});
+const OFFICIAL_INSTALL_PATH = /\/cursor-agent\/versions\/[^/]+\/cursor-agent(?:\.exe)?$/u;
+const manualMaintenance = (installPath?: string) =>
+  makeManualOnlyProviderMaintenanceCapabilities({
+    provider: CURSOR_CLI_DRIVER_KIND,
+    packageName: null,
+    ...(installPath ? { installPath } : {}),
+  });
+const UPDATE: ProviderMaintenanceCapabilitiesResolver = {
+  resolve: Effect.fn("resolveCursorCliMaintenance")(function* (context) {
+    if (!context) return manualMaintenance();
+    const homebrew = homebrewOwnershipFromCommandPath(context.realCommandPath);
+    if (homebrew?.kind === "cask") {
+      return (
+        (yield* resolveHomebrewProviderMaintenance(
+          { provider: CURSOR_CLI_DRIVER_KIND, packageName: null },
+          homebrew,
+          context,
+        )) ?? manualMaintenance(context.realCommandPath)
+      );
+    }
+    if (!OFFICIAL_INSTALL_PATH.test(normalizeCommandPath(context.realCommandPath)))
+      return manualMaintenance(context.realCommandPath);
+    return makeProviderMaintenanceCapabilities({
+      provider: CURSOR_CLI_DRIVER_KIND,
+      packageName: null,
+      updateExecutable: context.resolvedCommandPath,
+      updateArgs: ["update"],
+      updateLockKey: "cursor-cli",
+      platform: context.platform,
+      env: { ...context.env, NO_COLOR: "1", NO_OPEN_BROWSER: "1" },
+    });
+  }),
+};
+const compareCursorCliVersions = (current: string, latest: string) => {
+  if (current === latest) return 0;
+  return current.slice(0, 10) > latest.slice(0, 10) ? 1 : -1;
+};
 
 export type CursorCliDriverEnv =
   | CursorCliAdapterV2DriverEnv
@@ -158,17 +199,28 @@ export const CursorCliDriver: ProviderDriver<CursorCliSettings, CursorCliDriverE
       Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, spawner),
     );
     const snapshotSettings = yield* makeProviderSnapshotSettingsSource(effectiveConfig);
-    const maintenance = {
-      ...MAINTENANCE,
-      lookupLatestVersion: installation.latestVersion,
-      latestVersionCacheKey: "cursor-cli-install-script",
-      compareVersions: (current: string, latest: string) => {
-        if (current === latest) return 0;
-        return current.slice(0, 10) > latest.slice(0, 10) ? 1 : -1;
-      },
-    };
+    const resolveMaintenance = yield* makeCachedProviderMaintenanceResolution(
+      resolveProviderMaintenanceCapabilitiesEffect(UPDATE, {
+        binaryPath: effectiveConfig.binaryPath,
+        env: processEnv,
+      }).pipe(
+        Effect.map((capabilities): ProviderMaintenanceCapabilities =>
+          capabilities.lookupLatestVersion
+            ? capabilities
+            : {
+                ...capabilities,
+                lookupLatestVersion: installation.latestVersion,
+                latestVersionCacheKey: "cursor-cli-install-script",
+                compareVersions: compareCursorCliVersions,
+              },
+        ),
+        Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, spawner),
+        Effect.provideService(FileSystem.FileSystem, fileSystem),
+        Effect.provideService(Path.Path, path),
+      ),
+    );
     const snapshot = yield* makeManagedServerProvider<ProviderSnapshotSettings<CursorCliSettings>>({
-      resolveMaintenance: () => Effect.succeed(maintenance),
+      resolveMaintenance,
       getSettings: snapshotSettings.getSettings,
       streamSettings: snapshotSettings.streamSettings,
       haveSettingsChanged: haveProviderSnapshotSettingsChanged,
@@ -176,15 +228,16 @@ export const CursorCliDriver: ProviderDriver<CursorCliSettings, CursorCliDriverE
         buildInitialCursorCliProviderSnapshot(settings.provider).pipe(Effect.map(stampSnapshot)),
       checkProvider,
       enrichSnapshot: ({ settings, snapshot, publishSnapshot }) =>
-        snapshot.versionAdvisory?.latestVersion
-          ? Effect.void
-          : enrichProviderSnapshotWithVersionAdvisory(snapshot, maintenance, {
+        resolveMaintenance().pipe(
+          Effect.flatMap((maintenance) =>
+            enrichProviderSnapshotWithVersionAdvisory(snapshot, maintenance, {
               enableProviderUpdateChecks: settings.enableProviderUpdateChecks,
-            }).pipe(
-              Effect.provideService(HttpClient.HttpClient, http),
-              Effect.provideService(ProviderLatestVersions.ProviderLatestVersions, latestVersions),
-              Effect.flatMap(publishSnapshot),
-            ),
+            }),
+          ),
+          Effect.provideService(HttpClient.HttpClient, http),
+          Effect.provideService(ProviderLatestVersions.ProviderLatestVersions, latestVersions),
+          Effect.flatMap(publishSnapshot),
+        ),
     }).pipe(
       Effect.mapError(
         (cause) =>

@@ -51,7 +51,6 @@ const SIGN_IN_MESSAGE =
 const AboutPayload = Schema.fromJsonString(
   Schema.Struct({
     cliVersion: Schema.optional(Schema.NullOr(Schema.String)),
-    latestVersion: Schema.optional(Schema.NullOr(Schema.String)),
     subscriptionTier: Schema.optional(Schema.NullOr(Schema.String)),
     userEmail: Schema.optional(Schema.NullOr(Schema.String)),
   }),
@@ -99,7 +98,6 @@ const isAcpRequestError = Schema.is(EffectAcpErrors.AcpRequestError);
 
 export interface CursorCliAbout {
   readonly version: string | null;
-  readonly latestVersion: string | null;
   readonly email: string | undefined;
   readonly subscriptionTier: string | undefined;
 }
@@ -111,7 +109,6 @@ export function parseCursorCliAbout(stdout: string): CursorCliAbout | undefined 
     decodeAboutPayload(stdout.slice(start)).pipe(
       Option.map((payload) => ({
         version: nonEmptyTrimmed(payload.cliVersion ?? undefined) ?? null,
-        latestVersion: nonEmptyTrimmed(payload.latestVersion ?? undefined) ?? null,
         email: nonEmptyTrimmed(payload.userEmail ?? undefined),
         subscriptionTier: nonEmptyTrimmed(payload.subscriptionTier ?? undefined),
       })),
@@ -243,26 +240,6 @@ export const discoverCursorCliModels = Effect.fn("discoverCursorCliModels")(func
   return { _tag: "Discovered", models: cursorCliModelsFromAvailableModels(result.success.value) };
 });
 
-export function withCursorCliVersionAdvisory(
-  draft: ServerProviderDraft,
-  about: CursorCliAbout,
-  checkedAt: string,
-): ServerProviderDraft {
-  if (about.version === null || about.latestVersion === null) return draft;
-  return {
-    ...draft,
-    versionAdvisory: {
-      status: about.latestVersion === about.version ? "current" : "behind_latest",
-      currentVersion: about.version,
-      latestVersion: about.latestVersion,
-      updateCommand: null,
-      canUpdate: false,
-      checkedAt,
-      message: null,
-    },
-  };
-}
-
 function authFromAbout(about: CursorCliAbout | undefined, usesApiKey: boolean): ServerProviderAuth {
   return {
     status: "authenticated",
@@ -369,9 +346,5 @@ export const checkCursorCliProviderStatus = Effect.fn("checkCursorCliProviderSta
 
   const usesApiKey = Boolean(environment.CURSOR_API_KEY?.trim());
   const discovery = yield* discoverCursorCliModels(settings, environment, cwd).pipe(Effect.scoped);
-  return withCursorCliVersionAdvisory(
-    snapshotFromDiscovery(settings, checkedAt, about, usesApiKey, discovery),
-    about,
-    checkedAt,
-  );
+  return snapshotFromDiscovery(settings, checkedAt, about, usesApiKey, discovery);
 });

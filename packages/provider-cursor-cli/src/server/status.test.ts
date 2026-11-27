@@ -77,13 +77,6 @@ describe("checkCursorCliProviderStatus", () => {
       assert.equal(draft.status, "ready");
       assert.equal(draft.version, "2026.11.19-f005e9d");
       assert.deepStrictEqual(
-        {
-          status: draft.versionAdvisory?.status,
-          latestVersion: draft.versionAdvisory?.latestVersion,
-        },
-        { status: "behind_latest", latestVersion: "2026.11.22-e9042b2" },
-      );
-      assert.deepStrictEqual(
         { status: draft.auth.status, email: draft.auth.email },
         { status: "authenticated", email: "dev@example.com" },
       );
@@ -125,7 +118,6 @@ describe("Cursor CLI status parsing", () => {
       ),
       {
         version: "2026.11.19-f005e9d",
-        latestVersion: null,
         email: "dev@example.com",
         subscriptionTier: "Super",
       },
