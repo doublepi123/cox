@@ -71,6 +71,27 @@ vi.mock("../../../../packages/client-runtime/src/connection/driver.ts", async (i
       get: (target, property, receiver) => {
         const method = Reflect.get(target, property, receiver) as unknown;
         if (typeof method !== "function") return method;
+        if (property === contracts.WS_METHODS.subscribeVcsStatus) {
+          return (input: { readonly cwd: string }) =>
+            input.cwd === "/workspace/render-43905"
+              ? Stream.concat(
+                  Stream.make({
+                    _tag: "snapshot" as const,
+                    local: {
+                      isRepo: true,
+                      hasPrimaryRemote: false,
+                      isDefaultRef: false,
+                      refName: "feature",
+                      hasWorkingTreeChanges: false,
+                      workingTree: { files: [], insertions: 0, deletions: 0 },
+                      branchChanges: { baseRef: "main", insertions: 150, deletions: 97 },
+                    },
+                    remote: null,
+                  }),
+                  Stream.never,
+                )
+              : method(input);
+        }
         if (property === contracts.ORCHESTRATION_V2_WS_METHODS.dispatchCommand) {
           return (command: import("@t3tools/contracts").OrchestrationV2Command) =>
             rejectSend.enabled && command.type === "message.dispatch"
@@ -451,4 +472,31 @@ it("opening Settings without a page event closes the composer model picker and p
   await act(() => router.navigate({ to: "/settings" }));
   await expect.element(page.getByRole("dialog", { name: "Settings" })).toBeVisible();
   await expect.element(permissions).not.toBeInTheDocument();
+});
+
+it("a new thread on a branch with changes opens them from thread details", async () => {
+  using _drafts = isolateComposerDrafts();
+  returningUserSettings();
+  const draftId = DraftId.make("draft-43905");
+  useComposerDraftStore
+    .getState()
+    .setProjectDraftThreadId(scopeProjectRef(ENVIRONMENT_ID, PROJECT_ID), draftId, {
+      threadId: ThreadId.make("thread-43905"),
+      // Its own checkout, so the status subscription is this test's and not an earlier one's.
+      worktreePath: "/workspace/render-43905",
+    });
+
+  const router = getRouter(createMemoryHistory({ initialEntries: [`/draft/${draftId}`] }));
+  await router.load();
+  await using _app = await render(<AppRoot router={router} />, {
+    // AppRoot brings its own router.
+    router: false,
+  });
+  const changesRow = page.getByRole("button", { name: /^Changes\s*vs main\s*\+150/ });
+  // The row already shows the branch's totals, so it has to open them.
+  await expect.element(changesRow).toBeEnabled();
+
+  await changesRow.click();
+  // The panel reads the draft's checkout; without one it asks for a thread instead.
+  await expect.element(page.getByText("Loading changes...")).toBeVisible();
 });
