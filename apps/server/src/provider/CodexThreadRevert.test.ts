@@ -3,7 +3,11 @@ import * as CodexClient from "effect-codex-app-server/client";
 import * as CodexReplay from "effect-codex-app-server/replay";
 import * as Effect from "effect/Effect";
 
-import { revertCodexThread, revertCodexThreadAfterTurn } from "./CodexThreadRevert.ts";
+import {
+  revertCodexThread,
+  revertCodexThreadAfterTurn,
+  revertCodexThreadFromKnownTurns,
+} from "./CodexThreadRevert.ts";
 
 const page = (
   id: number,
@@ -139,5 +143,47 @@ it.effect("rejects repeated cursors instead of looping or reverting incomplete h
       }),
     ),
     Effect.scoped,
+  ),
+);
+
+it.effect("rewinds from the oldest known turn across pages and keeps older turns on retry", () =>
+  Effect.gen(function* () {
+    const client = yield* CodexClient.CodexAppServerClient;
+    const rewind = revertCodexThreadFromKnownTurns(client, "thread", ["first-t3", "second-t3"]);
+    assert.equal((yield* rewind.pipe(Effect.flip)).message, "reverted");
+    assert.equal((yield* rewind.pipe(Effect.flip)).message, "read only");
+  }).pipe(
+    Effect.provide(
+      CodexReplay.layerReplay({
+        provider: "codex",
+        protocol: "codex.app-server",
+        version: "test",
+        scenario: "revert-known-turns-pages",
+        entries: [
+          ...page(1, null, 100, ["second-t3"], "first"),
+          ...page(2, "first", 100, ["first-t3"], "prefix"),
+          {
+            type: "expect_outbound",
+            frame: {
+              id: 3,
+              method: "thread/revert",
+              params: { threadId: "thread", beforeTurnId: "first-t3" },
+            },
+          },
+          { type: "emit_inbound", frame: { id: 3, error: { code: -32603, message: "reverted" } } },
+          ...page(4, null, 100, ["newer-kept"], "older-kept"),
+          ...page(5, "older-kept", 100, ["older-kept"], null),
+          {
+            type: "expect_outbound",
+            frame: {
+              id: 6,
+              method: "thread/read",
+              params: { threadId: "thread", includeTurns: false },
+            },
+          },
+          { type: "emit_inbound", frame: { id: 6, error: { code: -32603, message: "read only" } } },
+        ],
+      }),
+    ),
   ),
 );
