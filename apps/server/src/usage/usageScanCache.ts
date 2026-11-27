@@ -201,6 +201,7 @@ export function decodeScanCache(
   const decodeRecords = (
     rows: readonly unknown[],
     provider: UsageProviderKind,
+    format: TranscriptUsageFormat<unknown>,
   ): UsageRecord[] | null => {
     const records: UsageRecord[] = [];
     for (const row of rows) {
@@ -265,7 +266,10 @@ export function decodeScanCache(
         ...(version >= 7 && unresolvedServiceTierTurnId != null
           ? { unresolvedServiceTierTurnId }
           : {}),
-        dedupeKey: typeof dedupeKey === "string" ? dedupeKey : null,
+        dedupeKey:
+          typeof dedupeKey === "string"
+            ? (format.migrateDedupeKey?.(dedupeKey) ?? dedupeKey)
+            : null,
       });
     }
     return records;
@@ -319,8 +323,8 @@ export function decodeScanCache(
     const resumable = !legacy && !undated;
 
     const provider = entry.p;
-    const records = decodeRecords(entry.r, provider);
-    const tailRecords = decodeRecords(entry.t, provider);
+    const records = decodeRecords(entry.r, provider, format);
+    const tailRecords = decodeRecords(entry.t, provider, format);
     if (records === null || tailRecords === null) continue;
 
     cache.set(path, {

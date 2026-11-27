@@ -64,6 +64,8 @@ export interface TranscriptUsageFormat<State> {
   parseProjected(projected: unknown, state: State): readonly UsageRecord[];
   /** Timestamps of malformed or inconsistent usage records, including skipped records. */
   readMalformedRecords?(state: State): readonly number[];
+  /** Maps a dedupe key saved by an older parser of this format to the current event identity. */
+  migrateDedupeKey?(key: string): string;
   /**
    * Present for formats whose records depend on earlier lines. The state at a
    * resume point is persisted in the scan cache through `schema`, so a grown

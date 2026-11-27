@@ -1493,6 +1493,128 @@ describe("UsageService", () => {
       }).pipe(Effect.scoped),
   );
 
+  it.live(
+    "counts a Pi-format session copied into Pi and OMO directories once across legacy cache restarts",
+    () =>
+      Effect.gen(function* () {
+        const { home, settings } = yield* setup;
+        const prefix = "usage-pi-omo-shared-copy";
+        const runtime = NodePath.join(home, prefix, "model-services", "runtime");
+        const omoDir = NodePath.join(runtime, "omo", "omo", "sessions", "project");
+        const piDir = NodePath.join(runtime, "pi", "pi", "sessions", "project");
+        const transcript = (session: string, ids: readonly string[]) =>
+          [
+            { type: "session", id: session },
+            ...ids.map((id) => ({
+              type: "message",
+              id,
+              timestamp: "2026-08-01T10:00:00Z",
+              message: {
+                role: "assistant",
+                provider: "cox",
+                model: "actual-model",
+                usage: { input: 100, output: 20 },
+              },
+            })),
+          ]
+            .map((line) => encodeUnknownJsonString(line))
+            .join("\n") + "\n";
+        const shared = transcript("shared", ["a1", "b1"]);
+        yield* Effect.promise(async () => {
+          for (const dir of [omoDir, piDir]) {
+            await NodeFSP.mkdir(dir, { recursive: true });
+            await NodeFSP.writeFile(NodePath.join(dir, "shared.jsonl"), shared);
+          }
+          await NodeFSP.writeFile(
+            NodePath.join(piDir, "pi-only.jsonl"),
+            transcript("pi-only", ["c1"]),
+          );
+        });
+        const binding = {
+          serviceId: ModelServiceId.make("bound-service"),
+          modelIds: ["actual-model"],
+        };
+        const usage = (summary: UsageSummary, provider: string) => {
+          const buckets = summary.buckets.filter((bucket) => bucket.provider === provider);
+          return {
+            tokens: buckets.reduce((sum, bucket) => sum + totalTokens(bucket.totals), 0),
+            records: buckets.reduce((sum, bucket) => sum + bucket.records, 0),
+            sessions: buckets.reduce((sum, bucket) => sum + bucket.sessions, 0),
+          };
+        };
+        const expected = {
+          omo: { tokens: 240, records: 2, sessions: 1 },
+          pi: { tokens: 120, records: 1, sessions: 1 },
+        };
+
+        yield* Effect.gen(function* () {
+          const first = yield* UsageService.make;
+          const summary = yield* first.readSummary(WINDOW);
+          assert.deepStrictEqual(
+            { omo: usage(summary, "omo"), pi: usage(summary, "pi") },
+            expected,
+          );
+          yield* first.awaitPersisted;
+
+          const { stateDir } = yield* ServerConfig.ServerConfig;
+          yield* Effect.promise(async () => {
+            const cachePath = NodePath.join(stateDir, SCAN_CACHE_FILE_NAME);
+            const document = decodeUnknownJsonString(await NodeFSP.readFile(cachePath, "utf8")) as {
+              files: Record<string, { p: string; r: unknown[][] }>;
+            };
+            for (const file of Object.values(document.files)) {
+              if (file.p !== "omo") continue;
+              file.r = file.r.map((row) => [
+                ...row.slice(0, 8),
+                String(row[8]).replace(/^\["pi",/, '["omo",'),
+                ...row.slice(9),
+              ]);
+            }
+            await NodeFSP.writeFile(cachePath, encodeUnknownJsonString(document));
+            await NodeFSP.rm(NodePath.join(omoDir, "shared.jsonl"));
+          });
+
+          const restarted = yield* UsageService.make;
+          const restored = yield* restarted.readSummary(WINDOW);
+          assert.deepStrictEqual(
+            { omo: usage(restored, "omo"), pi: usage(restored, "pi") },
+            expected,
+          );
+        }).pipe(
+          Effect.provide(
+            layerService({
+              prefix,
+              home,
+              settings: {
+                ...settings,
+                modelServices: {
+                  [ModelServiceId.make("bound-service")]: {
+                    name: "Bound service",
+                    baseUrl: "https://models.test",
+                    protocols: ["openai-chat"],
+                    models: [{ id: "actual-model", capabilities: null }],
+                  },
+                },
+                providerInstances: {
+                  ...settings.providerInstances,
+                  [ProviderInstanceId.make("omo")]: {
+                    driver: ProviderDriverKind.make("omo"),
+                    modelService: binding,
+                    config: {},
+                  },
+                  [ProviderInstanceId.make("pi")]: {
+                    driver: ProviderDriverKind.make("pi"),
+                    modelService: binding,
+                    config: {},
+                  },
+                },
+              },
+            }),
+          ),
+        );
+      }).pipe(Effect.scoped),
+  );
+
   it.live("returns other providers' usage while Muse home discovery is still pending", () =>
     Effect.gen(function* () {
       const { transcript, settings, home } = yield* setup;

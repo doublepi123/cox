@@ -51,6 +51,8 @@ const Entry = Schema.Union([
   }),
 ]);
 const decodeEntry = Schema.decodeUnknownOption(Entry);
+const EVENT_KEY_PREFIX = '["pi",';
+const LEGACY_OMO_EVENT_KEY_PREFIX = '["omo",';
 
 const parseRecord =
   (provider: "pi" | "omo") =>
@@ -101,8 +103,8 @@ const parseRecord =
         totals,
         reportedCostUsd,
         speed: "standard",
-        // Forks preserve IDs/timestamps; short random IDs need timestamp/model to avoid cross-session collisions.
-        dedupeKey: JSON.stringify([provider, entry.id, entry.timestamp, model]),
+        // Forks and Pi/OMO directory copies preserve IDs/timestamps; short random IDs need timestamp/model to avoid cross-session collisions.
+        dedupeKey: JSON.stringify(["pi", entry.id, entry.timestamp, model]),
       },
     ];
   };
@@ -133,6 +135,10 @@ export const makePiTranscriptUsageFormat = (
       return parse(parsed, state);
     },
     parseProjected: parse,
+    migrateDedupeKey: (key) =>
+      key.startsWith(LEGACY_OMO_EVENT_KEY_PREFIX)
+        ? EVENT_KEY_PREFIX + key.slice(LEGACY_OMO_EVENT_KEY_PREFIX.length)
+        : key,
     state: { initial: () => ({ sessionId: "" }), schema: PiScanState },
   };
 };

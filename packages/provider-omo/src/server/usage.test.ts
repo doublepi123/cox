@@ -5,6 +5,7 @@ import * as Effect from "effect/Effect";
 import * as Path from "effect/Path";
 import * as Schema from "effect/Schema";
 import { expect } from "vite-plus/test";
+import { piUsageFormat } from "@t3tools/provider-pi/server/usage";
 import { OmoSettings } from "../settings.ts";
 import { omoUsageFormat, omoUsageReader } from "./usage.ts";
 
@@ -63,24 +64,38 @@ it.effect.each([
     ),
 );
 
-it("records OMO transcript usage under its own provider", () => {
-  const state = omoUsageFormat.state!.initial();
-  omoUsageFormat.parseLine(JSON.stringify({ type: "session", id: "root" }), state);
-  const records = omoUsageFormat.parseLine(
-    JSON.stringify({
-      type: "message",
-      id: "a1",
-      timestamp: "2026-08-01T10:00:00Z",
-      message: {
-        role: "assistant",
-        provider: "cox",
-        model: "gpt-6.1-sol",
-        usage: { input: 100, output: 20, cacheRead: 50, cacheWrite: 5, reasoning: 7 },
-      },
-    }),
-    state,
-  );
+it("records OMO transcript usage under its own provider with the Pi event identity", () => {
+  const line = JSON.stringify({
+    type: "message",
+    id: "a1",
+    timestamp: "2026-08-01T10:00:00Z",
+    message: {
+      role: "assistant",
+      provider: "cox",
+      model: "gpt-6.1-sol",
+      usage: { input: 100, output: 20, cacheRead: 50, cacheWrite: 5, reasoning: 7 },
+    },
+  });
+  const parse = (format: typeof omoUsageFormat) => {
+    const state = format.state!.initial();
+    format.parseLine(JSON.stringify({ type: "session", id: "root" }), state);
+    return format.parseLine(line, state);
+  };
+  const records = parse(omoUsageFormat);
+  const piRecords = parse(piUsageFormat);
   expect(records.map(({ provider, model, sessionId }) => ({ provider, model, sessionId }))).toEqual(
     [{ provider: "omo", model: "cox/gpt-6.1-sol", sessionId: "root" }],
   );
+  expect(piRecords.map(({ provider }) => provider)).toEqual(["pi"]);
+  expect(records.map(({ dedupeKey }) => dedupeKey)).toEqual(
+    piRecords.map(({ dedupeKey }) => dedupeKey),
+  );
+});
+
+it("migrates provider-prefixed OMO keys from older caches to the Pi event identity", () => {
+  const current = JSON.stringify(["pi", "a1", "2026-08-01T10:00:00Z", "cox/gpt-6.1-sol"]);
+  const legacy = JSON.stringify(["omo", "a1", "2026-08-01T10:00:00Z", "cox/gpt-6.1-sol"]);
+  expect(omoUsageFormat.migrateDedupeKey?.(legacy)).toBe(current);
+  expect(omoUsageFormat.migrateDedupeKey?.(current)).toBe(current);
+  expect(omoUsageFormat.migrateDedupeKey?.('["omp","a1"]')).toBe('["omp","a1"]');
 });
