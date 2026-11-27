@@ -408,7 +408,13 @@ function PullRequestLabelChoices({
   const remembered = rememberPullRequestLabels(seen, hosted.labels);
   if (remembered !== seen) setSeen(remembered);
   const selected = new Set(value.map((name) => name.toLowerCase()));
-  const choices = pullRequestLabelChoices(options, hosted.labels, query);
+  const choices = pullRequestLabelChoices(options, hosted.labels, query).map((option) => ({
+    ...option,
+    color:
+      option.color ??
+      remembered.find((label) => label.name.toLowerCase() === option.name.toLowerCase())?.color ??
+      null,
+  }));
   const visible = [
     ...selectedPullRequestLabels(options, remembered, value).filter(
       (label) => !choices.some((option) => option.name.toLowerCase() === label.name.toLowerCase()),

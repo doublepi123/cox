@@ -916,4 +916,10 @@ describe("filter picker choices", () => {
       selectedPullRequestAuthor([], rememberPullRequestAuthors(first, [moved]), "juliana")?.actor,
     ).toEqual(moved);
   });
+
+  it("retains selected hosted label colors when a later search omits them", () => {
+    const seen = rememberPullRequestLabels([], [{ name: "bug", color: "d93f0b" }]);
+    expect(rememberPullRequestLabels(seen, [])).toBe(seen);
+    expect(seen).toEqual([{ name: "bug", color: "d93f0b" }]);
+  });
 });
