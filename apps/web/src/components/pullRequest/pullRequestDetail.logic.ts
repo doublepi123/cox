@@ -904,7 +904,7 @@ export function buildFixFindingsHandoff(input: {
 }): FixFindingsHandoff {
   const threads = input.reviewThreads.filter(
     (thread) =>
-      !thread.isResolved && thread.comments.some((comment) => comment.body.trim().length > 0),
+      !thread.isResolved && thread.comments.some((comment) => readableBody(comment.body) !== null),
   );
   const attached = new Set(
     input.reviewThreads.flatMap((thread) => thread.comments.map((comment) => comment.id)),
