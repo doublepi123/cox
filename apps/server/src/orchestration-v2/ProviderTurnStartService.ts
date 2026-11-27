@@ -8,6 +8,8 @@ import {
 import {
   CommandId,
   latestProviderTurnForAttempt,
+  type CheckpointId,
+  type MessageId,
   type OrchestrationV2DomainEvent,
   type OrchestrationV2ContextHandoff,
   type OrchestrationV2ExecutionNode,
@@ -105,6 +107,47 @@ const NON_COMPLETING_TERMINAL_RUN_STATUSES: ReadonlySet<OrchestrationV2Run["stat
   "cancelled",
   "rolled_back",
 ]);
+
+/**
+ * The run whose ready end checkpoint is still the baseline before `run`: the last run, when every
+ * run since is a queued message steered into it while it ran, after anything that message did.
+ */
+export const findBaselineSourceOrdinal = Effect.fn("findBaselineSourceOrdinal")(function* (
+  runs: ReadonlyArray<OrchestrationV2Run>,
+  run: Pick<OrchestrationV2Run, "ordinal">,
+  readPrompt: (messageId: MessageId) => Effect.Effect<OrchestrationV2TurnItem | null>,
+  readCheckpoints: (
+    id: CheckpointId,
+  ) => Effect.Effect<Pick<OrchestrationV2ThreadProjection, "checkpoints">>,
+) {
+  const owners: Array<RunId | null> = [];
+  // Runs come in ordinal order; a missing ordinal is a queued run that started late.
+  let index = runs.findLastIndex((candidate) => candidate.ordinal < run.ordinal);
+  for (let ordinal = run.ordinal - 1; runs[index]?.ordinal === ordinal; ordinal -= 1, index -= 1) {
+    const previous = runs[index]!;
+    const prompt =
+      previous.status === "cancelled" && previous.checkpointId === null
+        ? yield* readPrompt(previous.userMessageId)
+        : null;
+    if (prompt?.type === "user_message" && prompt.inputIntent === "promoted_queued_to_steer") {
+      owners.push(prompt.runId);
+      continue;
+    }
+    const [checkpoint] =
+      owners.length > 0 &&
+      owners.every((owner) => owner === previous.id) &&
+      previous.checkpointId !== null &&
+      ["completed", "interrupted", "cancelled"].includes(previous.status)
+        ? (yield* readCheckpoints(previous.checkpointId)).checkpoints
+        : [];
+    return checkpoint?.status === "ready" &&
+      checkpoint.runId === previous.id &&
+      checkpoint.appRunOrdinal === ordinal
+      ? ordinal
+      : undefined;
+  }
+  return undefined;
+});
 
 const CUT_TURN_SETTLED = "cut-turn-settled";
 
@@ -1919,6 +1962,21 @@ export const layer: Layer.Layer<
         !noteContinuation
           ? session
           : makeDeliverySession(session, startWithHandoffs);
+      const sourceOrdinalWithinScope = yield* findBaselineSourceOrdinal(
+        projection.runs,
+        run,
+        (messageId) =>
+          projectionStore
+            .getTurnItem({
+              threadId: input.threadId,
+              itemId: idAllocator.derive.userTurnItem({ messageId }),
+            })
+            .pipe(Effect.orElseSucceed(() => null)),
+        (checkpointId) =>
+          projectionStore
+            .getThreadRecords(input.threadId, ["checkpoints"], { checkpointIds: [checkpointId] })
+            .pipe(Effect.orElseSucceed(() => ({ checkpoints: [] }))),
+      );
       return runExecution.startRootRun({
         commandId: CommandId.make(`command:effect:provider-turn.start:${run.id}`),
         appThread: projection.thread,
@@ -1927,6 +1985,7 @@ export const layer: Layer.Layer<
         run: runningRun,
         rootNode: runningRootNode,
         checkpointScope,
+        sourceOrdinalWithinScope,
         providerThread: runningProviderThread,
         attempt: runningAttempt,
         attemptId: attempt.id,

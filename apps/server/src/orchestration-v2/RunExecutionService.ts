@@ -589,6 +589,7 @@ export interface RunExecutionServiceV2StartRootRunInput {
   readonly run: OrchestrationV2Run;
   readonly rootNode: OrchestrationV2ExecutionNode;
   readonly checkpointScope: OrchestrationV2CheckpointScope;
+  readonly sourceOrdinalWithinScope?: number | undefined;
   readonly providerThread: OrchestrationV2ProviderThread;
   readonly attempt: OrchestrationV2RunAttempt;
   readonly attemptId: RunAttemptId;
@@ -1028,6 +1029,7 @@ export const layer: Layer.Layer<
               : checkpointService.captureBaseline({
                   scope: input.checkpointScope,
                   ordinalWithinScope: Math.max(0, input.run.ordinal - 1),
+                  sourceOrdinalWithinScope: input.sourceOrdinalWithinScope,
                 })
           ).pipe(
             Effect.catchCauseIf(

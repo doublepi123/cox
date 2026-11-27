@@ -432,6 +432,32 @@ it.effect("idle compaction filters keep the latest run, live work and the newest
   }).pipe(Effect.provide(layerTest)),
 );
 
+it.effect("checkpoint record filters seek the checkpoint ID index", () =>
+  Effect.gen(function* () {
+    const store = yield* ProjectionStore.ProjectionStoreV2;
+    const sql = yield* SqlClient.SqlClient;
+    const threadId = yield* addRolledBackRecoveryCandidate("checkpoint-id-index");
+    const { statements, tracer } = traceSqlStatements();
+    const records = yield* store
+      .getThreadRecords(threadId, ["checkpoints"], {
+        checkpointIds: [CheckpointId.make("missing-checkpoint")],
+      })
+      .pipe(Effect.withTracer(tracer));
+    assert.deepEqual(records.checkpoints, []);
+    const query = statements.find((statement) =>
+      statement.includes("FROM orchestration_v2_projection_checkpoints"),
+    );
+    assert.isDefined(query);
+    const plan = (yield* sql.unsafe<{ readonly detail: string }>(`EXPLAIN QUERY PLAN ${query}`, [
+      threadId,
+      '["missing-checkpoint"]',
+    ]))
+      .map(({ detail }) => detail)
+      .join("\n");
+    assert.include(plan, "sqlite_autoindex_orchestration_v2_projection_checkpoints_1");
+  }).pipe(Effect.provide(layerTest)),
+);
+
 it.effect("user-only record ordering uses the partial user-message index", () =>
   Effect.gen(function* () {
     const store = yield* ProjectionStore.ProjectionStoreV2;

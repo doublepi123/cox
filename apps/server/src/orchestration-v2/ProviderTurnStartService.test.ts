@@ -19,6 +19,8 @@ import {
   RunId,
   ThreadId,
   ProjectId,
+  type OrchestrationV2Checkpoint,
+  type OrchestrationV2TurnItem,
   type OrchestrationV2ThreadProjection,
   type RuntimeMode,
   OrchestrationV2DomainEvent,
@@ -1018,6 +1020,7 @@ function makeLocalCommandHarness(input: {
         Layer.mock(ProjectionStore.ProjectionStoreV2)({
           getForkSourceRunIds: () => Effect.succeed(parentRecords.runs.map((run) => run.id)),
           getThreadRecords,
+          getTurnItem: () => Effect.succeed(null),
           getTurnStartContext,
           getRuntimeRecoveryProjection: () =>
             input.recoveryReadFailure !== undefined
@@ -1385,6 +1388,94 @@ effectIt.effect(
       ]);
       expect(JSON.stringify(harness.events)).not.toContain("private git diagnostic");
     }).pipe(Effect.scoped, Effect.provide(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))),
+);
+
+const ran = { status: "completed", checkpoint: "ready" };
+const removed = { status: "cancelled", checkpoint: null };
+// A queued message whose prompt now belongs to the run at `ordinal`.
+const steeredInto = (ordinal: number) => ({ ...removed, steeredInto: `run-${ordinal}` });
+effectIt.effect.each([
+  { label: "a queued message steered into it", runs: [ran, steeredInto(1)], source: 1 },
+  { label: "several steered into it", runs: [ran, steeredInto(1), steeredInto(1)], source: 1 },
+  { label: "a removed queued message", runs: [ran, removed], source: undefined },
+  { label: "a queued message that ran", runs: [ran, ran], source: undefined },
+  {
+    label: "a message steered into the starting run",
+    runs: [ran, steeredInto(3)],
+    source: undefined,
+  },
+  {
+    label: "a turn whose checkpoint was not captured",
+    runs: [{ ...ran, checkpoint: "error" }, steeredInto(1)],
+    source: undefined,
+  },
+  {
+    label: "a failed run",
+    runs: [{ ...ran, status: "failed" }, steeredInto(1)],
+    source: undefined,
+  },
+  { label: "a missing row", runs: [ran, null, steeredInto(1)], source: undefined },
+])("starts a turn from the last turn's checkpoint after $label", (input) =>
+  Effect.gen(function* () {
+    const ordinal = input.runs.length + 1;
+    const runs = [
+      ...input.runs.flatMap((run, index) =>
+        run === null
+          ? []
+          : [
+              {
+                ...run,
+                id: `run-${index + 1}`,
+                userMessageId: `message-${index + 1}`,
+                ordinal: index + 1,
+                checkpointId: run.checkpoint === null ? null : `checkpoint-${index + 1}`,
+              },
+            ],
+      ),
+      {
+        id: `run-${ordinal}`,
+        userMessageId: "message-starting",
+        ordinal,
+        status: "starting",
+        checkpoint: null,
+        checkpointId: null,
+      },
+    ];
+
+    const source = yield* ProviderTurnStart.findBaselineSourceOrdinal(
+      runs as unknown as Parameters<typeof ProviderTurnStart.findBaselineSourceOrdinal>[0],
+      { ordinal },
+      (messageId) => {
+        const queued = runs.find((run) => run.userMessageId === messageId);
+        return Effect.succeed(
+          queued !== undefined && "steeredInto" in queued
+            ? ({
+                type: "user_message",
+                inputIntent: "promoted_queued_to_steer",
+                runId: queued.steeredInto,
+              } as OrchestrationV2TurnItem)
+            : null,
+        );
+      },
+      (checkpointId) => {
+        const owner = runs.find((run) => run.checkpointId === checkpointId);
+        return Effect.succeed({
+          checkpoints:
+            owner === undefined
+              ? []
+              : [
+                  {
+                    id: checkpointId,
+                    runId: owner.id,
+                    appRunOrdinal: owner.ordinal,
+                    status: owner.checkpoint,
+                  } as OrchestrationV2Checkpoint,
+                ],
+        });
+      },
+    );
+    expect(source).toBe(input.source);
+  }),
 );
 
 effectIt.effect("recovers an abandoned failed turn before continuing its native conversation", () =>

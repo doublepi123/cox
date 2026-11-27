@@ -351,6 +351,7 @@ export interface ProjectionRuntimeResponseContext {
 
 export interface ProjectionRecordFilter {
   readonly providerThreadIds?: ReadonlyArray<ProviderThreadId>;
+  readonly checkpointIds?: ReadonlyArray<CheckpointId>;
   readonly messageRoles?: ReadonlyArray<OrchestrationV2ConversationMessage["role"]>;
   readonly monitorNotificationsOnly?: true;
   readonly turnItemRunId?: RunId;
@@ -3816,13 +3817,15 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
                 OR kind = 'manual')
             ORDER BY ordinal_within_parent ASC, scope_id ASC
           `,
-          fields !== undefined && !fields.includes("checkpoints")
+          (fields !== undefined && !fields.includes("checkpoints")) ||
+          (window === undefined && matchesNothing(filter?.checkpointIds))
             ? Effect.succeed([])
             : window === undefined
               ? sql<PayloadRow>`
             SELECT payload_json
             FROM orchestration_v2_projection_checkpoints
-            WHERE thread_id = ${threadId}
+            WHERE ${threadColumn(filter?.checkpointIds)} = ${threadId}
+              ${filter?.checkpointIds === undefined ? sql`` : sql`AND checkpoint_id IN (SELECT value FROM json_each(${encodeIdList(filter.checkpointIds)}))`}
             ORDER BY scope_id ASC, ordinal_within_scope ASC
           `
               : sql<PayloadRow>`
