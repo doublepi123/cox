@@ -165,6 +165,7 @@ import { ProjectEnvironmentBadge } from "./ProjectEnvironmentBadge";
 import {
   buildDraftActionMenuItems,
   buildThreadActionMenuItems,
+  canMarkLatestRunUnread,
   isThreadTriageAction,
   formatSnoozePresetMenuLabel,
   threadActionRequiresOperate,
@@ -2332,6 +2333,10 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
       const settlingThreads = selectedThreads.filter(
         (thread) => thread.settledOverride !== "settled",
       );
+      const markUnreadThreads = selectedThreads.filter(
+        (thread) =>
+          canMarkLatestRunUnread(thread.latestRun) && threadRuntimeCanArchive(thread.runtime),
+      );
       const canSnoozeSelection = selectedThreads.every(
         (thread) =>
           serverConfigs.has(thread.environmentId) &&
@@ -2754,7 +2759,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                 canSnoozeNow: canSnooze(thread, { now: new Date().toISOString() }),
                 isRegeneratingTitle,
                 isRunning: !threadRuntimeCanArchive(thread.runtime),
-                hasCompletedRun: thread.latestRun?.completedAt != null,
+                hasCompletedRun: canMarkLatestRunUnread(thread.latestRun),
                 canTurnIntoProject: canTurnThreadIntoProject(threadRef),
                 canMoveToProject:
                   serverConfigs.get(thread.environmentId)?.environment.capabilities
