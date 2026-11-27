@@ -997,6 +997,47 @@ it.effect("a project update or create that is refused tells the agent why", () =
   }),
 );
 
+it.effect("named MCP projects accept a null model but refuse a model selection", () =>
+  Effect.gen(function* () {
+    const harness = clientLaunchHarness({ runtimeModeCeiling: "full-access", launched: [] });
+    const dependencies = Layer.merge(
+      harness.dependencies,
+      Layer.mergeAll(
+        Layer.mock(Project.ProjectService)({
+          getById: (id) => Effect.succeedSome({ ...deletedProject(id), deletedAt: null }),
+        }),
+        Layer.mock(ManagedProjectFolders.ManagedProjectFolders)({
+          namedProjectsRoot: "/projects",
+          createNamedProject: () =>
+            Effect.succeed({
+              projectId: harness.projectId,
+              workspaceRoot: "/projects/client-target",
+            }),
+        }),
+      ),
+    );
+    const toolkit = yield* ProjectToolkit.pipe(
+      Effect.provide(
+        McpToolAccess.HandlersLayer.layer(ProjectHandlers.layer).pipe(Layer.provide(dependencies)),
+      ),
+    );
+    const create = (defaultModelSelection: typeof harness.modelSelection | null) =>
+      toolkit
+        .handle("cox_project_create", { title: "client-target", defaultModelSelection })
+        .pipe(Stream.unwrap, Stream.runCollect, Effect.provide(dependencies));
+    const refused = yield* create(harness.modelSelection);
+    expect(refused.at(-1)?.result).toMatchObject({
+      code: "invalid_request",
+      message: expect.stringContaining("cox_project_update"),
+    });
+    const accepted = yield* create(null);
+    expect(accepted.at(-1)?.result).toMatchObject({
+      id: harness.projectId,
+      defaultModelSelection: null,
+    });
+  }),
+);
+
 it.effect("reading a project shows the default model and actions saved in Settings", () =>
   Effect.gen(function* () {
     const overrideModel = {
