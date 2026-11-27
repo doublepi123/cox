@@ -59,6 +59,26 @@ afterEach(() => {
 });
 
 describe("openPreviewSession", () => {
+  it("duplicates a server browser with its zoom and appearance, as reopening a closed tab does", async () => {
+    const source: PreviewSessionSnapshot = {
+      ...snapshot,
+      runtime: "server",
+      zoomFactor: 1.5,
+      colorScheme: "dark",
+    };
+    useRightPanelStore.getState().openBrowser(threadRef, source.tabId);
+    const openPreview = vi.fn(async () =>
+      AsyncResult.success({ ...source, tabId: "duplicate-tab" }),
+    );
+
+    await addBrowserSurface({ threadRef, openPreview, duplicateFrom: source });
+
+    expect(openPreview).toHaveBeenCalledWith({
+      environmentId: threadRef.environmentId,
+      input: expect.objectContaining({ runtime: "server", zoomFactor: 1.5, colorScheme: "dark" }),
+    });
+  });
+
   it("duplicates a browser beside its source using its URL, profile, viewport and runtime", async () => {
     const source: PreviewSessionSnapshot = {
       ...snapshot,
