@@ -1637,7 +1637,7 @@ export function useComposerSend(input: ComposerSendInput) {
         sendInFlightRef.current = false;
       });
       const draftStatus = finishWatching();
-      if (result._tag === "Failure") return;
+      if (result._tag === "Failure" || result.value === false) return;
       if (currentRouteThreadKeyRef.current !== routeThreadKey) return;
       if (draftStatus === "edited" && activeThread) {
         setThreadError(

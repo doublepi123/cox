@@ -271,6 +271,7 @@ export function writeHandoffToComposer(
 type PreparedCheckout = Awaited<
   ReturnType<ReturnType<typeof usePreparePullRequestThreadAction>["run"]>
 >;
+type DraftCheckoutResult = PreparedCheckout | { readonly _tag: "Cancelled" };
 
 /**
  * Moves the draft opened for a checkout onto it once it is ready, keeping whatever the user
@@ -279,8 +280,9 @@ type PreparedCheckout = Awaited<
 export function prepareDraftCheckout(
   draftId: DraftId,
   checkout: Promise<PreparedCheckout>,
-): Promise<PreparedCheckout> {
-  const pointed = checkout.then((prepared) => {
+): Promise<DraftCheckoutResult> {
+  const result = checkout.then((prepared): DraftCheckoutResult => {
+    if (!isCurrent()) return { _tag: "Cancelled" };
     if (prepared._tag === "Failure") return prepared;
     const { branch, worktreePath } = prepared.value;
     // A waiting send resumes right after this and must render the checkout first.
@@ -294,8 +296,11 @@ export function prepareDraftCheckout(
     );
     return prepared;
   });
-  trackPendingDraftCheckout(draftId, pointed);
-  return pointed;
+  const isCurrent = trackPendingDraftCheckout(
+    draftId,
+    result.then((prepared) => prepared._tag === "Success"),
+  );
+  return result;
 }
 
 export type PullRequestHandoffDetail = Pick<
@@ -400,8 +405,12 @@ export function usePullRequestHandoffs({
         threadId: opened.threadId,
       }),
     );
+    setHandoff(null);
+    if (prepared._tag === "Cancelled") {
+      toastManager.close(toastId);
+      return;
+    }
     if (prepared._tag === "Failure") {
-      setHandoff(null);
       toastManager.update(toastId, {
         type: "error",
         title: `Could not prepare the ${terminology.singular} checkout`,
@@ -411,7 +420,6 @@ export function usePullRequestHandoffs({
       });
       return;
     }
-    setHandoff(null);
     if (task === null) {
       toastManager.update(
         toastId,
