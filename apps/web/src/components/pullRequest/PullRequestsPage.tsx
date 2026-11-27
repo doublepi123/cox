@@ -1,6 +1,10 @@
 import { useTranslation } from "../../i18n";
 import { sourceControlClients } from "@t3tools/client-runtime/source-control-clients";
-import { applyPullRequestDraftFilterChange } from "@t3tools/client-runtime/pull-request-query";
+import {
+  applyPullRequestFilterChange,
+  parsePullRequestQuery,
+  pullRequestMenuFilters,
+} from "@t3tools/client-runtime/pull-request-query";
 import { Spinner } from "~/components/ui/spinner";
 import type { PullRequestSpeedActionResult } from "~/components/pullRequest/PullRequestSpeedActions";
 import { usePullRequestCloseBatch } from "~/components/pullRequest/usePullRequestActions";
@@ -1254,13 +1258,9 @@ export function PullRequestsPage() {
       involvement={search.involvement}
       involvementOptions={INVOLVEMENT_TABS}
       onInvolvement={(involvement) => updateListScope({ involvement })}
-      filters={
-        typedParsed.filters.draft
-          ? { ...menuFilters, draft: typedParsed.filters.draft }
-          : menuFilters
-      }
+      filters={pullRequestMenuFilters(typedParsed.filters, menuFilters)}
       onFilters={(value) => {
-        const { query, filters: next } = applyPullRequestDraftFilterChange(
+        const { query, filters: next } = applyPullRequestFilterChange(
           typedQuery,
           menuFilters,
           value,
