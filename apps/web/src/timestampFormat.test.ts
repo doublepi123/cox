@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vite-plus/test";
 
 import {
   formatChatTimestampTooltip,
+  formatDateTimeTimestamp,
   formatDayAwareTimestamp,
   formatRelativeElapsed,
   formatRelativeTimeLabel,
@@ -12,11 +13,20 @@ import { translate } from "./i18n/language";
 it("formats the time and date in the current system time zone", () => {
   const previousZone = process.env.TZ;
   const date = "2026-10-31T20:00:00Z";
+  const formatIn = (timeZone: string) =>
+    new Intl.DateTimeFormat(undefined, {
+      dateStyle: "medium",
+      timeStyle: "short",
+      hour12: true,
+      timeZone,
+    }).format(new Date(date));
   try {
     process.env.TZ = "America/New_York";
     expect(formatChatTimestampTooltip(date, "24-hour")).toBe("16:00, 31st October 2026");
+    expect(formatDateTimeTimestamp(date, "12-hour")).toBe(formatIn("America/New_York"));
     process.env.TZ = "Asia/Bangkok";
     expect(formatChatTimestampTooltip(date, "24-hour")).toBe("03:00, 1st November 2026");
+    expect(formatDateTimeTimestamp(date, "12-hour")).toBe(formatIn("Asia/Bangkok"));
   } finally {
     if (previousZone === undefined) delete process.env.TZ;
     else process.env.TZ = previousZone;
