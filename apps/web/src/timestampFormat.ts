@@ -29,8 +29,7 @@ function resolveTimestampLocale(systemLocale: string | null | undefined): string
   }
 }
 function readHostSystemLocale(): string | null {
-  if (typeof window === "undefined") return null;
-  return null;
+  return typeof navigator === "undefined" ? null : navigator.language;
 }
 const timestampLocale = resolveTimestampLocale(readHostSystemLocale());
 const WEEKDAY_INDEXES = [0, 1, 2, 3, 4, 5, 6] as const;
@@ -138,7 +137,7 @@ export function formatChatTimestampTooltip(
 }
 export function formatFullTimestamp(isoDate: string, timestampFormat: TimestampFormat): string {
   return new Date(isoDate).toLocaleString(
-    undefined,
+    timestampLocale,
     timestampFormat === "locale" ? undefined : { hour12: timestampFormat === "12-hour" },
   );
 }

@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vite-plus/test";
+import { describe, expect, it, vi } from "vite-plus/test";
 
 import {
   formatChatTimestampTooltip,
@@ -32,6 +32,22 @@ it("localizes the day period while honoring the system clock and explicit 24-hou
   );
   expect(formatShortTimestamp(date.toISOString(), "12-hour", "zh")).toBe("下午6:05");
   expect(formatShortTimestamp(date.toISOString(), "24-hour", "zh")).toBe("18:05");
+});
+
+it("formats full timestamps in the system locale", async () => {
+  const previousZone = process.env.TZ;
+  process.env.TZ = "UTC";
+  vi.stubGlobal("navigator", { language: "de-DE" });
+  vi.resetModules();
+  try {
+    const { formatFullTimestamp } = await import("./timestampFormat");
+    expect(formatFullTimestamp("2026-11-19T18:05:00.000Z", "24-hour")).toBe("19.11.2026, 18:05:00");
+  } finally {
+    vi.unstubAllGlobals();
+    vi.resetModules();
+    if (previousZone === undefined) delete process.env.TZ;
+    else process.env.TZ = previousZone;
+  }
 });
 
 describe("localized timestamps", () => {
