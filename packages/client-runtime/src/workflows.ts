@@ -12,7 +12,7 @@ import {
 } from "@t3tools/contracts";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
-import { formatDuration } from "@t3tools/shared/orchestrationTiming";
+import { formatWorkflowDuration } from "@t3tools/shared/orchestrationTiming";
 
 export type WorkflowMessageResolver = (
   message: string,
@@ -941,12 +941,16 @@ export function workflowStepReferences(
 }
 
 /** A step's time in one shape down a column: 0.3s, 9.7s, 12s, then minutes. */
-export function workflowStepTime(ms: number): string {
-  if (ms < 9_950 && ms % 1000 !== 0) return `${(Math.max(ms, 100) / 1000).toFixed(1)}s`;
+export function workflowStepTime(
+  ms: number,
+  resolve: WorkflowMessageResolver = defaultWorkflowMessage,
+): string {
+  if (ms < 9_950 && ms % 1000 !== 0) {
+    return resolve("{seconds}s", { seconds: (Math.max(ms, 100) / 1000).toFixed(1) });
+  }
   const seconds = Math.round(ms / 1000);
-  if (seconds < 60) return `${seconds}s`;
-  if (seconds < 3600 && seconds % 60 === 0) return `${seconds / 60}m 0s`;
-  return formatDuration(ms);
+  if (seconds < 60) return resolve("{seconds}s", { seconds });
+  return formatWorkflowDuration(ms, resolve);
 }
 
 /**

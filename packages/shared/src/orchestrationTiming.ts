@@ -44,3 +44,23 @@ export function formatDuration(durationMs: number): string {
   if (seconds > 0) parts.push(`${seconds}s`);
   return parts.join(" ");
 }
+
+export function formatWorkflowDuration(
+  durationMs: number,
+  resolve: (message: string, values?: Readonly<Record<string, string | number>>) => string,
+): string {
+  if (!Number.isFinite(durationMs) || durationMs < 0) return resolve("{ms}ms", { ms: 0 });
+  if (durationMs < 1_000) return resolve("{ms}ms", { ms: Math.max(1, Math.round(durationMs)) });
+  if (durationMs < 10_000)
+    return resolve("{seconds}s", { seconds: Math.round(durationMs / 100) / 10 });
+  const totalSeconds = Math.round(durationMs / 1_000);
+  if (totalSeconds < 60) return resolve("{seconds}s", { seconds: totalSeconds });
+  const hours = Math.floor(totalSeconds / 3_600);
+  const minutes = Math.floor((totalSeconds % 3_600) / 60);
+  const seconds = totalSeconds % 60;
+  if (hours === 0) return resolve("{minutes}m {seconds}s", { minutes, seconds });
+  if (minutes > 0) return resolve("{hours}h {minutes}m {seconds}s", { hours, minutes, seconds });
+  return seconds > 0
+    ? resolve("{hours}h {seconds}s", { hours, seconds })
+    : resolve("{hours}h", { hours });
+}

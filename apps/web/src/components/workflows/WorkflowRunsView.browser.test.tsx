@@ -10,6 +10,8 @@ import {
 import { describe, expect, it, vi } from "vite-plus/test";
 import { page as browserPage, userEvent } from "vite-plus/test/browser";
 
+import { getLanguage, setLanguagePreference } from "~/i18n";
+
 import "~/index.css";
 import { render } from "../../../test/render";
 import type { WorkflowPaneTab } from "./workflowPane.logic";
@@ -229,6 +231,26 @@ describe("WorkflowRunsView", () => {
     await expect
       .element(screen.getByRole("navigation", { name: "Workflow runs" }))
       .not.toMatchTextContent(/skipped/);
+  });
+
+  it("formats completed run and step durations in the selected locale", async () => {
+    const previousLanguage = getLanguage();
+    setLanguagePreference("zh");
+    try {
+      setup(
+        {
+          runs: [run({ runId: "fix", title: "Fix", status: "completed", endedAt: at(2) })],
+          questions: [],
+        },
+        { fix: [step({ name: "build", kind: "step", endedAt: at(2) })] },
+      );
+      await using _desktop = await desktop();
+      await using screen = await render(page("fix"));
+      await expect.element(screen.getByText("用时 2 分 0 秒")).toBeVisible();
+      await expect.element(screen.getByText("2 分 0 秒", { exact: true })).toBeVisible();
+    } finally {
+      setLanguagePreference(previousLanguage);
+    }
   });
 
   it("opens on the question that waits, and answers it with the reason given", async () => {

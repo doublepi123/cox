@@ -13,7 +13,7 @@ import {
   type WorkflowRunReference,
 } from "@t3tools/contracts";
 import { formatModelSlugName } from "@t3tools/shared/model";
-import { formatDuration } from "@t3tools/shared/orchestrationTiming";
+import { formatWorkflowDuration } from "@t3tools/shared/orchestrationTiming";
 import { useTranslation } from "../../i18n";
 import {
   ArrowLeftIcon,
@@ -505,8 +505,8 @@ export function WorkflowRunFeed({
                 <span aria-hidden>·</span>
                 <span>
                   {ended
-                    ? gt("took {duration}", { duration: formatDuration(ranMs) })
-                    : gt("{duration} so far", { duration: formatDuration(ranMs) })}
+                    ? gt("took {duration}", { duration: formatWorkflowDuration(ranMs, gt) })
+                    : gt("{duration} so far", { duration: formatWorkflowDuration(ranMs, gt) })}
                 </span>
               </>
             )}
@@ -1005,7 +1005,7 @@ function WorkflowTimeline({
                     count: names.length - 2,
                   })
             }
-            duration={workflowStepTime(Math.max(0, row.endMs - row.startMs))}
+            duration={workflowStepTime(Math.max(0, row.endMs - row.startMs), gt)}
             selected={focus === key}
             current={current === key}
             onPick={() => onPick(key)}
@@ -1066,7 +1066,10 @@ function WorkflowTimeline({
                 </span>
               ) : null}
               <span className="min-w-12 shrink-0 text-right text-xs text-muted-foreground tabular-nums">
-                {workflowStepTime(running > 0 ? wholeSeconds(endMs - startMs) : endMs - startMs)}
+                {workflowStepTime(
+                  running > 0 ? wholeSeconds(endMs - startMs) : endMs - startMs,
+                  gt,
+                )}
               </span>
               <span aria-hidden className="hidden w-3 shrink-0 @2xl/feed:block" />
             </div>
@@ -1264,7 +1267,9 @@ function WorkflowBeatRow({
         return asks ? gt("Asks you") : null;
       case "sleep":
         return Number.isFinite(wakes) && wakes > nowMs
-          ? gt("wakes in {duration}", { duration: formatDuration(wholeSeconds(wakes - nowMs)) })
+          ? gt("wakes in {duration}", {
+              duration: formatWorkflowDuration(wholeSeconds(wakes - nowMs), gt),
+            })
           : gt("about to wake");
       case "wait":
         return gt("waiting");
@@ -1347,7 +1352,7 @@ function WorkflowBeatRow({
       }
       aside={aside}
       {...(failed ? { asideTone: "failed" as const } : {})}
-      duration={workflowStepTime(elapsedOf(beat))}
+      duration={workflowStepTime(elapsedOf(beat), m)}
       selected={selected}
       current={current}
       onPick={onPick}
@@ -1509,7 +1514,7 @@ function WorkflowBeatCard({
   const { t: m } = useTranslation();
   const sessionId = useEnvironmentSessionId(environmentId);
   const under = beat.status === "running";
-  const length = formatDuration(elapsedOf(beat));
+  const length = formatWorkflowDuration(elapsedOf(beat), m);
   const tries = beat.attempts > 1 ? ` · ${nthTry(beat.attempts, m)}` : "";
   switch (beat.kind) {
     case "agent":
@@ -1578,7 +1583,7 @@ function WorkflowBeatCard({
             sub={
               Number.isFinite(wakes) && wakes > nowMs
                 ? gt("wakes in {duration}", {
-                    duration: formatDuration(wholeSeconds(wakes - nowMs)),
+                    duration: formatWorkflowDuration(wholeSeconds(wakes - nowMs), m),
                   })
                 : gt("about to wake")
             }
@@ -1689,7 +1694,7 @@ function WorkflowAgentCard({
     .get(threadEnvironmentId)
     ?.find((candidate) => candidate.instanceId === shell?.modelSelection.instanceId);
   const under = beat.status === "running";
-  const length = formatDuration(elapsedOf(beat));
+  const length = formatWorkflowDuration(elapsedOf(beat), m);
   const summary = workflowAgentSummary(beat);
   const start = summary.said === null ? null : workflowSaidStart(summary.said, SAID_SHOWN);
   const liveWord = !under
@@ -1810,7 +1815,9 @@ function WorkflowPauseCard({
     : !Number.isFinite(resumes)
       ? gt("waits for you to resume it")
       : resumes > nowMs
-        ? gt("tries again by itself in {duration}", { duration: formatDuration(resumes - nowMs) })
+        ? gt("tries again by itself in {duration}", {
+            duration: formatWorkflowDuration(resumes - nowMs, m),
+          })
         : gt("about to try again by itself");
   return (
     <FeedCard tone="failed" label={gt("Why it paused")} reveal>

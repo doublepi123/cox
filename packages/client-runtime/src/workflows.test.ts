@@ -714,6 +714,17 @@ describe("workflow references", () => {
 });
 
 describe("workflowStepTime", () => {
+  it("uses the caller's language for duration units", () => {
+    const resolve = (message: string, values?: Readonly<Record<string, string | number>>) =>
+      (message === "{minutes}m {seconds}s"
+        ? "{minutes} мин {seconds} сек"
+        : message === "{seconds}s"
+          ? "{seconds} сек"
+          : message
+      ).replace(/\{(\w+)\}/gu, (token, name: string) => values?.[name]?.toString() ?? token);
+    expect(workflowStepTime(60_000, resolve)).toBe("1 мин 0 сек");
+  });
+
   it("keeps one shape down the column", () => {
     expect(workflowStepTime(9)).toBe("0.1s");
     expect(workflowStepTime(342)).toBe("0.3s");
