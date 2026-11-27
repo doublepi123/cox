@@ -1248,12 +1248,6 @@ function CheckoutGitActionsControl({
     });
   };
 
-  // Keep a typed message for the retry unless the user already started a new one.
-  const restoreDialogCommitMessageOnFailure = (commitMessage: string) => (committed: boolean) => {
-    if (committed || !commitMessage) return;
-    setDialogCommitMessage((current) => current || commitMessage);
-  };
-
   const runDialogActionOnNewBranch = async () => {
     if (!isCommitDialogOpen) return;
     const commitMessage = dialogCommitMessage.trim();
@@ -1344,17 +1338,20 @@ function CheckoutGitActionsControl({
     setIsCommitDialogOpen(true);
   };
 
-  const runDialogAction = () => {
+  const runDialogAction = async () => {
     if (!isCommitDialogOpen) return;
     const commitMessage = dialogCommitMessage.trim();
     setIsCommitDialogOpen(false);
     setDialogCommitMessage("");
     setIsEditingFiles(false);
-    void runGitActionWithToast({
+    const committed = await runGitActionWithToast({
       action: "commit",
       ...(commitMessage ? { commitMessage } : {}),
       ...(!allSelected ? { filePaths: selectedFiles.map((f) => f.path) } : {}),
-    }).then(restoreDialogCommitMessageOnFailure(commitMessage));
+    });
+    if (!committed && commitMessage) {
+      setDialogCommitMessage((current) => current || commitMessage);
+    }
   };
 
   const openChangedFileInEditor = (filePath: string) => {
