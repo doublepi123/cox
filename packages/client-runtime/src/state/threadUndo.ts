@@ -68,6 +68,13 @@ export function planThreadUndo(
   return [{ action: "unsettle" }, ...(thread?.pinnedAt != null ? [pin] : []), ...snooze];
 }
 
+export function restoresAfterDeviceCancel(
+  step: ThreadUndoStep,
+  current: { readonly snoozedUntil?: string | null } | null | undefined,
+): boolean {
+  return step.action === "snooze" && current?.snoozedUntil !== step.snoozedUntil;
+}
+
 export async function executeThreadUndo<Result>(
   plan: ThreadUndoPlan,
   execute: (step: ThreadUndoStep) => Promise<Result>,

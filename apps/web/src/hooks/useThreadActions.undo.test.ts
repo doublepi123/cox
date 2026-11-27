@@ -299,6 +299,38 @@ describe("settle and snooze Undo", () => {
     });
   });
 
+  it("restores the snooze replaced by an offline settle", async () => {
+    const snoozedUntil = "2030-01-01T09:00:00.000Z";
+    threadShell.pinnedAt = "2026-01-01T00:00:00.000Z";
+    threadShell.snoozedUntil = snoozedUntil;
+    const actions = useThreadActions();
+    await actions.settleThread(target);
+    threadShell.snoozedUntil = null;
+    commands.unsettle.mockResolvedValue({
+      _tag: "Success",
+      value: { sequence: 0, cancelledOnDevice: true },
+    });
+    await currentUndo()();
+    expect(commands.snooze).toHaveBeenCalledExactlyOnceWith({
+      environmentId: target.environmentId,
+      input: { threadId: target.threadId, snoozedUntil },
+    });
+  });
+
+  it("does not restore a snooze the environment still holds after offline settle", async () => {
+    const snoozedUntil = "2030-01-01T09:00:00.000Z";
+    threadShell.pinnedAt = "2026-01-01T00:00:00.000Z";
+    threadShell.snoozedUntil = snoozedUntil;
+    const actions = useThreadActions();
+    await actions.settleThread(target);
+    commands.unsettle.mockResolvedValue({
+      _tag: "Success",
+      value: { sequence: 0, cancelledOnDevice: true },
+    });
+    await currentUndo()();
+    expect(commands.snooze).not.toHaveBeenCalled();
+  });
+
   it("stops settle restoration if restoring the pin fails", async () => {
     threadShell.pinnedAt = "2026-01-01T00:00:00.000Z";
     threadShell.snoozedUntil = "2030-01-01T09:00:00.000Z";
