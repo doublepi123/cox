@@ -7,9 +7,11 @@ import {
 } from "@t3tools/shared/keybindings";
 
 import { resolveShortcutCommand } from "../../keybindings";
+import { translate } from "../../i18n";
 
 import {
   buildKeybindingRows,
+  commandLabel,
   keybindingConflictLabels,
   keybindingFromKeyboardEvent,
   parseWhenExpressionDraft,
@@ -21,6 +23,11 @@ import {
 } from "./KeybindingsSettings.logic";
 
 describe("KeybindingsSettings.logic", () => {
+  it("translates the previous and next terminal shortcuts", () => {
+    expect(translate("zh", commandLabel("terminal.previous"))).toBe("终端：上一个");
+    expect(translate("zh", commandLabel("terminal.next"))).toBe("终端：下一个");
+  });
+
   it("marks only bindings shadowed by later unconditional or matching conditions", () => {
     const bindings = compileResolvedKeybindingsConfig([
       { command: "sidebar.toggle", key: "mod+b" },
