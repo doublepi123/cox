@@ -23,12 +23,13 @@ import {
   UserRoundIcon,
   type LucideIcon,
 } from "lucide-react";
-import { memo, useLayoutEffect, useRef } from "react";
+import { memo, useLayoutEffect, useRef, useState } from "react";
 
 import { type ComposerSlashCommand, type ComposerTriggerKind } from "../../composer-logic";
 import { cn } from "~/lib/utils";
 import { Badge } from "../ui/badge";
 import { Command, CommandGroup, CommandItem, CommandList } from "../ui/command";
+import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { EnvironmentMachineIcon } from "../EnvironmentMachineIcon";
 import { PierreEntryIcon } from "./PierreEntryIcon";
 import { ComposerBanner } from "./ComposerBanner";
@@ -102,6 +103,13 @@ export const ComposerCommandMenu = memo(function ComposerCommandMenu(props: {
   onSelect: (item: ComposerCommandItem) => void;
 }) {
   const listRef = useRef<HTMLDivElement>(null);
+  const highlightScrollTopRef = useRef<number | null>(null);
+  const [descriptionDismissed, setDescriptionDismissed] = useState(false);
+  const [highlightedItemId, setHighlightedItemId] = useState(props.activeItemId);
+  if (highlightedItemId !== props.activeItemId) {
+    setHighlightedItemId(props.activeItemId);
+    setDescriptionDismissed(false);
+  }
 
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- scrolls the highlighted menu item's DOM node into view
   useLayoutEffect(() => {
@@ -110,6 +118,8 @@ export const ComposerCommandMenu = memo(function ComposerCommandMenu(props: {
       `[data-composer-item-id="${CSS.escape(props.activeItemId)}"]`,
     );
     el?.scrollIntoView({ block: "nearest" });
+    highlightScrollTopRef.current =
+      el?.closest('[data-slot="scroll-area-viewport"]')?.scrollTop ?? null;
   }, [props.activeItemId]);
 
   return (
@@ -126,6 +136,15 @@ export const ComposerCommandMenu = memo(function ComposerCommandMenu(props: {
         ref={listRef}
         className="flex min-h-0 w-full flex-col overflow-hidden pb-(--chat-composer-attachment-overlap) **:data-[slot=command-item]:rounded-lg **:data-[slot=scroll-area-scrollbar]:data-[orientation=vertical]:my-4"
         data-composer-command-drawer="true"
+        onScrollCapture={(event) => {
+          if (
+            event.target instanceof HTMLElement &&
+            event.target.scrollTop === highlightScrollTopRef.current
+          ) {
+            return;
+          }
+          setDescriptionDismissed(true);
+        }}
       >
         {props.items.length > 0 ? (
           <CommandList
@@ -142,6 +161,7 @@ export const ComposerCommandMenu = memo(function ComposerCommandMenu(props: {
                   triggerKind={props.triggerKind}
                   resolvedTheme={props.resolvedTheme}
                   isActive={props.activeItemId === item.id}
+                  descriptionDismissed={props.activeItemId === item.id && descriptionDismissed}
                   onHighlight={props.onHighlightedItemChange}
                   onSelect={props.onSelect}
                 />
@@ -177,6 +197,7 @@ const ComposerCommandMenuItem = memo(function ComposerCommandMenuItem(props: {
   triggerKind: ComposerTriggerKind | null;
   resolvedTheme: "light" | "dark";
   isActive: boolean;
+  descriptionDismissed: boolean;
   onHighlight: (itemId: string | null) => void;
   onSelect: (item: ComposerCommandItem) => void;
 }) {
@@ -186,6 +207,16 @@ const ComposerCommandMenuItem = memo(function ComposerCommandMenuItem(props: {
     props.triggerKind === "slash-command" && props.item.type === "skill" ? props.item.skill : null;
   const pullRequestPresentation =
     props.item.type === "pull-request" ? resolvePullRequestState(props.item.pullRequest) : null;
+  const [descriptionTruncated, setDescriptionTruncated] = useState(false);
+  const measureDescription = (description: HTMLSpanElement | null) => {
+    if (!description) return;
+    const measure = () =>
+      setDescriptionTruncated(description.scrollWidth > description.clientWidth);
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(description);
+    return () => observer.disconnect();
+  };
 
   return (
     <CommandItem
@@ -239,9 +270,26 @@ const ComposerCommandMenuItem = memo(function ComposerCommandMenuItem(props: {
             props.item.label
           )}
         </span>
-        <span className="min-w-0 flex-1 truncate text-left text-secondary-label text-xs">
-          {props.item.description}
-        </span>
+        {props.isActive ? (
+          <Tooltip open={descriptionTruncated && !props.descriptionDismissed}>
+            <TooltipTrigger
+              tabIndex={-1}
+              render={
+                <span
+                  ref={measureDescription}
+                  className="min-w-0 flex-1 truncate text-left text-secondary-label text-xs"
+                />
+              }
+            >
+              {props.item.description}
+            </TooltipTrigger>
+            <TooltipPopup>{props.item.description}</TooltipPopup>
+          </Tooltip>
+        ) : (
+          <span className="min-w-0 flex-1 truncate text-left text-secondary-label text-xs">
+            {props.item.description}
+          </span>
+        )}
         {skillSourceKind ? (
           <SkillSourceBadge
             kind={skillSourceKind}
