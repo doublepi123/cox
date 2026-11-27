@@ -66,6 +66,7 @@ interface XmlNode {
   hasSelectedChoice?: boolean;
   epubTable?: boolean;
   mathmlFirstChildSeen?: boolean;
+  epubNavigation?: boolean;
 }
 
 function separateRubyReadings(ruby: XmlNode) {
@@ -90,14 +91,12 @@ function namespaceOf(tagName: string, scope: readonly XmlNode[]) {
   return scope.findLast((node) => Object.hasOwn(node.attrs, binding))?.attrs[binding];
 }
 
-function isXhtmlTemplate(
+function isXhtmlElement(
   tagName: string,
-  node: XmlNode,
-  ancestors: readonly XmlNode[],
+  scope: readonly XmlNode[],
   rootTagName: string | undefined,
 ) {
-  if (node.name !== "template") return false;
-  const namespace = namespaceOf(tagName, [...ancestors, node]);
+  const namespace = namespaceOf(tagName, scope);
   return (
     namespace === "http://www.w3.org/1999/xhtml" ||
     (namespace === undefined && !tagName.includes(":") && rootTagName === "html")
@@ -139,6 +138,8 @@ function xml(source: string, extension: string): XmlNode {
     stack.push(node);
     if (htmlEntities && node.name === "semantics" && namespaceOf(tag.name, stack) === MATHML_NS)
       node.mathmlFirstChildSeen = false;
+    if (htmlEntities && node.name === "nav" && isXhtmlElement(tag.name, stack, rootTagName))
+      node.epubNavigation = true;
     if (
       (node.name === "AlternateContent" || node.name === "Choice") &&
       namespaceOf(tag.name, stack) === MARKUP_COMPATIBILITY_NS
@@ -160,7 +161,9 @@ function xml(source: string, extension: string): XmlNode {
     // Keep one when no Choice carries text, such as a chart with a VML caption.
     if (
       isMathmlAlternative ||
-      (htmlEntities && isXhtmlTemplate(tag.name, node, stack, rootTagName)) ||
+      (htmlEntities &&
+        node.name === "template" &&
+        isXhtmlElement(tag.name, [...stack, node], rootTagName)) ||
       (htmlEntities && node.name === "head" && stack[1]?.name === "html") ||
       (htmlEntities &&
         (stack[1] ?? node).name === "html" &&
@@ -303,17 +306,18 @@ function* paragraphs(node: XmlNode): Generator<TextPart, void> {
       yield* text(child);
       yield "\n";
     } else if (
-      [
-        "blockquote",
-        "figure",
-        "figcaption",
-        "aside",
-        "address",
-        "header",
-        "footer",
-        "article",
-      ].includes(child.name) &&
-      child.hasText
+      child.hasText &&
+      (child.epubNavigation ||
+        [
+          "blockquote",
+          "figure",
+          "figcaption",
+          "aside",
+          "address",
+          "header",
+          "footer",
+          "article",
+        ].includes(child.name))
     ) {
       yield LINE_START;
       yield* paragraphs(child);
