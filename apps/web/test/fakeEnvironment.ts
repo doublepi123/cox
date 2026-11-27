@@ -85,6 +85,7 @@ const serverConfig: ServerConfig = {
         auth: { status: "authenticated" },
         checkedAt: "2026-03-17T19:12:28.000Z",
         models: [{ slug: "gpt-5.4", name: "GPT-5.4", isCustom: false, capabilities: null }],
+        slashCommands: [{ name: "compact", description: "Compact context" }],
       },
     ],
     availableEditors: [],

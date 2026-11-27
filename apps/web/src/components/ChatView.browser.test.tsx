@@ -22,6 +22,7 @@ import {
   ENVIRONMENT_ID,
   PROJECT_ID,
   installFakeEnvironment,
+  runningRun,
   threadWithHistory,
   type FakeDriver,
 } from "../../test/fakeEnvironment";
@@ -185,7 +186,10 @@ vi.mock(import("./chat/useComposerSend"), async (original) => {
   };
 });
 
+const compactHistory = threadWithHistory("compact-mid-turn", 2);
+const compactRunning = runningRun(compactHistory.id, "compact-live-run", 3, "compact-live-user");
 installFakeEnvironment([
+  { ...compactHistory, runs: [...compactHistory.runs, compactRunning] },
   threadWithHistory("thread-stream-empty", 1),
   threadWithHistory("thread-stream-cached", 1),
   threadWithHistory("thread-send-destination", 1),
@@ -229,6 +233,16 @@ async function mountThread(threadId: ThreadId) {
 }
 
 const streamError = () => page.getByText("stream failed");
+it("keeps /compact in the slash menu while a turn runs", async () => {
+  using _drafts = isolateComposerDrafts();
+  returningUserSettings();
+  await using _app = await mountThread(compactHistory.id);
+  await expect.element(page.getByText(`Answer 1 for ${compactHistory.id}.`)).toBeVisible();
+  const compact = page.getByRole("option", { name: /^\/compact/ });
+  await expect.element(page.getByRole("button", { name: "Stop generation" })).toBeVisible();
+  await userEvent.type(page.getByTestId("composer-editor"), "/compact");
+  await expect.element(compact).toBeVisible();
+});
 const composerSyncStatus = () => document.querySelector("[data-composer-sync-status]");
 
 const recoverThreadStream = async () => {
