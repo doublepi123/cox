@@ -245,6 +245,19 @@ it.effect("reports all equally deep projects for an unregistered worktree", () =
     const error = yield* Effect.flip(from(worktree));
     assert.include(error.message, "Repository (repo)");
     assert.include(error.message, "Alias (alias)");
+    const stale = path.join(dir, "stale");
+    yield* git("worktree", "add", "--detach", stale);
+    yield* fs.rename(stale, path.join(dir, "moved"));
+    yield* fs.makeDirectory(stale);
+    const registered = [
+      projects[0]!,
+      { id: ProjectId.make("stale"), title: "Stale", workspaceRoot: stale },
+    ];
+    const result = yield* resolveProject(
+      scriptedTools({ cox_project_list: [{ projects: registered, nextCursor: null }] }).tools,
+      worktree,
+    );
+    assert.equal(result.id, ProjectId.make("repo"));
   }).pipe(
     Effect.provide(NodeServices.layer),
     Effect.provideService(HostProcess.WorkingDirectory, process.cwd()),
