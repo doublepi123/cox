@@ -16,6 +16,7 @@ const LINE_START = Symbol("line-start");
 const THEMATIC_BREAK = Symbol("thematic-break");
 const MARKUP_COMPATIBILITY_NS = "http://schemas.openxmlformats.org/markup-compatibility/2006";
 const MATHML_NS = "http://www.w3.org/1998/Math/MathML";
+const ODF_DRAW_NS = "urn:oasis:names:tc:opendocument:xmlns:drawing:1.0";
 type TextPart =
   | string
   | typeof CELL_START
@@ -69,6 +70,7 @@ interface XmlNode {
   epubTable?: boolean;
   mathmlFirstChildSeen?: boolean;
   epubBlock?: boolean;
+  odfTextBox?: boolean;
 }
 
 function separateRubyReadings(ruby: XmlNode) {
@@ -138,6 +140,8 @@ function xml(source: string, extension: string): XmlNode {
     if (odfSpaces && node.name === "s") node.spaceCount = repeatCount(node.attrs.c);
     stack.at(-1)!.children.push(node);
     stack.push(node);
+    if (odfSpaces && node.name === "text-box" && namespaceOf(tag.name, stack) === ODF_DRAW_NS)
+      node.odfTextBox = true;
     if (htmlEntities && node.name === "semantics" && namespaceOf(tag.name, stack) === MATHML_NS)
       node.mathmlFirstChildSeen = false;
     if (
@@ -263,7 +267,21 @@ function* text(node: XmlNode): Generator<TextPart, void> {
   }
   // Word text boxes hold their own paragraphs inside the anchoring paragraph.
   if (node.name === "txbxContent") yield* paragraphs(node);
-  else if (["tab", "cell"].includes(node.name)) yield "\t";
+  else if (node.odfTextBox) {
+    // An ODF box can sit inline, so only add breaks between its own paragraphs.
+    let seenParagraph = false;
+    for (const child of node.children) {
+      if (typeof child === "string") {
+        yield child;
+        continue;
+      }
+      if (child.name === "p" || child.name === "h") {
+        if (seenParagraph) yield "\n";
+        seenParagraph = true;
+      }
+      yield* text(child);
+    }
+  } else if (["tab", "cell"].includes(node.name)) yield "\t";
   else if (["br", "line-break", "cr"].includes(node.name)) yield "\n";
   else if (node.spaceCount !== undefined) {
     yield " ".repeat(Math.min(MAX_OUTPUT, node.spaceCount));
