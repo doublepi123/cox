@@ -290,7 +290,7 @@ const listAllProjects = Effect.fn("cli.thread.listAllProjects")(function* (tools
 });
 
 /** A project id, or a path inside a project's folder (deepest project wins). */
-const resolveProject = Effect.fn("cli.thread.resolveProject")(function* (
+export const resolveProject = Effect.fn("cli.thread.resolveProject")(function* (
   tools: ThreadTools,
   identifier: string,
 ) {
@@ -304,21 +304,31 @@ const resolveProject = Effect.fn("cli.thread.resolveProject")(function* (
   // through a symlink (macOS /tmp), so both sides compare as real paths.
   const realPath = (value: string) =>
     fileSystem.realPath(value).pipe(Effect.orElseSucceed(() => value));
-  const target = yield* realPath(
-    path.resolve(yield* HostProcess.WorkingDirectory, yield* expandHomePath(identifier)),
+  const requestedPath = path.resolve(
+    yield* HostProcess.WorkingDirectory,
+    yield* expandHomePath(identifier),
   );
+  const target = yield* realPath(requestedPath);
   const roots = yield* Effect.forEach(projects, (project) =>
     Effect.map(realPath(project.workspaceRoot), (root) => ({ project, root })),
   );
+  const contains = (root: string, candidate: string) => {
+    const relative = path.relative(root, candidate);
+    return (
+      relative === "" ||
+      (relative !== ".." && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative))
+    );
+  };
+  const matchingPathLength = (root: string) => (contains(root, requestedPath) ? root.length : 0);
   const containing = roots
-    .filter(({ root }) => {
-      const relative = path.relative(root, target);
-      return (
-        relative === "" ||
-        (relative !== ".." && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative))
-      );
-    })
-    .toSorted((left, right) => right.root.length - left.root.length)[0];
+    .filter(({ root }) => contains(root, target))
+    .toSorted(
+      (left, right) =>
+        right.root.length - left.root.length ||
+        matchingPathLength(right.project.workspaceRoot) -
+          matchingPathLength(left.project.workspaceRoot),
+    )[0];
+
   if (containing === undefined) {
     return yield* new ThreadProjectNotFoundError({ identifier });
   }

@@ -16,6 +16,7 @@ import {
   latestRunError,
   listProjectThreads,
   readLatestMessages,
+  resolveProject,
   readOutputSchema,
   type ThreadTools,
   threadCommand,
@@ -170,6 +171,36 @@ it.effect("--wait reports its run's result when a later run is the one waiting",
       status: "completed",
     });
   }),
+);
+
+it.effect("selects the registered symlink alias and the deepest nested project", () =>
+  Effect.gen(function* () {
+    const fs = yield* FileSystem.FileSystem;
+    const path = yield* Path.Path;
+    const dir = yield* fs.makeTempDirectoryScoped({ prefix: "cox-project-alias-" });
+    const root = path.join(dir, "root");
+    const alias = path.join(dir, "alias");
+    const nested = path.join(root, "nested");
+    yield* fs.makeDirectory(nested, { recursive: true });
+    yield* fs.symlink(root, alias);
+    const projects = [
+      { id: ProjectId.make("root"), title: "Root", workspaceRoot: root },
+      { id: ProjectId.make("alias"), title: "Alias", workspaceRoot: alias },
+      { id: ProjectId.make("nested"), title: "Nested", workspaceRoot: nested },
+    ];
+    for (const [identifier, expected] of [
+      [root, "root"],
+      [alias, "alias"],
+      [path.join(alias, "nested"), "nested"],
+    ] as const) {
+      const { tools } = scriptedTools({ cox_project_list: [{ projects, nextCursor: null }] });
+      const project = yield* resolveProject(tools, identifier);
+      assert.equal(project.id, ProjectId.make(expected));
+    }
+  }).pipe(
+    Effect.provide(NodeServices.layer),
+    Effect.provideService(HostProcess.WorkingDirectory, process.cwd()),
+  ),
 );
 
 /** Serves cox_thread_read pages the way the server does: positions count every item. */
