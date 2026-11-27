@@ -41,6 +41,20 @@ function withUsageLimits(
   return usageLimits ? { ...rest, usageLimits } : rest;
 }
 
+// A probe cannot know the latest version, so until enrichment looks it up again, keep the last
+// answer for the same installed version. Otherwise known updates blink out on every recheck.
+function keepKnownLatestVersion(previous: ServerProvider, probed: ServerProvider): ServerProvider {
+  const known = previous.versionAdvisory;
+  const currentVersion =
+    probed.installedVersion !== undefined ? probed.installedVersion : probed.version;
+  return probed.enabled &&
+    known?.latestVersion &&
+    !probed.versionAdvisory?.latestVersion &&
+    known.currentVersion === currentVersion
+    ? { ...probed, versionAdvisory: known }
+    : probed;
+}
+
 export const makeManagedServerProvider = Effect.fn("makeManagedServerProvider")(function* <
   Settings,
 >(input: {
@@ -206,12 +220,15 @@ export const makeManagedServerProvider = Effect.fn("makeManagedServerProvider")(
             });
         const workspaceId =
           usageLimits === probedSnapshot.usageLimits ? undefined : state.snapshot.auth.workspaceId;
-        const snapshot = withUsageLimits(
+        const usageSnapshot = withUsageLimits(
           workspaceId && !probedSnapshot.auth.workspaceId
             ? { ...probedSnapshot, auth: { ...probedSnapshot.auth, workspaceId } }
             : probedSnapshot,
           usageLimits,
         );
+        const snapshot = input.enrichSnapshot
+          ? keepKnownLatestVersion(state.snapshot, usageSnapshot)
+          : usageSnapshot;
         return [
           { snapshot, generation },
           { snapshot, enrichmentGeneration: generation },
