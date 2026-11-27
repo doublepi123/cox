@@ -349,6 +349,7 @@ export class GitVcsDriver extends Context.Service<
   {
     readonly execute: (input: ExecuteGitInput) => Effect.Effect<ExecuteGitResult, GitCommandError>;
     readonly status: (input: VcsStatusInput) => Effect.Effect<VcsStatusResult, GitCommandError>;
+    readonly readCurrentBranch: (cwd: string) => Effect.Effect<string | null, GitCommandError>;
     /** Refs used by an explicit refresh and its branch-picker digest. */
     readonly readStatusRefreshRefs: (cwd: string) => Effect.Effect<string | null>;
     readonly readStatusPoll: (
