@@ -1,6 +1,7 @@
 import { resolveProjectSettings } from "@t3tools/shared/projectSettings";
 import { isAttachmentOnlyBootstrapPrompt } from "@t3tools/shared/composerContextReferences";
 import {
+  TextGenerationError,
   CommandId,
   type ChatAttachment,
   type MessageId,
@@ -16,6 +17,7 @@ import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
+import * as Schema from "effect/Schema";
 import * as Schedule from "effect/Schedule";
 
 import * as ServerSettings from "../serverSettings.ts";
@@ -45,6 +47,13 @@ export class ThreadTitleRegenerationService extends Context.Service<
     >;
   }
 >()("cox/orchestration-v2/ThreadTitleRegenerationService") {}
+
+const isTextGenerationError = Schema.is(TextGenerationError);
+// An auth, permission or quota refusal fails the same way on every attempt.
+const PROVIDER_REFUSAL = /\b(?:40[13]|forbidden|unauthori[sz]ed|quota|usage limit)\b/iu;
+
+const isRetryableFailure = (error: unknown) =>
+  !(isTextGenerationError(error) && PROVIDER_REFUSAL.test(error.detail));
 
 const make = Effect.gen(function* () {
   const threads = yield* ThreadManagementService.ThreadManagementService;
@@ -186,6 +195,7 @@ const make = Effect.gen(function* () {
       Effect.retry({
         times: input.kind.type === "initial" ? 2 : 0,
         schedule: Schedule.exponential("2 seconds"),
+        while: isRetryableFailure,
       }),
       Effect.catchCause((cause) =>
         Cause.hasInterruptsOnly(cause)
