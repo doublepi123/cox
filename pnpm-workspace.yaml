@@ -123,6 +123,7 @@ overrides:
   "@effect/platform-node-shared": "catalog:"
   "@effect/vitest": "catalog:"
   "@effect/vitest>vitest": "-"
+  "@vitest/browser": 5.1.1
   "@pierre/diffs>@pierre/highlights": 0.5.1
   "@pierre/diffs>@shikijs/transformers": ^4.2.0
   remark-math>micromark-extension-math: npm:micromark-extension-llm-math@3.1.0
@@ -158,6 +159,10 @@ patchedDependencies:
   mdast-util-to-hast@13.2.1: patches/mdast-util-to-hast@13.2.1.patch
   "@effect/vitest@4.1.5": patches/@effect__vitest@4.1.5.patch
   "@effect/platform-node-shared@4.1.5": patches/@effect__platform-node-shared@4.1.5.patch
+  # A browser test's first tester socket can close before opening on a busy runner; the
+  # reconnect then opens but the tester keeps waiting on the dead attempt and fails after 60s.
+  # https://github.com/vitest-dev/vitest/issues/10166
+  "@vitest/browser@5.1.1": patches/@vitest__browser@5.1.1.patch
   "@ff-labs/fff-node@0.11.0": patches/@ff-labs__fff-node@0.11.0.patch
   "@pierre/diffs@1.6.1": patches/@pierre%2Fdiffs@1.6.1.patch
   node-pty@1.2.0-beta.15: patches/node-pty@1.2.0-beta.15.patch
