@@ -15,6 +15,41 @@ import {
 import type { OpenVsxThemeExtension } from "../../openVsxThemes";
 import { ThemeImportDialog } from "./ThemeImportDialog";
 
+it.each([
+  ["Dusk", "a".repeat(47), "a".repeat(47)],
+  ["a".repeat(47), "a".repeat(47), "a".repeat(44) + " (1)"],
+  ["a".repeat(46), "a".repeat(46) + " ", "a".repeat(44) + " (1)"],
+])("keeps a well-formed copy name for %s", async (label, filename, expected) => {
+  const previous = localStorage.getItem(CUSTOM_THEMES_STORAGE_KEY);
+  localStorage.removeItem(CUSTOM_THEMES_STORAGE_KEY);
+  invalidateCustomThemes();
+  using _themes = {
+    [Symbol.dispose]() {
+      if (previous === null) localStorage.removeItem(CUSTOM_THEMES_STORAGE_KEY);
+      else localStorage.setItem(CUSTOM_THEMES_STORAGE_KEY, previous);
+      invalidateCustomThemes();
+    },
+  };
+  const original = installCustomTheme(parseThemeFile(theme(label)));
+  const imported = JSON.stringify(theme(label, "#f97316"));
+  await using _screen = await render(
+    <ThemeImportDialog
+      open
+      onOpenChange={() => {}}
+      onImported={() => true}
+      onImportedMany={() => {}}
+    />,
+  );
+  await userEvent.upload(
+    document.querySelector<HTMLInputElement>('input[type="file"]')!,
+    new File([imported], filename + "🌙.json", { type: "application/json" }),
+  );
+  await expect.element(page.getByRole("textbox", { name: "Theme JSON" })).toHaveValue(imported);
+  await page.getByRole("button", { name: "Add theme", exact: true }).click();
+  await page.getByRole("button", { name: "Keep both" }).click();
+  expect(getCustomThemes().find(({ id }) => id !== original.id)?.label).toBe(expected);
+});
+
 it.each(["paste", "batch"])("imports a VS Code JSONC theme via %s", async (source) => {
   const previous = localStorage.getItem(CUSTOM_THEMES_STORAGE_KEY);
   localStorage.removeItem(CUSTOM_THEMES_STORAGE_KEY);

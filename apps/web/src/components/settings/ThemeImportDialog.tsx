@@ -1,4 +1,5 @@
 import { translateCurrent, useTranslation } from "../../i18n";
+import { splitsSurrogatePair } from "@t3tools/shared/assistantCitations";
 import { DownloadIcon, PlusIcon } from "lucide-react";
 import type { ChangeEvent, DragEvent, UIEvent } from "react";
 import { settlePromise } from "@t3tools/client-runtime/state/runtime";
@@ -310,10 +311,13 @@ function ThemeImportBody({
     theme: ThemeDefinition,
     preferredName?: string | null,
   ): ThemeDefinition => {
-    if (preferredName && preferredName.toLowerCase() !== theme.label.toLowerCase()) {
+    const name = preferredName
+      ?.slice(0, splitsSurrogatePair(preferredName, 48) ? 47 : 48)
+      .trimEnd();
+    if (name && name.toLowerCase() !== theme.label.toLowerCase()) {
       const candidate = parseThemeFile({
         version: THEME_FILE_VERSION,
-        name: preferredName.slice(0, 48),
+        name,
         appearance: theme.appearance,
         colors: theme.colors,
         ...(theme.variants ? { variants: theme.variants } : {}),
