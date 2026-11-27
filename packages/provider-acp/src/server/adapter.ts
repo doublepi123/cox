@@ -8681,15 +8681,11 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
             });
           }
           yield* reportAgentModeChanges(context.input.threadId);
-<<<<<<< HEAD
           const settledTurn = providerTurnPayload(context, settledStatus, now);
-=======
->>>>>>> 1077dc3149 (fix(server): Antigravity runs report the model agy executed)
           const executedModel =
             flavor.executedModel === undefined
               ? undefined
               : yield* flavor.executedModel(context.nativeThreadId);
-<<<<<<< HEAD
           const turn: OrchestrationV2ProviderTurn =
             executedModel === undefined
               ? settledTurn
@@ -8702,12 +8698,6 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
                         turnTokenUsage: { ...settledTurn.turnTokenUsage, models: [executedModel] },
                       }),
                 };
-=======
-          const turn = {
-            ...providerTurnPayload(context, settledStatus, now),
-            ...(executedModel === undefined ? {} : { model: executedModel }),
-          };
->>>>>>> 1077dc3149 (fix(server): Antigravity runs report the model agy executed)
           yield* emitProviderEvent({
             type: "provider_turn.updated",
             driver,
