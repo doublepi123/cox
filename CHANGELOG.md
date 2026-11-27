@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+## 0.2.48 — 2026-11-27
+
+- Usage counts a Pi-format session once when the same transcript is present in both the Pi and
+  OMO session directories. Totals, trends, model breakdown and sources no longer show a duplicate
+  row with doubled tokens and estimated cost; shared copies are credited to OMO. Usage saved by
+  earlier versions, including history of deleted transcripts, is kept and deduplicated without
+  clearing the cache.
+
 ## 0.2.47 — 2026-11-27
 
 - Port the November 26 T3 batch: 366 of 487 upstream commits ported and 12 already covered by
