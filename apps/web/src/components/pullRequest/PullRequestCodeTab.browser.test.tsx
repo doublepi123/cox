@@ -187,7 +187,7 @@ const tab = (
     detail={
       withViewed
         ? { ...detail, capabilities: { ...detail.capabilities, viewedFiles: "environment" } }
-        : detail
+        : { ...detail, changedFiles: mocks.paged ? 41 : detail.changedFiles }
     }
     selectedCommitOid={null}
     onSelectedCommitChange={() => {}}
@@ -363,10 +363,12 @@ it("pages forward to a file asked for that is not loaded yet, then scrolls to it
   const container = pagedContainer();
   await using screen = await render(tab(0), { container });
   await expect.element(screen.getByText("early-0.ts", { exact: true }).first()).toBeVisible();
+  await expect.element(screen.getByText("41 files", { exact: true })).toBeVisible();
 
   await screen.rerender(tab(0, { path: "late.ts", nonce: 1 }));
 
   await expectFileHeaderShown(screen, container, "late.ts");
+  await expect.element(screen.getByText("41 files", { exact: true })).toBeVisible();
 });
 
 it("never requests the diff of a selected commit the pull request no longer has", async () => {

@@ -1136,6 +1136,25 @@ function PullRequestCodeTab({
 
   const selectedCommit = orderedCommits.find((entry) => entry.oid === commit);
   const scopeLabel = selectedCommit ? selectedCommit.messageHeadline : "All commits";
+  const reportedFileCount = selectedCommit ? selectedCommit.changedFiles : detail.changedFiles;
+  const scopeFileCount = hideTestFiles ? 0 : (reportedFileCount ?? 0);
+  const fileCount = Math.max(scopeFileCount, files.length);
+  const fileCountSuffix =
+    nextCursor !== null && (scopeFileCount === 0 || scopeFileCount < fileCount) ? "+" : "";
+  const usePullRequestViewedCount =
+    viewedFilesStore === "host" &&
+    commit === null &&
+    !hideTestFiles &&
+    filesViewed.viewedCount <= fileCount;
+  const viewedCount = usePullRequestViewedCount
+    ? filesViewed.viewedCount
+    : filePaths.filter(isFileViewed).length;
+  const viewedCountSuffix =
+    !usePullRequestViewedCount &&
+    (nextCursor !== null || files.length < fileCount) &&
+    viewedCount < filesViewed.viewedCount
+      ? "+"
+      : "";
   const hiddenTestFilesLabel =
     hiddenTestFileCount > 0
       ? hiddenTestFileCount === 1
@@ -1207,8 +1226,8 @@ function PullRequestCodeTab({
         <PullRequestMetaLine>
           <span className="flex shrink-0 items-center gap-1.5">
             <span className="tabular-nums">
-              {files.length} {files.length === 1 ? "file" : "files"}
-              {nextCursor === null ? "" : "+"}
+              {fileCount} {fileCount === 1 ? "file" : "files"}
+              {fileCountSuffix}
             </span>
             {hiddenTestFilesLabel !== null && (files.length > 0 || nextCursor !== null) ? (
               <span className="hidden items-center gap-1.5 @2xl:flex">
@@ -1229,7 +1248,9 @@ function PullRequestCodeTab({
           {filesViewed.enabled && files.length > 0 ? (
             <span className="flex min-w-0 items-center gap-1 tabular-nums">
               <span className="shrink-0">
-                {filePaths.filter(isFileViewed).length} / {files.length}
+                {viewedCount}
+                {viewedCountSuffix} / {fileCount}
+                {fileCountSuffix}
               </span>
               <span className="truncate">
                 {viewedFilesStore === "environment" ? `viewed in ${APP_BASE_NAME}` : "viewed"}
