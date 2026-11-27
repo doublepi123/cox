@@ -479,7 +479,6 @@ export interface AcpAdapterV2Flavor {
     cwd: string,
   ) => Effect.Effect<void>;
   readonly subagentsIdleOnTurnCompletion?: boolean;
-  readonly executedModel?: (sessionId: string) => Effect.Effect<string | undefined>;
   readonly subagentHasReported?: (
     sessionId: string,
     childSessionId: string,
