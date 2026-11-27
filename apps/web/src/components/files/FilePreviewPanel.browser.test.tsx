@@ -562,6 +562,41 @@ describe("source file scroll", () => {
   });
 });
 
+describe("rendered Markdown select all", () => {
+  it("copies the whole chunked file with its own line endings", async () => {
+    using _settings = setup();
+    const contents = `first\r\r# ${"x\r\r# ".repeat(2_000)}end`;
+    await using _screen = await render(
+      <div style={{ height: 600, display: "flex", flexDirection: "column" }}>
+        {markdownPreview(false, contents, "cr.md")}
+      </div>,
+    );
+    const firstChunk = await vi.waitFor(() => {
+      const first = document.querySelector("h1");
+      expect(first).not.toBeNull();
+      return first!;
+    });
+    await userEvent.click(firstChunk);
+    const list = firstChunk.closest(".legend-list-content-container")!.parentElement!;
+    const selection = document.getSelection()!;
+    selection.removeAllRanges();
+    const wholeList = document.createRange();
+    wholeList.selectNode(list);
+    selection.addRange(wholeList);
+    const clipboardData = new DataTransfer();
+    const handled = !firstChunk.dispatchEvent(
+      new ClipboardEvent("copy", {
+        clipboardData,
+        bubbles: true,
+        cancelable: true,
+        composed: true,
+      }),
+    );
+    expect(handled).toBe(true);
+    expect(clipboardData.getData("text/plain")).toBe(contents);
+  });
+});
+
 describe("rendered Markdown relative images", () => {
   it.each([
     ["2026-11-23T14:05/README.md", "/workspace/2026-11-23T14:05/diagram.png"],
