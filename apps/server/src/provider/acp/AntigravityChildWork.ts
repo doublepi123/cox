@@ -1520,6 +1520,25 @@ async function readLastTranscriptLine(
  * the trailing `SYSTEM_MESSAGE` step in `transcript.jsonl` with no `PLANNER_RESPONSE` yet.
  * Fails closed when records are missing, linked, or unreadable.
  */
+export const readAntigravitySubagentReport = Effect.fn("readAntigravitySubagentReport")(function* (
+  profileDirectory: string,
+  sessionId: string,
+  childSessionId: string,
+) {
+  if (!NATIVE_ID.test(sessionId) || !NATIVE_ID.test(childSessionId)) return false;
+  return yield* Effect.tryPromise(async () => {
+    const root = await antigravityProfileRoot(profileDirectory);
+    if (root === undefined) return false;
+    const childIds = await listDetachedChildIds(root, sessionId);
+    if (!childIds?.includes(childSessionId)) return false;
+    const child = await readDetachedSubagent(root, sessionId, childSessionId);
+    return (
+      child?.state === "SUBAGENT_STATE_KILLED" ||
+      (await readInbox(root, sessionId)).some((message) => message.sender === childSessionId)
+    );
+  }).pipe(Effect.orElseSucceed(() => false));
+});
+
 export const readAntigravityPendingReply = Effect.fn("readAntigravityPendingReply")(
   function* (input: { readonly profileDirectory: string; readonly sessionId: string }) {
     if (!NATIVE_ID.test(input.sessionId)) return false;

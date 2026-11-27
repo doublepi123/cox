@@ -479,6 +479,10 @@ export interface AcpAdapterV2Flavor {
     cwd: string,
   ) => Effect.Effect<void>;
   readonly subagentsIdleOnTurnCompletion?: boolean;
+  readonly subagentHasReported?: (
+    sessionId: string,
+    childSessionId: string,
+  ) => Effect.Effect<boolean>;
   /**
    * Reads projected timeline entries for a subagent whose provider writes child work to a local
    * transcript instead of streaming child ACP notifications. Called periodically while active and
@@ -5995,6 +5999,31 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
               );
               if (context?.nativeThreadId === notification.sessionId) {
                 context.contextUsage = stateEvent.usage;
+                if (!context.finalized && flavor.subagentHasReported !== undefined) {
+                  for (const subagent of context.subagents.values()) {
+                    const nativeTaskId = subagent.task.nativeTaskRef?.nativeId;
+                    const childSessionId = subagent.childSessionId;
+                    if (
+                      nativeTaskId == null ||
+                      childSessionId === null ||
+                      !acpSubagentStatusBlocksTurnSettlement(subagent.task.status)
+                    )
+                      continue;
+                    if (
+                      !(yield* flavor.subagentHasReported(context.nativeThreadId, childSessionId))
+                    )
+                      continue;
+                    yield* emitSubagent(context, {
+                      nativeTaskId,
+                      childSessionId,
+                      prompt: subagent.task.prompt,
+                      title: subagent.task.title,
+                      model: subagent.task.model,
+                      status: "idle",
+                      result: null,
+                    });
+                  }
+                }
               }
             } else {
               const metadata = yield* Ref.modify(nativeMetadataBySessionId, (current) => {

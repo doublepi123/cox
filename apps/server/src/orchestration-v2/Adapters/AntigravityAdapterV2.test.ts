@@ -1338,6 +1338,19 @@ describe("AntigravityAdapterV2 subagent reads", () => {
             .map((line) => JSON.stringify(line))
             .join("\n") + "\n",
         );
+        const rootRecords = path.join(
+          profileDirectory,
+          "antigravity-acp",
+          "brain",
+          "mock-session-1",
+          ".system_generated",
+        );
+        for (const directory of ["subagents", "messages"])
+          yield* fileSystem.makeDirectory(path.join(rootRecords, directory), { recursive: true });
+        yield* fileSystem.writeFileString(
+          path.join(rootRecords, "subagents", childId + ".json"),
+          "{}",
+        );
         type RuntimeService = AcpSessionRuntime.AcpSessionRuntime["Service"];
         let sessionUpdate: Parameters<RuntimeService["handleSessionUpdate"]>[0] | undefined;
         const instanceId = ProviderInstanceId.make("antigravity-subagent-reads-test");
@@ -1378,6 +1391,23 @@ describe("AntigravityAdapterV2 subagent reads", () => {
                         status: "completed",
                         rawInput: { action: "add", name: "reader", brief: "Read README.md" },
                         rawOutput: { conversation_id: childId },
+                      },
+                    });
+                    yield* fileSystem
+                      .writeFileString(
+                        path.join(rootRecords, "messages", "report.json"),
+                        '{"sender":"' + childId + '"}',
+                      )
+                      .pipe(Effect.orDie);
+                    yield* sessionUpdate({
+                      sessionId: "mock-session-1",
+                      update: { sessionUpdate: "usage_update", used: 12, size: 100 },
+                    });
+                    yield* sessionUpdate({
+                      sessionId: "mock-session-1",
+                      update: {
+                        sessionUpdate: "agent_message_chunk",
+                        content: { type: "text", text: "The child has reported." },
                       },
                     });
                     return { stopReason: "end_turn" as const };
@@ -1453,6 +1483,16 @@ describe("AntigravityAdapterV2 subagent reads", () => {
             Stream.runCollect,
           ),
         );
+        const idle = events.findIndex(
+          (event) => event.type === "subagent.updated" && event.subagent.status === "idle",
+        );
+        const reply = events.findIndex(
+          (event) =>
+            event.type === "message.updated" &&
+            event.message.text.includes("The child has reported."),
+        );
+        assert.isAtLeast(idle, 0);
+        assert.isAbove(reply, idle);
         const child = events.find((event) => event.type === "app_thread.created");
         assert.isDefined(child);
         if (child === undefined) return;

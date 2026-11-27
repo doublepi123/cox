@@ -29,6 +29,7 @@ import {
   antigravitySubagentLaunches,
   describeAntigravitySubagentLaunches,
   readAntigravitySubagentTranscript,
+  readAntigravitySubagentReport,
 } from "../../provider/acp/AntigravityChildWork.ts";
 import { readAntigravityClientTextFile } from "../../provider/acp/AntigravityClientFiles.ts";
 import {
@@ -283,6 +284,8 @@ export function makeAntigravityAcpAdapterFlavor(
               profileDirectory: options.profileDirectory!,
               rootSessionId: sessionId,
             }),
+          subagentHasReported: (sessionId: string, childSessionId: string) =>
+            readAntigravitySubagentReport(options.profileDirectory!, sessionId, childSessionId),
           watchPromptOutcome: (sessionId: string) =>
             watchAntigravityPromptOutcome(options.profileDirectory!, sessionId),
           executedModel: (sessionId: string) =>
