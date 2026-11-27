@@ -81,6 +81,14 @@ describe("searchSettings", () => {
     expect(searchSettings("long lines", ITEMS).map((item) => item.id)).toEqual(["word-wrap"]);
   });
 
+  it("matches the translated label displayed in settings navigation", () => {
+    const items: ReadonlyArray<SettingsSearchItem> = [
+      { id: "commit-style", title: "Commit style", to: "/settings/source-control" },
+    ];
+    expect(searchSettings("源代码管理", items, "zh")).toEqual(items);
+    expect(searchSettings("Source control", items, "zh")).toEqual(items);
+  });
+
   it("shows the Secrets page in nav and search only when an environment enables secret providers", () => {
     const availability = {
       localEnvironmentDisabled: false,
