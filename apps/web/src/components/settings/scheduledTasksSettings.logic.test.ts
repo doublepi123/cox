@@ -473,3 +473,16 @@ it.each(["12-hour", "24-hour"] as const)(
     );
   },
 );
+it("labels the weekdays a schedule runs on, whatever order or repeats it stores", () => {
+  const label = (weekdays: Array<number>) =>
+    scheduleLabel({ type: "fixed_time", timeOfDay: "09:00", weekdays }, "24-hour");
+  const at = new Intl.DateTimeFormat(undefined, {
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: false,
+    timeZone: "UTC",
+  }).format(Date.UTC(2000, 0, 1, 9, 0));
+  expect(label([1, 1, 2, 3, 4])).toBe(`Mon, Tue, Wed, Thu at ${at}`);
+  expect(label([0, 1, 2, 3, 4, 5, 6])).toBe(`Daily at ${at}`);
+  expect(label([5, 1, 3])).toBe(`Mon, Wed, Fri at ${at}`);
+});

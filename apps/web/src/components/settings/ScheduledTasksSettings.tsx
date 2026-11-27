@@ -332,9 +332,11 @@ export function scheduleLabel(
     return translateCurrent("Once at {time}", {
       time: formatDateTimeTimestamp(schedule.runAt, timestampFormat),
     });
-  const weekdays = schedule.weekdays ?? [];
+  const weekdays = [...new Set(schedule.weekdays ?? [])]
+    .filter((day) => Number.isInteger(day) && day >= 0 && day <= 6)
+    .toSorted((a, b) => a - b);
   const days =
-    weekdays.length === 0
+    weekdays.length === 0 || weekdays.length === 7
       ? translateCurrent("Daily")
       : weekdays.length === 5 && weekdays.every((day) => day >= 1 && day <= 5)
         ? translateCurrent("Weekdays")
