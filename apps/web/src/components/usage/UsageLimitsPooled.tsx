@@ -106,13 +106,46 @@ function AccountAvatar({
   return account.email ? <AccountChip email={account.email} /> : null;
 }
 
+type LimitAccountNameInput = Pick<LimitAccount, "key" | "displayName" | "email" | "driver">;
+
+function accountBaseName(account: LimitAccountNameInput): string {
+  return (
+    account.displayName ?? (account.email ? accountInitials(account.email) : String(account.driver))
+  );
+}
+
+export function uniqueLimitAccountNames(
+  accounts: ReadonlyArray<LimitAccountNameInput>,
+): ReadonlyMap<string, string> {
+  const bases = accounts.map(accountBaseName);
+  const taken = new Set(bases);
+  const used = new Set<string>();
+  return new Map(
+    accounts.map((account, index) => {
+      const base = bases[index] ?? "";
+      let name = base;
+      if (used.has(name)) {
+        let count = 2;
+        while (taken.has(`${base}${count}`)) count += 1;
+        name = `${base}${count}`;
+        taken.add(name);
+      }
+      used.add(name);
+      return [account.key, name];
+    }),
+  );
+}
+
 function AccountName({
   account,
+  name,
   className,
 }: {
   readonly account: LimitAccount;
+  readonly name?: string;
   readonly className?: string;
 }) {
+  if (name !== undefined) return <span className={className}>{name}</span>;
   if (account.displayName) return <span className={className}>{account.displayName}</span>;
   if (account.email) {
     return (
@@ -139,12 +172,14 @@ function Row({ label, children }: { readonly label: string; readonly children: R
 
 function SegmentPopover({
   account,
+  accountName,
   window,
   reset,
   redeem,
   onRedeem,
 }: {
   readonly account: LimitAccount;
+  readonly accountName: string;
   readonly window: LimitPoolMember["window"];
   readonly reset: LimitPoolWindow["resets"][number] | undefined;
   readonly redeem: ReturnType<typeof useResetCredit> | null;
@@ -167,9 +202,7 @@ function SegmentPopover({
       <div className="flex min-w-0 flex-col gap-0.5">
         <span className="flex items-center gap-2 text-sm font-medium text-foreground">
           <AccountAvatar account={account} />
-          <span className="truncate">
-            {account.displayName ?? providerClients.get(account.driver)?.label ?? account.driver}
-          </span>
+          <span className="truncate">{accountName}</span>
         </span>
         {account.email ? (
           <RedactedSensitiveText
@@ -281,9 +314,11 @@ function ActiveSegmentPopover({
  */
 function PoolSegment({
   account,
+  accountName,
   ...props
 }: {
   readonly account: LimitAccount;
+  readonly accountName: string;
   readonly window: LimitPoolMember["window"];
   readonly reset: LimitPoolWindow["resets"][number] | undefined;
   readonly refillPercent: number;
@@ -293,9 +328,14 @@ function PoolSegment({
   readonly showAccountName: boolean;
 }) {
   return account.redeem ? (
-    <RedeemableSegment account={account} redeemAt={account.redeem} {...props} />
+    <RedeemableSegment
+      account={account}
+      accountName={accountName}
+      redeemAt={account.redeem}
+      {...props}
+    />
   ) : (
-    <SegmentTriggers account={account} redeem={null} {...props} />
+    <SegmentTriggers account={account} accountName={accountName} redeem={null} {...props} />
   );
 }
 
@@ -318,7 +358,11 @@ function RedeemableSegment({
       {/* The popover closed before the confirm, so progress and the outcome need a home outside it. */}
       {redeem.busy || redeem.status ? (
         <span role="status" className="col-span-full text-xs text-muted-foreground">
-          <AccountName account={props.account} className="font-medium text-foreground" />{" "}
+          <AccountName
+            account={props.account}
+            name={props.accountName}
+            className="font-medium text-foreground"
+          />{" "}
           {redeem.busy ? "Using reset credit…" : redeem.status}
         </span>
       ) : null}
@@ -328,6 +372,7 @@ function RedeemableSegment({
 
 function SegmentTriggers({
   account,
+  accountName,
   window,
   reset,
   redeem,
@@ -344,7 +389,7 @@ function SegmentTriggers({
   readonly showAccountName: boolean;
 }) {
   const popover = use(SegmentPopoverContext) ?? undefined;
-  const payload: SegmentPayload = { account, window, reset, redeem };
+  const payload: SegmentPayload = { account, accountName, window, reset, redeem };
   const remaining = remainingPercent(window);
   const timeLeft = paceRemainingPercent(window, now);
   const [segmentRef, paceMark] = usePaceMark(timeLeft);
@@ -508,6 +553,7 @@ function PoolBar({
   readonly now: number;
 }) {
   const restores = new Map(pool.resets.map((reset) => [reset.member.account.key, reset]));
+  const names = uniqueLimitAccountNames(pool.columns.map((member) => member.account));
   return (
     <div className="@container/pool min-w-0">
       <div
@@ -519,6 +565,7 @@ function PoolBar({
             <PoolSegment
               key={member.account.key}
               account={member.account}
+              accountName={names.get(member.account.key) ?? accountBaseName(member.account)}
               window={member.window}
               reset={restores.get(member.account.key)}
               refillPercent={member.refillPercent}

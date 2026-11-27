@@ -10,7 +10,7 @@ import { describe, expect, it } from "vite-plus/test";
 import "~/index.css";
 
 import { render } from "../../../test/render";
-import { UsageLimitsPooled } from "./UsageLimitsPooled";
+import { UsageLimitsPooled, uniqueLimitAccountNames } from "./UsageLimitsPooled";
 
 const checkedAt = "2026-10-25T16:00:00.000Z";
 
@@ -36,6 +36,25 @@ function managedChatGpt(instanceId: string, displayName: string): ServerProvider
     },
   };
 }
+
+describe("pooled usage account names", () => {
+  it("keeps duplicate names distinct without colliding with an existing numbered name", () => {
+    const driver = ProviderDriverKind.make("codex");
+    expect(
+      uniqueLimitAccountNames([
+        { key: "one", displayName: "Work", email: undefined, driver },
+        { key: "two", displayName: "Work", email: undefined, driver },
+        { key: "three", displayName: "Work2", email: undefined, driver },
+      ]),
+    ).toEqual(
+      new Map([
+        ["one", "Work"],
+        ["two", "Work3"],
+        ["three", "Work2"],
+      ]),
+    );
+  });
+});
 
 describe("UsageLimitsPooled ChatGPT usage card", () => {
   it("names the managed connections it covers", async () => {
