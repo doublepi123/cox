@@ -20,12 +20,11 @@ function composerFileLinkBasename(path: string): string {
   return separatorIndex >= 0 ? path.slice(separatorIndex + 1) : path;
 }
 
+// Numeric bracket entities avoid TeX `\[…\]` math delimiters; emphasis and tildes stay escaped.
 function escapeMarkdownLinkLabel(label: string): string {
-  return label
-    .replaceAll("\\", "\\\\")
-    .replaceAll("[", "\\[")
-    .replaceAll("]", "\\]")
-    .replaceAll("&", "\\&");
+  return label.replace(/[\\[\]*_~&]/g, (char) =>
+    char === "[" ? "&#91;" : char === "]" ? "&#93;" : `\\${char}`,
+  );
 }
 
 function encodeMarkdownLinkDestination(path: string): string {

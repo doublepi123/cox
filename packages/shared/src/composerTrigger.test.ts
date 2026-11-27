@@ -1,9 +1,25 @@
+import remarkGfm from "remark-gfm";
 import remarkParse from "remark-parse";
 import { unified } from "unified";
 import { assert, describe, expect, it } from "vite-plus/test";
 
 import { detectComposerTrigger, serializeComposerFileLink } from "./composerTrigger.ts";
 import { resolveMarkdownFileLinkTarget } from "./markdownLinks.ts";
+
+interface MarkdownNode {
+  readonly type: string;
+  readonly value?: string;
+  readonly children?: ReadonlyArray<MarkdownNode>;
+}
+
+function parsedLinkLabel(markdown: string): string | undefined {
+  const textOf = (node: MarkdownNode): string =>
+    node.value ?? (node.children ?? []).map(textOf).join("");
+  const find = (node: MarkdownNode): MarkdownNode | undefined =>
+    node.type === "link" ? node : node.children?.map(find).find(Boolean);
+  const link = find(unified().use(remarkParse).use(remarkGfm).parse(markdown) as MarkdownNode);
+  return link && textOf(link);
+}
 
 describe("detectComposerTrigger", () => {
   it.each(["\u3000", "\u00a0"])("detects completion after Unicode space %j", (space) => {
@@ -112,6 +128,16 @@ describe("serializeComposerFileLink", () => {
     expect(serializeComposerFileLink("C:\\repo\\src\\index.ts")).toBe(
       "[index.ts](C:%5Crepo%5Csrc%5Cindex.ts)",
     );
+  });
+
+  it.each([
+    ["pkg/__init__.py", "__init__.py"],
+    ["notes/*draft*.md", "*draft*.md"],
+    ["notes/[TODO].md", "[TODO].md"],
+    ["notes/~~draft~~.md", "~~draft~~.md"],
+    ["notes/&#91;TODO&#93;.md", "&#91;TODO&#93;.md"],
+  ])("renders the mention of %j with its file name as the label", (path, basename) => {
+    expect(parsedLinkLabel(serializeComposerFileLink(path))).toBe(basename);
   });
 
   it("preserves paths that legitimately start with an at sign", () => {
