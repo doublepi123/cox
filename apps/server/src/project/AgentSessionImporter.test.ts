@@ -2,9 +2,11 @@ import { expect, it } from "@effect/vitest";
 import {
   type AgentSessionSource,
   EventId,
+  MessageId,
   ProjectId,
   ProviderDriverKind,
   ProviderInstanceId,
+  RunId,
   ThreadId,
   type ApplicationStoredEvent,
   type OrchestrationV2AppThread,
@@ -25,6 +27,7 @@ import * as EventSink from "../orchestration-v2/EventSink.ts";
 import * as EventStore from "../orchestration-v2/EventStore.ts";
 import * as Orchestrator from "../orchestration-v2/Orchestrator.ts";
 import * as ProjectionStore from "../orchestration-v2/ProjectionStore.ts";
+import * as ThreadCommandExecutor from "../orchestration-v2/ThreadCommandExecutor.ts";
 import {
   CLAUDE_MODEL_SELECTION,
   CODEX_MODEL_SELECTION,
@@ -236,6 +239,7 @@ const makeImporter = Effect.fn(function* (
                   ),
                 ),
           }),
+          ThreadCommandExecutor.layer,
         ),
       ),
     ),
@@ -439,4 +443,89 @@ it.effect(
         runtimePayload: { importedTranscripts: [source.source] },
       });
     }).pipe(Effect.scoped, Effect.provide(persistence)),
+);
+
+it.effect("re-import brings a continued transcript into an import thread with no runs", () =>
+  Effect.gen(function* () {
+    const projections = yield* ProjectionStore.ProjectionStoreV2;
+    const first = candidate(
+      CLAUDE_MODEL_SELECTION,
+      "7a2b3c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d",
+      "claudeAgent",
+    );
+    const threadId = importId(first);
+    yield* (yield* makeImporter([first])).run;
+    expect((yield* projections.getThreadRecords(threadId, ["runs"])).runs).toEqual([]);
+
+    const continued = candidate(
+      CLAUDE_MODEL_SELECTION,
+      first.source.providerSessionId,
+      "claudeAgent",
+    );
+    continued.source.size = 200;
+    continued.source.mtimeMs = 3;
+    continued.thread.messages.push(
+      { role: "user", text: "Continue in the terminal", createdAt: timestamp },
+      { role: "assistant", text: "Continued in the terminal", createdAt: timestamp },
+    );
+
+    expect(yield* (yield* makeImporter([continued])).run).toMatchObject({ skippedCount: 0 });
+    expect(
+      (yield* projections.getThreadRecords(threadId, ["messages"])).messages.map(
+        (message) => message.text,
+      ),
+    ).toEqual(["Fix it", "Fixed", "Continue in the terminal", "Continued in the terminal"]);
+  }).pipe(Effect.scoped, Effect.provide(persistence)),
+);
+
+it.effect("re-import leaves an import thread that has runs at its stored messages", () =>
+  Effect.gen(function* () {
+    const projections = yield* ProjectionStore.ProjectionStoreV2;
+    const sink = yield* EventSink.EventSinkV2;
+    const first = candidate(CODEX_MODEL_SELECTION, "continued-in-cox");
+    const threadId = importId(first);
+    yield* (yield* makeImporter([first])).run;
+    const { thread } = yield* projections.getThreadRecords(threadId, []);
+    yield* sink.write({
+      events: [
+        {
+          id: EventId.make(`${threadId}:run`),
+          type: "run.updated",
+          threadId,
+          occurredAt: now,
+          payload: {
+            id: RunId.make(`${threadId}:run`),
+            threadId,
+            ordinal: 1,
+            providerInstanceId: thread.providerInstanceId,
+            modelSelection: thread.modelSelection,
+            providerThreadId: null,
+            userMessageId: MessageId.make(`${threadId}:prompt`),
+            rootNodeId: null,
+            activeAttemptId: null,
+            status: "queued",
+            requestedAt: now,
+            startedAt: null,
+            completedAt: null,
+            checkpointId: null,
+            contextHandoffId: null,
+          },
+        },
+      ],
+    });
+    const continued = candidate(CODEX_MODEL_SELECTION, first.source.providerSessionId);
+    continued.source.size = 200;
+    continued.source.mtimeMs = 3;
+    continued.thread.messages.push(
+      { role: "user", text: "Continue outside Cox", createdAt: timestamp },
+      { role: "assistant", text: "Native continuation", createdAt: timestamp },
+    );
+
+    expect(yield* (yield* makeImporter([continued])).run).toMatchObject({ skippedCount: 1 });
+    expect(
+      (yield* projections.getThreadRecords(threadId, ["messages"])).messages.map(
+        (message) => message.text,
+      ),
+    ).toEqual(["Fix it", "Fixed"]);
+  }).pipe(Effect.scoped, Effect.provide(persistence)),
 );

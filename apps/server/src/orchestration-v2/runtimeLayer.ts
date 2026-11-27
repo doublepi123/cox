@@ -268,6 +268,7 @@ const layerAgentSessionImporterProvided = AgentSessionImporter.layer.pipe(
       layerEventSink,
       IdAllocator.layer,
       ProviderSessionRuntime.layer,
+      ThreadCommandExecutor.layer,
     ),
   ),
 );
