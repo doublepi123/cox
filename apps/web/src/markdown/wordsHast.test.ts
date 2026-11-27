@@ -467,6 +467,19 @@ describe("wordsHast", () => {
     expect(anchor.children).toEqual([{ type: "text", value: basename }]);
     expect(isMarkdownFileLinkLabel(basename, String(anchor.properties.href))).toBe(true);
   });
+
+  it.each([
+    ["-       /Users/me/app.ts:42", ["/Users/me/app.ts:42"]],
+    ["-       `/Users/me/app.ts:42`", []],
+    ["    /Users/me/code.ts:42", []],
+  ])(
+    "links absolute paths in over-indented list items but not in indented code: %s",
+    (markdown, hrefs) => {
+      expect([...wordsHtml(markdown).matchAll(/href="([^"]*)"/g)].map((match) => match[1])).toEqual(
+        hrefs,
+      );
+    },
+  );
 });
 
 it("loads with a plain-text fallback when WebAssembly is disabled", async () => {
