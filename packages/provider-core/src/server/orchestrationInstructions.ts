@@ -1,13 +1,21 @@
 import type { ProviderInteractionMode } from "@t3tools/contracts";
 
 // Codex truncates entries over 4,000 bytes; keep each section self-contained and below that limit.
-export const T3_CODE_ORCHESTRATION_SECTIONS: ReadonlyArray<string> = [
+export const t3CodeOrchestrationSections = (nativeSubagents = true): ReadonlyArray<string> => [
   `## Cox orchestration
 
 Ordinary coding tasks need no Cox tools. Cox controls this local machine only; remote machine linking, cloud relays and native app devices are not available.
 
-- Subagents: prefer your own available native subagent tools for delegation, reviews and parallel work. Generic requests to "use subagents" or "work in parallel" do not ask for another Cox agent or provider. Keep native roles, model settings, workspace isolation and background execution when supported; a different child model or native background task alone does not require Cox delegation. Use \`delegate_task\` only for an explicitly requested Cox agent/provider or Cox delegation, when no native subagent capability exists (for example Pi without a subagent extension), or for a required capability native tasks cannot support. Never invent a native tool. Workflow only when asked.
-- Native subagent failure, exclusion or denial: report the original error; never silently switch to Cox delegation, another provider or another tool. Keep an explicitly requested Cox target and report its failure too. Cox's display of native tasks does not launch or re-run them.
+- ${
+    nativeSubagents
+      ? `Subagents: prefer your own available native subagent tools for delegation, reviews and parallel work. Generic requests to "use subagents" or "work in parallel" do not ask for another Cox agent or provider. Keep native roles, model settings, workspace isolation and background execution when supported; a different child model or native background task alone does not require Cox delegation. Use \`delegate_task\` only for an explicitly requested Cox agent/provider or Cox delegation, when no native subagent capability exists (for example Pi without a subagent extension), or for a required capability native tasks cannot support. Never invent a native tool. Workflow only when asked.`
+      : `Subagents: this runtime offers no native subagent tools, so use \`delegate_task\` for subagents, reviews and parallel work, including when the child would use your own model. Set \`workspaceStrategy\` for a separate checkout. Never invent a native tool. Workflow only when asked.`
+  }${
+    nativeSubagents
+      ? `
+- Native subagent failure, exclusion or denial: report the original error; never silently switch to Cox delegation, another provider or another tool. Keep an explicitly requested Cox target and report its failure too. Cox's display of native tasks does not launch or re-run them.`
+      : ""
+  }
 - Call \`orchestrator_capabilities\` once per thread, before the first \`delegate_task\`. Again only after an error or a user-named provider change. Settings go in \`target.options\`. Provider or model unavailable: say so. Never switch unasked, or fall back to native tools, Workflow, or CLIs. Never make a child's checkout in the shell or in \`task\`.
 - Every new delegate review or re-check is a new \`delegate_task\` (brief, findings, objections), never a \`cox_thread_send\`. Fix small review findings yourself; start no delegate for them. When told to proceed without a delegate, or to run fewer, \`task_cancel\` the extras. Start no replacement.
 - Follow a running delegate's \`next\`. Do not poll it (\`task_status\`, \`sleep\`, watchers, Monitor, ScheduleWakeup). Stop a delegate run you replace or no longer need with \`task_cancel\`, never \`cox_thread_interrupt\` on a \`childThreadId\`.
@@ -24,6 +32,8 @@ Ordinary coding tasks need no Cox tools. Cox controls this local machine only; r
 - \`preview_*\` is Cox's built-in browser, not the user's own Chrome or other browser. When the user names their own browser (Chrome, Safari, Edge, Arc, Firefox), their computer, desktop or screen, computer use, or a tab they already have open, operate it with computer-use tools (Cox \`computer_*\` or your own) and call no \`preview_*\` first.
 - Never use \`preview_*\` unasked to verify or show your own edit. Otherwise use them when the current request asks for browser work, including recording edits, or names a page or tab. Do not repeat preview calls from an earlier turn. Public pages: web fetch or search unless browser work was asked; then the browser above, no web fetch. Close a tab you opened before you reply, unless the user asked for it or uses it.`,
 ];
+
+export const T3_CODE_ORCHESTRATION_SECTIONS: ReadonlyArray<string> = t3CodeOrchestrationSections();
 
 export const T3_CODE_ORCHESTRATION_INSTRUCTIONS = `
 

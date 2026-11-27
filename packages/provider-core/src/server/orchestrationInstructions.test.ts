@@ -4,11 +4,25 @@ import {
   T3_CODE_ORCHESTRATION_SECTIONS,
   OMO_CODE_ORCHESTRATION_INSTRUCTIONS,
   t3AcpPromptWithInstructions,
+  t3CodeOrchestrationSections,
   t3OrchestrationPrompt,
   t3OrchestrationSystemPrompt,
 } from "./orchestrationInstructions.ts";
 
 describe("local agent instructions", () => {
+  it("routes runtimes without native subagents through Cox delegation", () => {
+    const [first, ...rest] = t3CodeOrchestrationSections(false);
+    assert.include(first, "this runtime offers no native subagent tools");
+    assert.include(first, "use `delegate_task` for subagents");
+    assert.include(first, "`workspaceStrategy` for a separate checkout");
+    assert.notInclude(first, "prefer your own available native subagent tools");
+    assert.notInclude(first, "Native subagent failure");
+    assert.deepStrictEqual(rest, T3_CODE_ORCHESTRATION_SECTIONS.slice(1));
+    for (const section of t3CodeOrchestrationSections(false))
+      assert.isBelow(Buffer.byteLength(section), 4000);
+    assert.deepStrictEqual(t3CodeOrchestrationSections(), T3_CODE_ORCHESTRATION_SECTIONS);
+  });
+
   it("prefers each provider's native subagents without turning background work or a different child model into cross-provider delegation", () => {
     assert.include(
       T3_CODE_ORCHESTRATION_INSTRUCTIONS,

@@ -163,6 +163,36 @@ describe("CodexAdapterV2 assistant message streaming", () => {
 });
 
 describe("CodexAdapterV2 runtime policy", () => {
+  it.effect("routes subscription-sharing subagents through Cox delegation", () =>
+    Effect.gen(function* () {
+      const build = (subscriptionSharing: boolean) =>
+        CodexAdapterV2.buildCodexTurnStartParams({
+          nativeThreadId: "native-delegation",
+          codexInput: [{ type: "text", text: "Ask a subagent to review this change." }],
+          runtimePolicy: { runtimeMode: "full-access", interactionMode: "default", cwd: null },
+          modelSelection: {
+            instanceId: ProviderInstanceId.make("codex"),
+            model: "gpt-5.4",
+            options: [{ id: "serviceTier", value: "priority" }],
+          },
+          hasT3Mcp: true,
+          subscriptionSharing,
+        });
+
+      const sharing = yield* build(true);
+      const sharingInstructions = sharing.additionalContext?.["cox_orchestration_01"]?.value;
+      assert.include(sharingInstructions, "use `delegate_task` for subagents");
+      assert.notInclude(sharingInstructions, "native subagent tools for delegation");
+      assert.isUndefined(sharing.serviceTier);
+
+      const local = yield* build(false);
+      const localInstructions = local.additionalContext?.["cox_orchestration_01"]?.value;
+      assert.include(localInstructions, "prefer your own available native subagent tools");
+      assert.notInclude(localInstructions, "no native subagent tools");
+      assert.equal(local.serviceTier, "priority");
+    }),
+  );
+
   it.effect.each([undefined, "default", "fast", "priority", "ultrafast"])(
     "forwards the selected service tier without silently downgrading: %s",
     (serviceTier) =>
