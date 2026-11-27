@@ -14,6 +14,10 @@ const CELL_START = Symbol("cell-start");
 const CELL_END = Symbol("cell-end");
 const LINE_START = Symbol("line-start");
 const THEMATIC_BREAK = Symbol("thematic-break");
+const WORDPROCESSINGML_NAMESPACES = new Set([
+  "http://schemas.openxmlformats.org/wordprocessingml/2006/main",
+  "http://purl.oclc.org/ooxml/wordprocessingml/main",
+]);
 const PRESENTATIONML_NAMESPACES = new Set([
   "http://schemas.openxmlformats.org/presentationml/2006/main",
   "http://purl.oclc.org/ooxml/presentationml/main",
@@ -232,6 +236,15 @@ function xml(source: string, extension: string): XmlNode {
     ) {
       parent.children.pop();
       return;
+    }
+    if (
+      extension === ".docx" &&
+      node.name === "ruby" &&
+      WORDPROCESSINGML_NAMESPACES.has(namespaceOf(tag.name, [...stack, node]) ?? "")
+    ) {
+      const base = children(node).find((child) => child.name === "rubyBase");
+      const reading = children(node).find((child) => child.name === "rt");
+      if (base?.hasText && reading?.hasText) node.children = [base, "(", reading, ")"];
     }
     if (htmlEntities && node.name === "ruby" && stack[1]?.name === "html")
       separateRubyReadings(node);
