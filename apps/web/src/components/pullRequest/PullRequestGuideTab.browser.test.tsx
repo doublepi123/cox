@@ -1,10 +1,21 @@
-import { EnvironmentId, ProjectId, type PullRequestRef } from "@t3tools/contracts";
+import {
+  EnvironmentId,
+  ProjectId,
+  type PullRequestRef,
+  type PullRequestReviewGuide,
+} from "@t3tools/contracts";
 import { expect, it, vi } from "vite-plus/test";
-import { userEvent } from "vite-plus/test/browser";
+import { page, userEvent } from "vite-plus/test/browser";
 
 vi.mock(import("./guide/useReviewGuideWriter"), () => ({ useReviewGuideWriter: vi.fn() }));
 
+vi.mock(import("./guide/useGuideDiffFiles"), () => ({
+  useGuideDiffFiles: () => ({ files: new Map(), loading: false, error: null, retry: () => {} }),
+}));
+
 import { render } from "../../../test/render";
+import { RightPanelSheet } from "../RightPanelSheet";
+import { GuideTour } from "./guide/GuideTour";
 import { useReviewGuideWriter } from "./guide/useReviewGuideWriter";
 import { PullRequestGuideTab } from "./PullRequestGuideTab";
 
@@ -73,4 +84,73 @@ it("keeps Try again inside a short panel when a failed guide has long diagnostic
 
   await userEvent.click(retry);
   expect(write).toHaveBeenCalledOnce();
+});
+
+const threeStopGuide: PullRequestReviewGuide = {
+  headSha: "head",
+  generatedAt: "2026-11-07T00:00:00.000Z",
+  modelSelection: { instanceId: "codex", model: "gpt-6.1-sol" } as never,
+  stops: ["First", "Second", "Third"].map((title) => ({
+    title,
+    summary: `Prose for the ${title.toLowerCase()} stop.`,
+    attention: null,
+    excerpts: [],
+    files: [],
+    notes: [],
+    questions: [],
+  })),
+};
+
+it("leaves J and K to floating layers, side chats, and IME while stepping inside a panel sheet", async () => {
+  await using _screen = await render(
+    <RightPanelSheet open animationDurationMs={0} onClose={() => {}}>
+      <GuideTour
+        environmentId={EnvironmentId.make("environment")}
+        reference={{ ...reference, number: 2 }}
+        guide={threeStopGuide}
+        banner={null}
+        active
+        commenting={null}
+        onAsk={null}
+        onFinish={null}
+        onOpenFile={() => {}}
+      />
+      <div role="dialog">
+        <button>Dialog action</button>
+      </div>
+      <div role="menu">
+        <button role="menuitem">Menu action</button>
+      </div>
+      <div data-slot="select-popup">
+        <button>Popup action</button>
+      </div>
+      <div data-side-chat-pane>
+        <button>Side chat action</button>
+      </div>
+      <button>IME action</button>
+    </RightPanelSheet>,
+  );
+  await expect.element(page.getByRole("dialog", { name: "Workspace panel" })).toBeVisible();
+  page.getByRole("button", { name: "Next stop" }).element().focus();
+  await userEvent.keyboard("j");
+  await expect.element(page.getByText("Prose for the second stop.")).toBeVisible();
+
+  for (const [name, role, keyCode] of [
+    ["Dialog action", "button", 0],
+    ["Menu action", "menuitem", 0],
+    ["Popup action", "button", 0],
+    ["Side chat action", "button", 0],
+    ["IME action", "button", 229],
+  ] as const) {
+    const target = page.getByRole(role, { name }).element();
+    target.focus();
+    for (const key of ["j", "k"]) {
+      const event = new KeyboardEvent("keydown", { key, keyCode, bubbles: true, cancelable: true });
+      target.dispatchEvent(event);
+      expect(event.defaultPrevented, `${name}: ${key}`).toBe(false);
+    }
+  }
+  page.getByRole("button", { name: "Next stop" }).element().focus();
+  await userEvent.keyboard("j");
+  await expect.element(page.getByText("Prose for the third stop.")).toBeVisible();
 });
