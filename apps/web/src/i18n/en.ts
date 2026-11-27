@@ -1795,7 +1795,6 @@ export const en = {
   "{size} bytes": "{size} bytes",
   "That file is {size}. Theme files are only a few KB, so this one was not read (limit {limit}).":
     "That file is {size}. Theme files are only a few KB, so this one was not read (limit {limit}).",
-  "{name}: too large": "{name}: too large",
   'Too many copies of "{name}".': 'Too many copies of "{name}".',
   "Use {name} {appearance} mode": "Use {name} {appearance} mode",
   "{count} supported {kind} found.": "{count} supported {kind} found.",

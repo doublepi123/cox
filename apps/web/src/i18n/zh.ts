@@ -1640,7 +1640,6 @@ export const zh = {
   "{size} bytes": "{size} 字节",
   "That file is {size}. Theme files are only a few KB, so this one was not read (limit {limit}).":
     "该文件大小为 {size}。主题文件通常仅为几 KB，因此未读取此文件（限制为 {limit}）。",
-  "{name}: too large": "{name}：过大",
   'Too many copies of "{name}".': "“{name}”的副本过多。",
   "Use {name} {appearance} mode": "使用 {name} 的{appearance}模式",
   "{count} supported {kind} found.": "找到 {count} 个受支持的{kind}。",

@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from "vite-plus/test";
 import { page, userEvent } from "vite-plus/test/browser";
 
 import { act, render } from "../../../test/render";
+import { setLanguagePreference } from "../../i18n";
 import {
   CUSTOM_THEMES_STORAGE_KEY,
   getCustomThemes,
@@ -254,3 +255,37 @@ it.each(["failed read", "batch install"])(
     await expect.element(page.getByRole("button", { name: "Choose files" })).toBeEnabled();
   },
 );
+
+it("names an oversized file in a batch import in the UI language", async () => {
+  const previous = localStorage.getItem(CUSTOM_THEMES_STORAGE_KEY);
+  localStorage.removeItem(CUSTOM_THEMES_STORAGE_KEY);
+  invalidateCustomThemes();
+  using _themes = {
+    [Symbol.dispose]() {
+      if (previous === null) localStorage.removeItem(CUSTOM_THEMES_STORAGE_KEY);
+      else localStorage.setItem(CUSTOM_THEMES_STORAGE_KEY, previous);
+      invalidateCustomThemes();
+    },
+  };
+  setLanguagePreference("zh");
+  using _language = { [Symbol.dispose]: () => setLanguagePreference("system") };
+  await using _screen = await render(
+    <ThemeImportDialog
+      open
+      onOpenChange={() => {}}
+      onImported={() => true}
+      onImportedMany={() => {}}
+    />,
+  );
+  const input = document.querySelector<HTMLInputElement>('input[type="file"]')!;
+  await userEvent.upload(input, [
+    themeFile("Dawn"),
+    new File(["x".repeat(1_048_100)], "huge.json", { type: "application/json" }),
+  ]);
+
+  await expect
+    .element(page.getByRole("alert"))
+    .toHaveTextContent(
+      "huge.json: 该文件大小为 1024 KB。主题文件通常仅为几 KB，因此未读取此文件（限制为 256 KB）。",
+    );
+});
