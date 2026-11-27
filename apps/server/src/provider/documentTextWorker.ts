@@ -82,24 +82,46 @@ function separateRubyReadings(ruby: XmlNode) {
   }
 }
 
+function namespaceOf(tagName: string, scope: readonly XmlNode[]) {
+  const colon = tagName.lastIndexOf(":");
+  const binding = colon === -1 ? "xmlns" : `xmlns:${tagName.slice(0, colon)}`;
+  return scope.findLast((node) => Object.hasOwn(node.attrs, binding))?.attrs[binding];
+}
+
+function isXhtmlTemplate(
+  tagName: string,
+  node: XmlNode,
+  ancestors: readonly XmlNode[],
+  rootTagName: string | undefined,
+) {
+  if (node.name !== "template") return false;
+  const namespace = namespaceOf(tagName, [...ancestors, node]);
+  return (
+    namespace === "http://www.w3.org/1999/xhtml" ||
+    (namespace === undefined && !tagName.includes(":") && rootTagName === "html")
+  );
+}
+
 function xml(source: string, extension: string): XmlNode {
   const odfSpaces = [".odt", ".ods", ".odp"].includes(extension);
   const htmlEntities = extension === ".epub";
   const word = extension === ".docx";
   const root: XmlNode = { name: "root", attrs: {}, children: [] };
   const stack = [root];
+  let rootTagName: string | undefined;
   let nodes = 0;
   const parser = new SaxesParser();
   if (htmlEntities) Object.assign(parser.ENTITIES, characterEntities);
   parser.on("opentag", (tag) => {
     if (++nodes > 200_000 || stack.length > 128) throw new Truncation("XML structure limit");
+    rootTagName ??= tag.name;
     const node: XmlNode = {
       name: tag.name.split(":").at(-1)!,
       attrs: Object.fromEntries(
         Object.entries(tag.attributes).flatMap(([key, value]) => {
           const local = key.split(":").at(-1)!;
-          // XHTML table spans are unqualified; a prefixed colspan is a foreign attribute.
-          return extension === ".epub" && (local === "colspan" || local === "rowspan")
+          // A foreign attribute must not shadow an XHTML table span or a namespace declaration.
+          return htmlEntities && (local === "colspan" || local === "rowspan" || local === "xmlns")
             ? [[key, String(value)]]
             : [
                 [key, String(value)],
@@ -113,15 +135,11 @@ function xml(source: string, extension: string): XmlNode {
     if (odfSpaces && node.name === "s") node.spaceCount = repeatCount(node.attrs.c);
     stack.at(-1)!.children.push(node);
     stack.push(node);
-    if (node.name === "AlternateContent" || node.name === "Choice") {
-      const colon = tag.name.lastIndexOf(":");
-      const binding = colon === -1 ? "xmlns" : `xmlns:${tag.name.slice(0, colon)}`;
-      if (
-        stack.findLast((ancestor) => Object.hasOwn(ancestor.attrs, binding))?.attrs[binding] ===
-        MARKUP_COMPATIBILITY_NS
-      )
-        node.markupCompatibility = true;
-    }
+    if (
+      (node.name === "AlternateContent" || node.name === "Choice") &&
+      namespaceOf(tag.name, stack) === MARKUP_COMPATIBILITY_NS
+    )
+      node.markupCompatibility = true;
   });
   parser.on("closetag", (tag) => {
     const node = stack.pop()!;
@@ -134,6 +152,7 @@ function xml(source: string, extension: string): XmlNode {
     // Markup-compatibility fallbacks repeat their mc:Choice content, e.g. Word text boxes.
     // Keep one when no Choice carries text, such as a chart with a VML caption.
     if (
+      (htmlEntities && isXhtmlTemplate(tag.name, node, stack, rootTagName)) ||
       (htmlEntities && node.name === "head" && stack[1]?.name === "html") ||
       (htmlEntities &&
         (stack[1] ?? node).name === "html" &&
