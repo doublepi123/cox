@@ -23,3 +23,23 @@ it.each([false, true])(
     expect(screen.container.textContent).toContain(`“${prefix}…”`);
   },
 );
+
+it("shows no space before the ellipsis of a truncated pull request query", async () => {
+  const prefix = "a".repeat(46);
+  await using screen = await render(
+    <PullRequestListEmptyState
+      query={prefix + " 🚀and the rest of the search"}
+      filtered
+      searching={false}
+      hasProjects
+      canLoadMore={false}
+      loadingMore={false}
+      refreshing={false}
+      onClearQuery={() => {}}
+      onLoadMore={() => {}}
+      onRefresh={() => {}}
+    />,
+  );
+  expect(screen.container.textContent).toContain(`“${prefix}…”`);
+  expect(screen.container.textContent).not.toContain(`“${prefix} …”`);
+});
