@@ -41,6 +41,13 @@ export interface MarkdownExtensions {
     readonly repositoryUrl: string;
     readonly autolinks: ((text: string) => ReadonlyArray<ReferenceAutolink>) | null;
   };
+  /**
+   * Chunked Markdown footnote rendering mode:
+   * - `"omit"` hides the per-chunk `<section data-footnotes>`.
+   * - `"omit-seeded"` also strips the synthetic leading `<p>` used to seed prior footnote numbers.
+   * - `"only"` keeps only the `<section data-footnotes>` element.
+   */
+  readonly footnotes?: "omit" | "omit-seeded" | "only";
 }
 
 export interface WordsHastOptions {
@@ -1135,6 +1142,62 @@ function flattenPreview(tree: Root, preview: NonNullable<MarkdownExtensions["pre
 }
 
 /** Links become their text, images their alt text, inline code plain text, Mermaid plain code. */
+function isFootnotesSection(node: Root["children"][number]): boolean {
+  return (
+    node.type === "element" &&
+    node.tagName === "section" &&
+    node.properties.dataFootnotes !== undefined
+  );
+}
+
+function isFootnoteSeedParagraph(node: Root["children"][number]): boolean {
+  if (node.type !== "element" || node.tagName !== "p") return false;
+  let hasRef = false;
+  for (const child of node.children) {
+    if (child.type === "text") {
+      if (child.value.trim() !== "") return false;
+      continue;
+    }
+    if (
+      child.type === "element" &&
+      child.tagName === "sup" &&
+      child.children.length === 1 &&
+      child.children[0]?.type === "element" &&
+      child.children[0].tagName === "a" &&
+      child.children[0].properties.dataFootnoteRef !== undefined
+    ) {
+      hasRef = true;
+      continue;
+    }
+    return false;
+  }
+  return hasRef;
+}
+
+function applyFootnoteMode(hast: Root, mode: NonNullable<MarkdownExtensions["footnotes"]>) {
+  if (mode === "only") {
+    hast.children = hast.children.filter(isFootnotesSection);
+    return;
+  }
+  let droppedSeed = mode !== "omit-seeded";
+  const kept: Root["children"] = [];
+  for (const child of hast.children) {
+    if (isFootnotesSection(child)) continue;
+    if (!droppedSeed && isFootnoteSeedParagraph(child)) {
+      droppedSeed = true;
+      continue;
+    }
+    if (kept.length === 0 && child.type === "text" && child.value.trim() === "") continue;
+    kept.push(child);
+  }
+  while (kept.length > 0) {
+    const tail = kept.at(-1);
+    if (tail?.type === "text" && tail.value.trim() === "") kept.pop();
+    else break;
+  }
+  hast.children = kept;
+}
+
 function makeInert(node: Root | Element) {
   const children = node.children as ElementContent[];
   for (let index = 0; index < children.length; index++) {
@@ -1202,6 +1265,7 @@ export function wordsHast(text: string, options: WordsHastOptions): Root {
   const hast = sanitizeChatHast(tree);
   if (walk.math.size > 0) restoreMath(hast, walk.math);
   if (insights) restorePositions(hast, insights.toOriginal);
+  if (extensions.footnotes) applyFootnoteMode(hast, extensions.footnotes);
   if (extensions.inert) makeInert(hast);
   if (extensions.preview) return flattenPreview(hast, extensions.preview);
   addHeadingIds(hast);
