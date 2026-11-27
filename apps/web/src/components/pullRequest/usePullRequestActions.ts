@@ -37,7 +37,6 @@ import { type DraftId, useComposerDraftStore } from "~/composerDraftStore";
 import { useNewThreadHandler } from "~/hooks/useHandleNewThread";
 import { usePreparePullRequestThreadAction } from "~/state/sourceControlActions";
 import { trackPendingDraftCheckout } from "~/lib/draftWorkspaceDefaults";
-import { trackPendingDraftCheckout } from "~/lib/draftWorkspaceDefaults";
 import type { ReviewCommentContext } from "~/reviewCommentContext";
 import { pullRequestEnvironment } from "~/state/pullRequests";
 
