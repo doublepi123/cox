@@ -599,17 +599,17 @@ importers:
         specifier: ^1.9.0
         version: 1.9.0(@date-fns/tz@1.5.0)(@types/react@19.3.0)(date-fns@4.4.0)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
       '@betteroffice/docx':
-        specifier: 0.4.3
-        version: 0.4.3(@betteroffice/fonts@0.4.0)
+        specifier: 0.6.1
+        version: 0.6.1
       '@betteroffice/fonts':
-        specifier: 0.4.0
-        version: 0.4.0
+        specifier: 0.5.0
+        version: 0.5.0
       '@betteroffice/pptx':
-        specifier: 0.2.0
-        version: 0.2.0
+        specifier: 0.6.1
+        version: 0.6.1
       '@betteroffice/xlsx':
-        specifier: 0.3.0
-        version: 0.3.0
+        specifier: 0.6.1
+        version: 0.6.1
       '@daypicker/react':
         specifier: ^10.0.1
         version: 10.0.2(@types/react@19.3.0)(react@19.3.0)
@@ -2097,27 +2097,28 @@ packages:
       '@types/react':
         optional: true
 
-  '@betteroffice/docx@0.4.3':
-    resolution: {integrity: sha512-CEErXJH3iCsi2a61gTNkAofLCzSTcktLmp710gGhMwbBfOqwQ2yI7dRFBV3ElGa9JxkS03IfejvLX0sAvlTrUQ==}
-    peerDependencies:
-      '@betteroffice/fonts': ^0
-    peerDependenciesMeta:
-      '@betteroffice/fonts':
-        optional: true
+  '@betteroffice/docx@0.6.1':
+    resolution: {integrity: sha512-CXOiqGF20cloKkw+ej3qktFB8Hl+vsBOZIEGrkdMF3aLcURtBhslhcNBiC32vvwFWsX2DQm/F9PxL000ite6qA==}
 
-  '@betteroffice/fonts@0.4.0':
-    resolution: {integrity: sha512-x1BVwYDAgY5R6TWI4t9NLguSiAEbH5GItN2ZlpBIFoRXTIJgjBsXd6sUxPGpexXOyY6KdhRjG8XvHjyAYxEGCw==}
+  '@betteroffice/fonts-latin@0.5.0':
+    resolution: {integrity: sha512-5UJ1dXI16BP6CpyX+JDJgLb4zrKLIkjts6GUj+mGiSTHMJ2yv4EYn/Ln3zRkOVrJD/I9365+5ORJtwwqi/3U2Q==}
+
+  '@betteroffice/fonts@0.5.0':
+    resolution: {integrity: sha512-Oa4J36vIht33HG9FMZ+JYpxeE7mqUc9osCCdQSBBoYe1+LuD0K6loT5FZ0AF+i/YamA1D8M/6sXnzcZOBzGUaQ==}
     peerDependencies:
       '@betteroffice/fonts-cjk': ^0
+      '@betteroffice/fonts-intl': ^0
     peerDependenciesMeta:
       '@betteroffice/fonts-cjk':
         optional: true
+      '@betteroffice/fonts-intl':
+        optional: true
 
-  '@betteroffice/pptx@0.2.0':
-    resolution: {integrity: sha512-pNPQ58tlA+pVibERbLdQNskvP7a0GIMf4jhkCU/gPp8043Ichf6gB3PSb4ra9sfqoIaWqOaZKCWyptovA2+Q0A==}
+  '@betteroffice/pptx@0.6.1':
+    resolution: {integrity: sha512-bq8Js9wCIezSRKXf95/yBlT2Wn7oOiZLqIVFXLPfv7S6uVVwwGXYI2ELNMbCreHmagYfJXHduL7wp7zDfH9nbw==}
 
-  '@betteroffice/xlsx@0.3.0':
-    resolution: {integrity: sha512-K2bHtdk/epAxsmvxJlIWBRndjP3ltQU0Oh3p4gcZd2n5/YgXglo3SmMYX4nQe8WEm/yvz91p+aIasKyXXQP9Wg==}
+  '@betteroffice/xlsx@0.6.1':
+    resolution: {integrity: sha512-KxN1EA/QuBd8pQgxyNUS7ASqicUOREp/MV5lkLOYzzFD8RsxsPymI5RAJ+xnFFNlbLYUzjYqzy+tUQPJxafpJQ==}
 
   '@blazediff/core@1.10.0':
     resolution: {integrity: sha512-AOQff0zgR7cGsZL+4E7hVkmujoPUpm0J9xzWGWZj5wCjd3gmxESXAPfKyuzs93VdpQNFhHlBhfOjrcZ+XTERtQ==}
@@ -6994,15 +6995,32 @@ snapshots:
     optionalDependencies:
       '@types/react': 19.3.0
 
-  '@betteroffice/docx@0.4.3(@betteroffice/fonts@0.4.0)':
-    optionalDependencies:
-      '@betteroffice/fonts': 0.4.0
+  '@betteroffice/docx@0.6.1':
+    dependencies:
+      '@betteroffice/fonts': 0.5.0
+    transitivePeerDependencies:
+      - '@betteroffice/fonts-cjk'
+      - '@betteroffice/fonts-intl'
 
-  '@betteroffice/fonts@0.4.0': {}
+  '@betteroffice/fonts-latin@0.5.0': {}
 
-  '@betteroffice/pptx@0.2.0': {}
+  '@betteroffice/fonts@0.5.0':
+    dependencies:
+      '@betteroffice/fonts-latin': 0.5.0
 
-  '@betteroffice/xlsx@0.3.0': {}
+  '@betteroffice/pptx@0.6.1':
+    dependencies:
+      '@betteroffice/fonts': 0.5.0
+    transitivePeerDependencies:
+      - '@betteroffice/fonts-cjk'
+      - '@betteroffice/fonts-intl'
+
+  '@betteroffice/xlsx@0.6.1':
+    dependencies:
+      '@betteroffice/fonts': 0.5.0
+    transitivePeerDependencies:
+      - '@betteroffice/fonts-cjk'
+      - '@betteroffice/fonts-intl'
 
   '@blazediff/core@1.10.0': {}
 

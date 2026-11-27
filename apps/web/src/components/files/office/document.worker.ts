@@ -29,6 +29,10 @@ import { serveWorker, Transfer } from "./worker-rpc";
 // One worker holds one open Word document: its engine session, fonts, layout, built pages and painting. The window
 // terminates the worker when the document closes, which is the only way the engine's memory is given back.
 
+const isBundledWordScript = Schema.is(
+  Schema.Literals(["cjk-sc", "cjk-tc", "cjk-jp", "cjk-kr", "arabic", "hebrew"]),
+);
+
 const FontRequirements = Schema.fromJsonString(
   Schema.Array(
     Schema.Struct({
@@ -36,9 +40,7 @@ const FontRequirements = Schema.fromJsonString(
       family: Schema.String,
       bold: Schema.Boolean,
       italic: Schema.Boolean,
-      scripts: Schema.optional(
-        Schema.Array(Schema.Literals(["cjk-sc", "cjk-tc", "cjk-jp", "cjk-kr", "arabic", "hebrew"])),
-      ),
+      scripts: Schema.optional(Schema.Array(Schema.String)),
     }),
   ),
 );
@@ -134,7 +136,7 @@ async function open(bytes: Uint8Array) {
     session.layoutFontRequirementsJson(JSON.stringify(request)),
   ).map(({ scripts, ...requirement }) => ({
     ...requirement,
-    ...(scripts ? { scripts: [...scripts] } : {}),
+    ...(scripts ? { scripts: scripts.filter(isBundledWordScript) } : {}),
   }));
 
   await measure.prepareFontRequirements(requirements);

@@ -2,6 +2,7 @@
 import { pipe } from "effect/Function";
 import type { BundledFontProvider } from "@betteroffice/docx/layout";
 import {
+  configureFontCdn,
   loadBundledFontBytes,
   resolveBundledFamilyFace,
   resolveLastResortFace,
@@ -14,6 +15,8 @@ import {
 // Every face loads from the app's own files, so no font request leaves the machine. The Chinese, Japanese and Korean
 // faces are an add-on the app does not ship (see `fonts-cjk.ts`), yet the font package still maps East Asian families
 // such as Microsoft YaHei or Yu Gothic Medium to them, so every lookup passes through `shippedFace`.
+configureFontCdn({ baseUrl: false });
+
 function shipped(script: BundledFontScript) {
   return !script.startsWith("cjk-");
 }
