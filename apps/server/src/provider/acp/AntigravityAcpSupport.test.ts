@@ -14,20 +14,24 @@ import type * as EffectAcpSchema from "effect-acp/compat";
 
 import { resolveAttachmentPath } from "../../attachmentStore.ts";
 import {
-  antigravityClientInfo,
+  antigravityServesCox,
   antigravityPermissionDisposition,
   applyAntigravityAcpModelSelection,
   buildAntigravityPrompt,
 } from "./AntigravityAcpSupport.ts";
 
-describe("antigravityClientInfo", () => {
-  it.each([undefined, null, "", "unknown", "1.4.5", "1.5.0", "1.5.1-beta"])(
-    "keeps legacy model access for %s",
-    (version) => expect(antigravityClientInfo(version)).toEqual({ name: "zed", version: "0.0.0" }),
-  );
-  it.each(["1.5.1", "1.5.2", "1.6.0", "2.0.0", " 1.5.1 "])("identifies Cox to %s", (version) =>
-    expect(antigravityClientInfo(version)).toMatchObject({ name: "cox", title: "Cox" }),
-  );
+describe("antigravityServesCox", () => {
+  it.each([
+    ["1.5.0", false],
+    ["v1.5.0", false],
+    ["agy_acp_server_1.5.0", false],
+    ["1.4.5", false],
+    ["1.5.1", true],
+    ["agy_acp_server_1.5.12", true],
+    ["custom", true],
+  ] as const)("%s supports Cox: %s", (version, serves) => {
+    expect(antigravityServesCox(version)).toBe(serves);
+  });
 });
 
 describe("Antigravity MCP approvals", () => {

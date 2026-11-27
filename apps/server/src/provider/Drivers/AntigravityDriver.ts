@@ -50,6 +50,8 @@ import {
   antigravityModelOptions,
   antigravityThinkingConfig,
   makeAntigravityAcpRuntime,
+  antigravityServesCox,
+  OPEN_MODEL_ACCESS_RELEASE,
   type AntigravityAcpRuntimeInput,
 } from "../acp/AntigravityAcpSupport.ts";
 import type * as AcpSessionRuntime from "@t3tools/provider-acp/server/AcpSessionRuntime";
@@ -282,7 +284,6 @@ export const AntigravityDriver: ProviderDriver<
       const runtime = yield* makeAntigravityAcpRuntime({
         ...input,
         authMethod: auth.authMethod,
-        runtimeVersion: executable.version,
         childProcessSpawner: spawner,
         spawn: buildAntigravityAcpSpawnInput({
           installation: executable,
@@ -293,6 +294,19 @@ export const AntigravityDriver: ProviderDriver<
           runtimeTempDirectory,
         }),
       }).pipe(Effect.provideService(SecureRandom.SecureRandom, random));
+      const startCompatible = Effect.fn("AntigravityDriver.startCompatible")(function* () {
+        const version = (yield* runtime.initialize()).agentInfo?.version;
+        if (version && !antigravityServesCox(version)) {
+          const action =
+            executable.source === "managed"
+              ? "Update it in Antigravity setup"
+              : `Update the Antigravity executable at ${executable.executablePath}`;
+          const detail = `Antigravity ${version} only serves allowlisted editors. ${action} to ${OPEN_MODEL_ACCESS_RELEASE} or newer, then retry.`;
+          const cause = new ProviderSetupError({ instanceId, operation: "runtime", detail });
+          return yield* new AcpErrors.AcpTransportError({ detail, cause });
+        }
+        return yield* runtime.start();
+      });
       return {
         ...runtime,
         ...(executable.harnessPath === null
@@ -306,15 +320,13 @@ export const AntigravityDriver: ProviderDriver<
             }
           : {}),
         start: () =>
-          runtime
-            .start()
-            .pipe(
-              Effect.tapError((cause): Effect.Effect<void> =>
-                input.onAuthorizationUrl === undefined && isAntigravitySignInRequiredError(cause)
-                  ? provider.onAuthRequired
-                  : Effect.void,
-              ),
+          startCompatible().pipe(
+            Effect.tapError((cause): Effect.Effect<void> =>
+              input.onAuthorizationUrl === undefined && isAntigravitySignInRequiredError(cause)
+                ? provider.onAuthRequired
+                : Effect.void,
             ),
+          ),
       };
     });
 

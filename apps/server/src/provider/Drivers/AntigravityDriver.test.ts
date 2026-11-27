@@ -91,6 +91,7 @@ const makeHarness = Effect.fn("makeAntigravityDriverHarness")(function* (
     name: string,
     options: {
       readonly loginRequired?: boolean;
+      readonly agentVersion?: string;
 
       readonly newSessionErrorData?: unknown;
     } = {},
@@ -113,6 +114,7 @@ const makeHarness = Effect.fn("makeAntigravityDriverHarness")(function* (
           : [
               `export T3_ACP_NEW_SESSION_ERROR_DATA=${shellQuote(JSON.stringify(options.newSessionErrorData))}`,
             ]),
+        `export T3_ACP_AGENT_VERSION=${shellQuote(options.agentVersion ?? "1.5.12")}`,
         `exec ${shellQuote(nodePath)} ${shellQuote(mockAgentPath)} "$@"`,
         "",
       ].join("\n"),
@@ -295,6 +297,36 @@ const layerTest = ProviderHostLive.layer.pipe(
 );
 
 it.layer(layerTest)("AntigravityDriver", (it) => {
+  it.effect("refuses an allowlisted-editor runtime before opening a session", () =>
+    Effect.gen(function* () {
+      const h = yield* makeHarness();
+      h.controls.selected = yield* h.makeExecutable("old runtime", { agentVersion: "1.5.0" });
+      const threadId = ThreadId.make("thread-antigravity-1-5-0");
+      const modelSelection = { instanceId: h.instance.instanceId, model: "gemini-test-low" };
+      const failure = yield* Effect.scoped(
+        Effect.gen(function* () {
+          const cwd = yield* h.fs.makeTempDirectoryScoped({ prefix: "cox-ag-version-floor-" });
+          const runtimePolicy = ProviderAdapter.ProviderAdapterV2RuntimePolicy.make({
+            runtimeMode: "approval-required",
+            interactionMode: "default",
+            cwd,
+          });
+          const session = yield* h.instance.orchestrationAdapter.openSession({
+            threadId,
+            providerSessionId: ProviderSessionId.make("provider-session-antigravity-1-5-0"),
+            modelSelection,
+            runtimePolicy,
+          });
+          yield* session.ensureThread({ threadId, modelSelection, runtimePolicy });
+        }),
+      ).pipe(Effect.flip);
+      expect(failure).toMatchObject({
+        cause: { detail: expect.stringContaining("to 1.5.1 or newer") },
+      });
+      yield* h.assertClosed;
+    }),
+  );
+
   it.effect.skipIf(windowsHost)(
     "refreshes the selected executable and limits form capabilities to chat",
     () =>

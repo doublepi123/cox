@@ -49,19 +49,17 @@ export interface AntigravityAcpRuntimeInput extends Omit<
   readonly childProcessSpawner: ChildProcessSpawner.ChildProcessSpawner["Service"];
   readonly onAuthorizationUrl?: (url: string) => Effect.Effect<void, EffectAcpErrors.AcpError>;
   readonly clientFileReads?: boolean;
-  readonly runtimeVersion?: string | null;
   readonly clientCapabilities?: AcpSessionRuntime.AcpSessionRuntimeOptions["clientCapabilities"];
   readonly authMethod?: AntigravityAuthMethod;
 }
 
-export function antigravityClientInfo(version: string | null | undefined) {
-  const match = /^(\d+)\.(\d+)\.(\d+)$/.exec(version?.trim() ?? "");
-  const release = match?.slice(1).map(Number);
-  return release !== undefined &&
-    (release[0]! > 1 ||
-      (release[0] === 1 && (release[1]! > 5 || (release[1] === 5 && release[2]! >= 1))))
-    ? { name: "cox", title: "Cox", version: packageJson.version }
-    : { name: "zed", version: "0.0.0" };
+export const OPEN_MODEL_ACCESS_RELEASE = "1.5.1";
+
+export function antigravityServesCox(version: string): boolean {
+  const match = /^(?:v|agy_acp_server_)?(\d+)\.(\d+)\.(\d+)/.exec(version.trim());
+  if (match === null) return true;
+  const [major, minor, patch] = match.slice(1).map(Number);
+  return major! > 1 || (major === 1 && (minor! > 5 || (minor === 5 && patch! >= 1)));
 }
 
 export const makeAntigravityAcpRuntime = Effect.fn("makeAntigravityAcpRuntime")(function* (
@@ -78,7 +76,7 @@ export const makeAntigravityAcpRuntime = Effect.fn("makeAntigravityAcpRuntime")(
       authenticateEagerly: true,
       resumeMethod: "resume",
       cancelBehavior: "wait-for-prompt",
-      clientInfo: antigravityClientInfo(input.runtimeVersion),
+      clientInfo: { name: "cox", title: "Cox", version: packageJson.version },
       clientCapabilities: {
         ...input.clientCapabilities,
         // Advertising writes swaps the agent's diff edits for whole-file client_edit_file.
