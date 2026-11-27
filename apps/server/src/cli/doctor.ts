@@ -133,7 +133,9 @@ export const doctorCommand = Command.make("doctor", {
   Command.withHandler((flags) =>
     Effect.gen(function* () {
       const logLevel = yield* GlobalFlag.LogLevel;
-      const config = yield* resolveCliAuthConfig(flags, logLevel);
+      const config = yield* resolveCliAuthConfig(flags, logLevel, {
+        prepareDirectories: !flags.dryRun,
+      });
       yield* runDoctor(config.dbPath, { fix: flags.fix, dryRun: flags.dryRun }).pipe(
         Effect.provide(DatabaseMaintenance.layer),
       );

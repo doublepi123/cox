@@ -217,6 +217,7 @@ export const resolveServerConfig = Effect.fn("config.resolveServerConfig")(funct
   options?: {
     readonly startupPresentation?: ServerConfig.StartupPresentation;
     readonly forceAutoBootstrapProjectFromCwd?: boolean;
+    readonly prepareDirectories?: boolean;
     readonly rejectRunningServer?: boolean;
   },
 ) {
@@ -287,13 +288,15 @@ export const resolveServerConfig = Effect.fn("config.resolveServerConfig")(funct
       });
     }
   }
-  yield* fs.makeDirectory(cwd, { recursive: true });
-  yield* ServerConfig.ensureServerDirectories(derivedPaths);
+  const serverTracePath = env.traceFile ?? derivedPaths.serverTracePath;
+  if (options?.prepareDirectories !== false) {
+    yield* fs.makeDirectory(cwd, { recursive: true });
+    yield* ServerConfig.ensureServerDirectories(derivedPaths);
+    yield* fs.makeDirectory(path.dirname(serverTracePath), { recursive: true });
+  }
   const persistedObservabilitySettings = yield* loadPersistedObservabilitySettings(
     derivedPaths.settingsPath,
   );
-  const serverTracePath = env.traceFile ?? derivedPaths.serverTracePath;
-  yield* fs.makeDirectory(path.dirname(serverTracePath), { recursive: true });
   const startupPresentation = options?.startupPresentation ?? "browser";
   const isHeadlessStartup = startupPresentation === "headless";
   const noBrowser = Option.getOrElse(
@@ -406,7 +409,7 @@ export const resolveServerConfig = Effect.fn("config.resolveServerConfig")(funct
 export const resolveCliAuthConfig = (
   flags: CliAuthLocationFlags,
   cliLogLevel: Option.Option<LogLevel.LogLevel>,
-  options?: { readonly quietLogs?: boolean },
+  options?: { readonly quietLogs?: boolean; readonly prepareDirectories?: boolean },
 ) => {
   const resolved = resolveServerConfig(
     {
@@ -420,6 +423,7 @@ export const resolveCliAuthConfig = (
       logWebSocketEvents: Option.none(),
     },
     cliLogLevel,
+    options,
   ).pipe(Effect.map((config) => ({ ...config, authPolicyReadOnly: true })));
   // Logs go to stdout, where --json and --token-only print, and resolving can
   // log, for example when it sweeps abandoned attachment uploads.
