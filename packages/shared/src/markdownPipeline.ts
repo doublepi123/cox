@@ -33,7 +33,11 @@ import {
   CODEX_ARTIFACT_TEMPLATE_HAST_PROPERTIES,
   remarkCodexDirectives,
 } from "./codexMarkdownDirectives.ts";
-import { isWindowsDrivePathHref, normalizeMarkdownLinkDestination } from "./markdownLinks.ts";
+import {
+  isWindowsDrivePathHref,
+  normalizeMarkdownLinkDestination,
+  parseMarkdownSandboxFileLink,
+} from "./markdownLinks.ts";
 import { THREAD_LINK_PROTOCOL } from "./threadLinks.ts";
 
 type MarkdownImageHastNode = {
@@ -181,19 +185,29 @@ function rehypePreserveImageSourceMeta() {
   };
 }
 
-function rehypeNormalizeLocalEditorLinks() {
+function rehypeNormalizeLocalFileLinks() {
   return (tree: MarkdownImageHastNode) => {
     const visit = (node: MarkdownImageHastNode) => {
       const href = node.properties?.href;
       if (node.type === "element" && node.tagName === "a" && typeof href === "string") {
-        try {
-          const url = new URL(href);
-          if (url.protocol === "cursor:" || url.protocol === "vscode:") {
-            node.properties = { ...node.properties };
-            if (isLocalEditorFileUrl(url)) node.properties.href = url.href;
-            else delete node.properties.href;
+        // The sanitizer compares schemes case-sensitively, so lowercase accepted file link schemes first.
+        if (/^sandbox:/i.test(href)) {
+          node.properties = { ...node.properties };
+          if (parseMarkdownSandboxFileLink(href)) {
+            node.properties.href = href.replace(/^sandbox:/i, "sandbox:");
+          } else {
+            delete node.properties.href;
           }
-        } catch {}
+        } else {
+          try {
+            const url = new URL(href);
+            if (url.protocol === "cursor:" || url.protocol === "vscode:") {
+              node.properties = { ...node.properties };
+              if (isLocalEditorFileUrl(url)) node.properties.href = url.href;
+              else delete node.properties.href;
+            }
+          } catch {}
+        }
       }
       node.children?.forEach(visit);
     };
@@ -354,7 +368,7 @@ export const CHAT_MARKDOWN_REHYPE_PLUGINS: PluggableList = [
   rehypePreserveBareAnchorPlaceholders,
   rehypeRawWhenPresent,
   rehypePreserveImageSourceMeta,
-  rehypeNormalizeLocalEditorLinks,
+  rehypeNormalizeLocalFileLinks,
   [rehypeSanitize, CHAT_MARKDOWN_SANITIZE_SCHEMA],
 ];
 
