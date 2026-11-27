@@ -3257,11 +3257,11 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
               className="flex items-center justify-between gap-2 px-3 py-2 text-sm"
             >
               <span>
-                {t(
-                  preparingComposerImages.length > 1
-                    ? "Sending once images are ready"
-                    : "Sending once image is ready",
-                )}
+                {preparingComposerImages.length > 1
+                  ? t("Sending once {count} images are ready", {
+                      count: preparingComposerImages.length,
+                    })
+                  : t("Sending once image is ready")}
               </span>
               <Button
                 type="button"

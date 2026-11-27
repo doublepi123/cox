@@ -6,6 +6,8 @@ export const en = {
   "{count} download": "{count} download",
   "{count} downloads": "{count} downloads",
   "Copy as PNG": "Copy as PNG",
+  "Sending once image is ready": "Sending once image is ready",
+  "Sending once {count} images are ready": "Sending once {count} images are ready",
   "Skipped runs kept": "Skipped runs kept",
   "How many skipped runs each workflow keeps in its history. Older skipped runs are deleted; runs that did something are always kept.":
     "How many skipped runs each workflow keeps in its history. Older skipped runs are deleted; runs that did something are always kept.",

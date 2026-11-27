@@ -404,49 +404,58 @@ it("a send finishing after navigation leaves the open thread's composer alone", 
   ).toBe("destination draft");
 });
 
-it("holds Enter while an image compresses and cancels on edit or Escape", async () => {
-  using _drafts = isolateComposerDrafts();
-  returningUserSettings();
-  let finishCompression!: () => void;
-  compression.gate = new Promise<void>((resolve) => {
-    finishCompression = resolve;
-  });
-  using _compression = {
-    [Symbol.dispose]: () => {
-      compression.gate = null;
-      finishCompression();
-    },
-  };
-  await using _app = await mountThread(ThreadId.make("thread-held-image-send"));
-  const editor = page.getByTestId("composer-editor");
-  await expect.element(editor).toBeVisible();
-  await expect.element(page.getByText("Answer 0 for thread-held-image-send.")).toBeVisible();
-  await userEvent.click(editor);
-  const png = Uint8Array.from(
-    atob(
-      "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=",
-    ),
-    (character) => character.charCodeAt(0),
-  );
-  const clipboardData = new DataTransfer();
-  clipboardData.items.add(new File([png], "shot.png", { type: "image/png" }));
-  editor
-    .element()
-    .dispatchEvent(new ClipboardEvent("paste", { clipboardData, bubbles: true, cancelable: true }));
-  await userEvent.keyboard("check image{Enter}");
-  const waiting = page.getByText("Sending once image is ready");
-  await expect.element(waiting).toBeVisible();
-  await expect
-    .element(page.getByRole("button", { name: "Sending when ready" }))
-    .toHaveAttribute("aria-busy", "true");
-  await userEvent.keyboard(" now");
-  await expect.element(waiting).not.toBeInTheDocument();
-  await expect.element(editor).toHaveTextContent("check image now");
-  await userEvent.keyboard("{Enter}");
-  await expect.element(waiting).toBeVisible();
-  await userEvent.keyboard("{Escape}");
-  await expect.element(waiting).not.toBeInTheDocument();
-});
+it.each([1, 2])(
+  "holds Enter while %i images compress and cancels on edit or Escape",
+  async (count) => {
+    using _drafts = isolateComposerDrafts();
+    returningUserSettings();
+    let finishCompression!: () => void;
+    compression.gate = new Promise<void>((resolve) => {
+      finishCompression = resolve;
+    });
+    using _compression = {
+      [Symbol.dispose]: () => {
+        compression.gate = null;
+        finishCompression();
+      },
+    };
+    await using _app = await mountThread(ThreadId.make("thread-held-image-send"));
+    const editor = page.getByTestId("composer-editor");
+    await expect.element(editor).toBeVisible();
+    await expect.element(page.getByText("Answer 0 for thread-held-image-send.")).toBeVisible();
+    await userEvent.click(editor);
+    const png = Uint8Array.from(
+      atob(
+        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=",
+      ),
+      (character) => character.charCodeAt(0),
+    );
+    const clipboardData = new DataTransfer();
+    for (let index = 0; index < count; index++) {
+      clipboardData.items.add(new File([png], `shot-${index}.png`, { type: "image/png" }));
+    }
+    editor
+      .element()
+      .dispatchEvent(
+        new ClipboardEvent("paste", { clipboardData, bubbles: true, cancelable: true }),
+      );
+    await userEvent.keyboard("check image{Enter}");
+    const waiting = page.getByText(
+      count === 1 ? "Sending once image is ready" : "Sending once 2 images are ready",
+    );
+    await expect.element(waiting).toBeVisible();
+    await expect
+      .element(page.getByRole("button", { name: "Sending when ready" }))
+      .toHaveAttribute("aria-busy", "true");
+    await userEvent.keyboard(" now");
+    await expect.element(waiting).not.toBeInTheDocument();
+    await expect.element(editor).toHaveTextContent("check image now");
+    await userEvent.keyboard("{Enter}");
+    await expect.element(waiting).toBeVisible();
+    await userEvent.keyboard("{Escape}");
+    await expect.element(waiting).not.toBeInTheDocument();
+  },
+);
 
 it("Cmd+W closes the selected right-panel tabs together", async () => {
   await page.viewport(1280, 800);

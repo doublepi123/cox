@@ -6,6 +6,8 @@ export const zh = {
   "{count} download": "{count} 次下载",
   "{count} downloads": "{count} 次下载",
   "Copy as PNG": "复制为 PNG",
+  "Sending once image is ready": "图片就绪后发送",
+  "Sending once {count} images are ready": "{count} 张图片就绪后发送",
   "{project} sets up worktree threads with its own commands from t3.json. They run on this machine with your permissions, outside any agent sandbox. You are asked again whenever their text changes.":
     "{project} 会运行 t3.json 中的命令来设置工作树。命令会以你的权限在此机器上运行，且不受智能体沙箱限制。命令文本更改后，需要重新批准。",
   "This project's t3.json sets up worktree threads with its own commands. They run on this machine with your permissions. A command whose text changes needs approval again.":
