@@ -133,6 +133,7 @@ function rehypePreserveBareAnchorPlaceholders() {
 }
 
 const COLOR_SCHEME_MEDIA = /^\(\s*prefers-color-scheme\s*:\s*(dark|light)\s*\)$/i;
+const FIRST_SRCSET_URL = /^[\t\n\f\r ]*([^\t\n\f\r ]+)/;
 
 /**
  * The renderer resolves an `<img>`'s `src` (workspace files, host media) but never a `<source>`'s
@@ -148,9 +149,10 @@ function moveColorSchemeSourcesToImage(picture: MarkdownImageHastNode) {
     const scheme = typeof media === "string" ? COLOR_SCHEME_MEDIA.exec(media)?.[1] : undefined;
     const srcSet = source.properties?.srcSet;
     const candidate = Array.isArray(srcSet) ? srcSet[0] : srcSet;
-    // A candidate's URL runs to the first space (a descriptor such as `2x` may follow).
     const url =
-      typeof candidate === "string" ? candidate.trim().split(/\s/, 1)[0]?.replace(/,+$/, "") : "";
+      typeof candidate === "string"
+        ? (FIRST_SRCSET_URL.exec(candidate)?.[1]?.replace(/,+$/, "") ?? "")
+        : "";
     const key = scheme?.toLowerCase() === "dark" ? "dataDarkSrc" : "dataLightSrc";
     // As in a browser, the first source that matches a scheme is the one shown.
     if (scheme && url && image.properties?.[key] === undefined) {
@@ -165,7 +167,6 @@ function moveColorSchemeSourcesToImage(picture: MarkdownImageHastNode) {
 function normalizeHttpScheme(url: string): string {
   return url.replace(/^(?:https?|file):/i, (scheme) => scheme.toLowerCase());
 }
-
 
 function rehypePreserveImageSourceMeta() {
   return (tree: MarkdownImageHastNode) => {
