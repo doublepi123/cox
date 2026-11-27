@@ -147,13 +147,12 @@ describe("GitHub remotes", () => {
 describe("GitHub media URLs", () => {
   const media = (url: string) => definition.mediaUrl(new URL(url));
 
-  it("fetches every spelling of an upload or committed file from one canonical URL", () => {
+  it("fetches upload or committed file URLs without guessing upload content type", () => {
     expect(
       media("https://github.com/user-attachments/assets/1a1842fb-6383-492f-873c-57aa0033fa6c"),
     ).toEqual({
       fetchUrl: "https://github.com/user-attachments/assets/1a1842fb-6383-492f-873c-57aa0033fa6c",
       fileName: "1a1842fb-6383-492f-873c-57aa0033fa6c",
-      kind: "video",
     });
     expect(media("https://github.com/owner/repo/blob/main/docs/shot.png")).toEqual({
       fetchUrl: "https://raw.githubusercontent.com/owner/repo/main/docs/shot.png",

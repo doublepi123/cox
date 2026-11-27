@@ -44,7 +44,7 @@ export function gitHubMediaUrl(url: URL): SourceControlMediaUrl | null {
   if (!WEB_HOSTS.has(host)) return null;
   // GitHub links an uploaded video bare, with no extension, and an image as markdown.
   if (ATTACHMENT_PATH_PATTERN.test(url.pathname)) {
-    return media(`https://github.com${url.pathname}`, "video");
+    return media(`https://github.com${url.pathname}`);
   }
   if (LEGACY_ATTACHMENT_PATH_PATTERN.test(url.pathname)) {
     return media(`https://github.com${url.pathname}`);

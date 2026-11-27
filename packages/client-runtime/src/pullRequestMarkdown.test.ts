@@ -1,16 +1,18 @@
-import { describe, expect, it } from "vite-plus/test";
+import * as Effect from "effect/Effect";
+import { AtomRegistry } from "effect/reactivity";
+import { describe, expect, it, vi } from "vite-plus/test";
 
 import {
   changeRequestReferenceAutolinker,
+  makePullRequestMediaKindAtom,
   resolveChangeRequestMediaUrl,
   splitPullRequestBody,
   type PullRequestBodySegment,
 } from "./pullRequestMarkdown.ts";
 
 describe("pull request body segmentation", () => {
-  // GitHub writes a dropped image into the body as an `<img>` tag, so a bare attachment link on
-  // its own line is the shape it uses for a video — every one sampled in the wild was one.
-  it("lifts a dropped video out and keeps the prose around it", () => {
+  // GitHub uploads have no reliable extension, so their type is resolved from the fetched content.
+  it("lifts a dropped upload with an unresolved type and keeps surrounding prose", () => {
     expect(
       splitPullRequestBody(
         "Before\n\nhttps://github.com/user-attachments/assets/2f8c1a90-1b2c-4d5e-8f90-abcdef123456\n\nAfter",
@@ -21,10 +23,46 @@ describe("pull request body segmentation", () => {
         id: "attachment:1",
         kind: "attachment",
         url: "https://github.com/user-attachments/assets/2f8c1a90-1b2c-4d5e-8f90-abcdef123456",
-        media: "video",
+        media: "unknown",
       },
       { id: "markdown:2", kind: "markdown", text: "After", sourceOffset: 89 },
     ]);
+  });
+
+  it("keeps the label of a linked GitHub upload while deferring its type", () => {
+    const upload = "https://github.com/user-attachments/assets/asset-id";
+    expect(splitPullRequestBody(`[Screenshot](${upload})`)).toEqual([
+      {
+        id: "attachment:0",
+        kind: "attachment",
+        url: upload,
+        media: "unknown",
+        label: "Screenshot",
+      },
+    ]);
+  });
+
+  it.each([
+    [206, "image/png", "image"],
+    [206, "video/mp4", "video"],
+    [200, "text/html", null],
+    [404, "image/png", null],
+  ] as const)("classifies HTTP %i with Content-Type %s", async (status, contentType, kind) => {
+    const fetchMedia = vi.fn(
+      async () => new Response("x", { status, headers: { "content-type": contentType } }),
+    );
+    const registry = AtomRegistry.make();
+    const url = "https://environment.test/api/assets/signed/upload";
+    try {
+      const atom = makePullRequestMediaKindAtom(fetchMedia)(url);
+      await expect(Effect.runPromise(AtomRegistry.getResult(registry, atom))).resolves.toBe(kind);
+      expect(fetchMedia).toHaveBeenCalledWith(
+        url,
+        expect.objectContaining({ headers: { Range: "bytes=0-0" } }),
+      );
+    } finally {
+      registry.dispose();
+    }
   });
 
   it("places each prose run at its offset in the body, including inside a media table", () => {
