@@ -5,11 +5,17 @@ import { describe, expect, it } from "vite-plus/test";
 
 import { remarkNormalizeListItemIndentation } from "@t3tools/shared/markdownListIndentation";
 import { remarkCodexDirectives } from "@t3tools/shared/codexMarkdownDirectives";
+import { CHAT_USER_MARKDOWN_REMARK_PLUGINS } from "@t3tools/shared/markdownPipeline";
 
 function renderMarkdown(markdown: string): string {
   return renderToStaticMarkup(
     <ReactMarkdown
-      remarkPlugins={[remarkGfm, remarkNormalizeListItemIndentation, remarkCodexDirectives]}
+      remarkPlugins={[
+        remarkGfm,
+        remarkNormalizeListItemIndentation,
+        remarkCodexDirectives,
+        ...CHAT_USER_MARKDOWN_REMARK_PLUGINS,
+      ]}
     >
       {markdown}
     </ReactMarkdown>,
@@ -17,6 +23,17 @@ function renderMarkdown(markdown: string): string {
 }
 
 describe("remarkNormalizeListItemIndentation", () => {
+  it.each([
+    ["-     \tfoo\n          bar", '<span data-leading-whitespace="">  </span>bar'],
+    ["-        foo\n      \tbar", "\nbar"],
+    [
+      "-       first\n\n        ```\n        \tcode\n        ```",
+      "<pre><code>\tcode\n</code></pre>",
+    ],
+  ])("keeps indentation aligned to tab stops: %j", (markdown, expected) => {
+    expect(renderMarkdown(markdown)).toContain(expected);
+  });
+
   it("renders a leading directive in over-indented list content", () => {
     expect(renderMarkdown('-       :codex-file-citation{path="src/a.ts"}')).toContain(
       '<li><a href="src/a.ts">a.ts</a></li>',
