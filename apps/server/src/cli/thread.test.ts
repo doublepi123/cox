@@ -6,6 +6,8 @@ import * as HostProcess from "@t3tools/shared/HostProcess";
 import * as NetService from "@t3tools/shared/Net";
 import * as ConfigProvider from "effect/ConfigProvider";
 import * as Effect from "effect/Effect";
+import * as ChildProcess from "effect/process/ChildProcess";
+import * as ChildProcessSpawner from "effect/process/ChildProcessSpawner";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 import { CliError, Command } from "effect/cli";
@@ -200,6 +202,53 @@ it.effect("selects the registered symlink alias and the deepest nested project",
   }).pipe(
     Effect.provide(NodeServices.layer),
     Effect.provideService(HostProcess.WorkingDirectory, process.cwd()),
+  ),
+);
+
+it.effect("reports all equally deep projects for an unregistered worktree", () =>
+  Effect.gen(function* () {
+    const fs = yield* FileSystem.FileSystem;
+    const path = yield* Path.Path;
+    const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
+    const dir = yield* fs.makeTempDirectoryScoped({ prefix: "cox-worktree-project-" });
+    const root = path.join(dir, "repo");
+    const alias = path.join(dir, "alias");
+    const worktree = path.join(dir, "worktree");
+    yield* fs.makeDirectory(path.join(root, "pkg"), { recursive: true });
+    const git = (...args: string[]) =>
+      spawner.string(ChildProcess.make("git", args, { cwd: root }));
+    yield* git("init");
+    yield* git(
+      "-c",
+      "user.name=Cox Test",
+      "-c",
+      "user.email=test@example.com",
+      "commit",
+      "--allow-empty",
+      "-m",
+      "fixture",
+    );
+    yield* git("worktree", "add", "--detach", worktree);
+    yield* fs.makeDirectory(path.join(worktree, "pkg"));
+    yield* fs.symlink(root, alias);
+    const projects = [
+      { id: ProjectId.make("repo"), title: "Repository", workspaceRoot: root },
+      { id: ProjectId.make("alias"), title: "Alias", workspaceRoot: alias },
+      { id: ProjectId.make("pkg"), title: "Package", workspaceRoot: path.join(root, "pkg") },
+    ];
+    const from = (identifier: string) =>
+      resolveProject(
+        scriptedTools({ cox_project_list: [{ projects, nextCursor: null }] }).tools,
+        identifier,
+      );
+    assert.equal((yield* from(path.join(worktree, "pkg"))).id, ProjectId.make("pkg"));
+    const error = yield* Effect.flip(from(worktree));
+    assert.include(error.message, "Repository (repo)");
+    assert.include(error.message, "Alias (alias)");
+  }).pipe(
+    Effect.provide(NodeServices.layer),
+    Effect.provideService(HostProcess.WorkingDirectory, process.cwd()),
+    Effect.provideService(HostProcess.Platform, process.platform),
   ),
 );
 
