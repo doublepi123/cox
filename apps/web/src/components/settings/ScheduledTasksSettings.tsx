@@ -2126,7 +2126,9 @@ function ScheduledTaskEditorForm({
                     }
                   />
                 </div>
-                <span className="text-xs text-muted-foreground">{t("minutes")}</span>
+                <span className="text-xs text-muted-foreground">
+                  {t(Number(draft.intervalMinutes) === 1 ? "minute" : "minutes")}
+                </span>
               </div>
             )}
           </div>

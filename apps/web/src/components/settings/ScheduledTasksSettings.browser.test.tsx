@@ -262,6 +262,29 @@ vi.mock(import("../../hooks/useSettings"), async (original) => ({
 }));
 
 describe("ScheduledTasksSettings", () => {
+  it.each([
+    { locale: "en", one: "minute", other: "minutes" },
+    { locale: "zh", one: "分钟", other: "分钟" },
+  ] as const)("localizes intervals in $locale", async ({ locale, one, other }) => {
+    setup();
+    setLanguagePreference(locale);
+    try {
+      await using _screen = await render(<ScheduledTasksSettings taskId={task.id} />);
+      const interval = page.getByRole("spinbutton", {
+        name: locale === "zh" ? "运行间隔" : "Run every",
+      });
+      const unit = () => interval.element().closest(".w-24")?.nextElementSibling?.textContent;
+      await expect.element(interval).toHaveValue(1);
+      expect(unit()).toBe(one);
+      for (const value of ["15", "1.5"]) {
+        await userEvent.fill(interval, value);
+        await expect.poll(unit).toBe(other);
+      }
+    } finally {
+      setLanguagePreference("system");
+    }
+  });
+
   it.each([390, 1280])(
     "moves an existing task to a matching thread at %spx without changing its prompt",
     async (width) => {
