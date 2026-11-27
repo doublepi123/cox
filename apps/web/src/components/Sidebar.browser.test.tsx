@@ -694,3 +694,39 @@ describe("sidebar project folder new thread", () => {
     expect(startThread).toHaveBeenCalledExactlyOnceWith(dev1ProjectRef);
   });
 });
+
+it("previews six project threads before showing the rest", async () => {
+  const previousSettings = getClientSettings();
+  using _settings = { [Symbol.dispose]: () => __setClientSettingsForTests(previousSettings) };
+  __setClientSettingsForTests({ ...DEFAULT_CLIENT_SETTINGS, boringSidebarEnabled: true });
+  const activeProject = project("folder-preview");
+  const threads = Array.from({ length: 8 }, (_, index) => threadShell(activeProject.id, index));
+  const ref = scopeThreadRef(activeProject.environmentId, threads[0]!.id);
+  vi.mocked(useProjects).mockReturnValue([activeProject]);
+  vi.mocked(useQuietThreadShells).mockReturnValue(threads);
+  vi.mocked(useThreadRouteTarget).mockReturnValue({ kind: "server", threadRef: ref });
+  vi.mocked(useHandleNewThread).mockReturnValue({
+    activeDraftThread: null,
+    activeThread: threads[0]!,
+    defaultProjectRef: scopeProjectRef(activeProject.environmentId, activeProject.id),
+    handleNewThread: vi.fn().mockResolvedValue(null),
+    routeDraftId: null,
+    routeThreadRef: ref,
+  });
+  await using screen = await render(
+    <SidebarProvider>
+      <Sidebar routeReveal={{ observedKey: null, pendingKey: null }} />
+    </SidebarProvider>,
+  );
+  const more = screen.getByRole("button", { name: /^Show [12] more$/ });
+  await expect.element(more).toBeVisible();
+  const rowCount = () =>
+    screen.container.querySelectorAll("[data-sidebar-parent][data-thread-row]").length;
+  const before = rowCount();
+  await more.click();
+  const less = screen.getByRole("button", { name: "Show less" });
+  await expect.element(less).toBeVisible();
+  await less.click();
+  await expect.element(more).toBeVisible();
+  expect(rowCount()).toBe(before);
+});
