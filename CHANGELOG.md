@@ -2,6 +2,19 @@
 
 ## Unreleased
 
+## 0.2.49 — 2026-11-28
+
+- Port the November 27 T3 batch: 336 of 409 upstream commits ported and 22 already covered by
+  Cox; see `docs/upstream-audit-2026-11-27`.
+- File previews unlock password-protected documents, files download from the Files panel and chat
+  file links, chat tables copy as PNG, and EPUB previews show captions.
+- Select several side-panel tabs at once, and sidebar folders list six threads with Show more and
+  Show less.
+- Status- and run-filtered turn-item reads use an index instead of walking a long thread.
+- Fixes for Antigravity, Claude, Codex, OpenCode and Pi sessions, delegated tasks, Git actions, PR
+  reviews and filters, Markdown, Word, RTF, ODT and EPUB previews, keyboard shortcuts on non-Latin
+  layouts, and the web browser test suite's dependency prebundling.
+
 ## 0.2.48 — 2026-11-27
 
 - Usage counts a Pi-format session once when the same transcript is present in both the Pi and
@@ -28,7 +41,7 @@
 - Fix test races in the web browser suite, including a mid-run Vite dependency reload, and the
   read-only file view's line reveal.
 
-## Desktop 0.2.44 — 2026-11-27
+## Desktop 0.2.44 — 2026-11-28
 
 - The packaged app ignores Node inspector flags.
 - The startup page shows database migration progress.
