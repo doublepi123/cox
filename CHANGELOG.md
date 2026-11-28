@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+## 0.2.50 — 2026-11-28
+
+- OMO Native waits for its session transcript header before a turn starts, so a first turn no
+  longer stays running forever when OMO reports its completion as not persisted.
+
 ## 0.2.49 — 2026-11-28
 
 - Port the November 27 T3 batch: 336 of 409 upstream commits ported and 22 already covered by
