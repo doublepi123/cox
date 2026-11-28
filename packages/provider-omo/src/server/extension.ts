@@ -174,6 +174,7 @@ export default async function coxOmo(pi) {
       throw new Error(selectionError);
     }
     if (!pi.getPermissionPreset?.()) throw new Error("OMO Native's permission system is not active.");
+    await pi.session.persistHeaderNow();
     if (process.env.COX_OMO_MANAGED_MODELS === "1" && ctx.model?.provider !== "cox")
       throw new Error("This OMO Native instance must use a model from its Cox model service binding.");
     if (ctx.model?.provider && ctx.model?.id) {

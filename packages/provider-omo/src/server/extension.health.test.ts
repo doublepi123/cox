@@ -40,6 +40,7 @@ async function loadReady(
     readonly toolsRequired?: boolean;
     readonly mcpRequired?: boolean;
     readonly readPermissionPreset?: () => string | undefined;
+    readonly persistHeaderNow?: () => Promise<void>;
     readonly assertNativeSession?: (context: unknown) => void;
     readonly memoryFailure?: boolean;
     readonly memoryEnabled?: boolean;
@@ -117,6 +118,7 @@ async function loadReady(
       getAllTools: () => tools,
       getFlag: () => (options.taskDisabled ? false : undefined),
       getPermissionPreset: () => options.readPermissionPreset?.(),
+      session: { persistHeaderNow: options.persistHeaderNow },
       getActiveTools: () => (options.taskActive === false ? [] : ["task"]),
       on: (
         name: string,
@@ -156,6 +158,35 @@ describe("OMO readiness separates native tasks from Cox orchestration", () => {
     );
     expect(OMO_EXTENSION_SOURCE).toContain('if (runtime.kind === "npm")');
   });
+  it("awaits the native transcript header before allowing the agent to start", async () => {
+    const hooks = new Map<
+      string,
+      Array<(event: unknown, ctx: { readonly sessionManager?: object }) => unknown>
+    >();
+    const header = Promise.withResolvers<void>();
+    let requested = false;
+    let started = false;
+    await loadReady({
+      hooks,
+      readPermissionPreset: () => "allow",
+      persistHeaderNow: () => {
+        requested = true;
+        return header.promise;
+      },
+    });
+    const beforeStart = Promise.resolve(hooks.get("before_agent_start")!.at(-1)!({}, {})).then(
+      () => {
+        started = true;
+      },
+    );
+    await Promise.resolve();
+    expect(requested).toBe(true);
+    expect(started).toBe(false);
+    header.resolve();
+    await beforeStart;
+    expect(started).toBe(true);
+  });
+
   it("awaits safe memory startup before registration and supports explicit opt-out", async () => {
     let registrations = 0;
     await loadReady({ onMemoryRegistered: () => registrations++ });
